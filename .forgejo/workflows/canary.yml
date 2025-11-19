@@ -123,7 +123,7 @@ jobs:
             release_output/**
 
   macos_release:
-    name: Release MacOS universal
+    name: Release MacOS arm64
     runs-on: dotnet-greem-ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -165,7 +165,7 @@ jobs:
           token: ${{ secrets.RELEASER_TOKEN  }}
           tag_name: ${{ steps.version_info.outputs.build_version }}
           files: |-
-            publish_ava/ryujinx-canary-${{ steps.version_info.outputs.build_version }}-macos_universal.app.tar.gz
+            publish_ava/ryujinx-canary-${{ steps.version_info.outputs.build_version }}-macos_arm64.app.tar.gz
 
   post_ci:
     name: Post CI Steps
