@@ -128,11 +128,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Setup LLVM 17
+      - name: Setup LLVM 22
         run: |
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
-          sudo ./llvm.sh 17
+          sudo ./llvm.sh 22
 
       - name: Get version info
         id: version_info
