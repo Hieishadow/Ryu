@@ -38,10 +38,35 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm
 
         public NetworkError ConnectPrivate(ConnectPrivateRequest request)
         {
-            // NOTE: This method is not implemented in ldn_mitm
-            Logger.Stub?.PrintMsg(LogClass.ServiceLdn, "LdnMitmClient ConnectPrivate");
+            ScanFilter scanFilter = new()
+            {
+                NetworkId = new NetworkId()
+                {
+                    IntentId = request.NetworkConfig.IntentId,
+                    SessionId = request.SecurityParameter.SessionId,
+                },
+                Flag = ScanFilterFlag.IntentId | ScanFilterFlag.SessionId,
+            };
 
-            return NetworkError.None;
+            NetworkInfo[] networks = _lanDiscovery.Scan(request.NetworkConfig.Channel, scanFilter);
+
+            if (networks.Length == 0)
+            {
+                Logger.Warning?.PrintMsg(LogClass.ServiceLdn, "LdnMitmClient ConnectPrivate: host network was not found.");
+
+                return NetworkError.ConnectNotFound;
+            }
+
+            if (networks.Length > 1)
+            {
+                Logger.Warning?.PrintMsg(LogClass.ServiceLdn, $"LdnMitmClient ConnectPrivate: found {networks.Length} matching host networks; connecting to the first one.");
+            }
+
+            uint localCommunicationVersion = request.LocalCommunicationVersion == 0
+                ? request.NetworkConfig.LocalCommunicationVersion
+                : request.LocalCommunicationVersion;
+
+            return _lanDiscovery.Connect(networks[0], request.UserConfig, localCommunicationVersion);
         }
 
         public bool CreateNetwork(CreateAccessPointRequest request, byte[] advertiseData)

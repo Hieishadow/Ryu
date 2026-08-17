@@ -8,7 +8,10 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm.Proxy
 {
     internal class LdnProxyTcpClient : NetCoreServer.TcpClient, ILdnTcpSocket
     {
+        private const int ConnectTimeoutMs = 4000;
+
         private readonly LanProtocol _protocol;
+        private readonly ManualResetEventSlim _connectEvent = new(false);
         private byte[] _buffer;
         private int _bufferEnd;
 
@@ -25,6 +28,7 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm.Proxy
         protected override void OnConnected()
         {
             Logger.Info?.PrintMsg(LogClass.ServiceLdn, $"LdnProxyTCPClient connected!");
+            _connectEvent.Set();
         }
 
         protected override void OnReceived(byte[] buffer, long offset, long size)
@@ -34,11 +38,12 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm.Proxy
 
         public void DisconnectAndStop()
         {
+            _connectEvent.Reset();
             DisconnectAsync();
 
-            while (IsConnected)
+            if (IsConnected && !_connectEvent.Wait(ConnectTimeoutMs))
             {
-                Thread.Yield();
+                Logger.Warning?.PrintMsg(LogClass.ServiceLdn, "LdnProxyTCPClient disconnect timed out.");
             }
         }
 
@@ -51,11 +56,13 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm.Proxy
 
             if (IsConnecting && !IsConnected)
             {
-                Logger.Info?.PrintMsg(LogClass.ServiceLdn, "LdnProxyTCPClient needs to connect before sending packets. Waiting...");
+                Logger.Info?.PrintMsg(LogClass.ServiceLdn, "LdnProxyTCPClient needs to connect before sending packets.");
 
-                while (IsConnecting && !IsConnected)
+                if (!_connectEvent.Wait(ConnectTimeoutMs) || !IsConnected)
                 {
-                    Thread.Yield();
+                    Logger.Warning?.PrintMsg(LogClass.ServiceLdn, "LdnProxyTCPClient timed out before sending a packet.");
+
+                    return false;
                 }
             }
 
@@ -65,22 +72,38 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm.Proxy
         protected override void OnError(SocketError error)
         {
             Logger.Error?.PrintMsg(LogClass.ServiceLdn, $"LdnProxyTCPClient caught an error with code {error}");
+            _connectEvent.Set();
+        }
+
+        protected override void OnDisconnected()
+        {
+            Logger.Info?.PrintMsg(LogClass.ServiceLdn, "LdnProxyTCPClient disconnected.");
+            _connectEvent.Set();
         }
 
         protected override void Dispose(bool disposingManagedResources)
         {
             DisconnectAndStop();
+            _connectEvent.Dispose();
             base.Dispose(disposingManagedResources);
         }
 
         public override bool Connect()
         {
-            // TODO: NetCoreServer has a Connect() method, but it currently leads to weird issues.
-            base.ConnectAsync();
+            _connectEvent.Reset();
 
-            while (IsConnecting)
+            if (!base.ConnectAsync())
             {
-                Thread.Sleep(1);
+                Logger.Warning?.PrintMsg(LogClass.ServiceLdn, "LdnProxyTCPClient failed to start connecting.");
+
+                return false;
+            }
+
+            if (!_connectEvent.Wait(ConnectTimeoutMs))
+            {
+                Logger.Warning?.PrintMsg(LogClass.ServiceLdn, "LdnProxyTCPClient connect timed out.");
+
+                DisconnectAsync();
             }
 
             return IsConnected;

@@ -27,7 +27,7 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm
         private bool _initialized;
         private readonly Ssid _fakeSsid;
         private ILdnTcpSocket _tcp;
-        private LdnProxyUdpServer _udp, _udp2;
+        private LdnProxyUdpServer _udp, _udp2, _scanUdp;
         private readonly List<LdnProxyTcpSession> _stations = [];
         private readonly Lock _lock = new();
 
@@ -40,6 +40,7 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm
         public bool IsHost => _tcp is LdnProxyTcpServer;
 
         private readonly Random _random = new();
+        private readonly Array6<byte> _fakeMac;
 
         // NOTE: Credit to https://stackoverflow.com/a/39338188
         private static IPAddress GetBroadcastAddress(IPAddress address, IPAddress mask)
@@ -105,6 +106,10 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm
                 Length = LdnConst.SsidLengthMax,
             };
             _random.NextBytes(_fakeSsid.Name.AsSpan()[..32]);
+
+            _fakeMac = new Array6<byte>();
+            _random.NextBytes(_fakeMac.AsSpan());
+            _fakeMac[0] = (byte)((_fakeMac[0] | 0x02) & 0xfe);
 
             _protocol = new LanProtocol(this);
             _protocol.Accept += OnConnect;
@@ -242,16 +247,14 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm
             }
         }
 
-        protected Array6<byte> GetFakeMac(IPAddress address = null)
+        protected Array6<byte> GetFakeMac()
         {
-            address ??= LocalAddr;
+            return _fakeMac;
+        }
 
-            byte[] ip = address.GetAddressBytes();
-
-            Array6<byte> macAddress = new();
-            new byte[] { 0x02, 0x00, ip[0], ip[1], ip[2], ip[3] }.CopyTo(macAddress.AsSpan());
-
-            return macAddress;
+        private bool IsSelf(NetworkInfo info)
+        {
+            return info.Common.MacAddress.AsSpan().SequenceEqual(_fakeMac.AsSpan());
         }
 
         public bool InitTcp(bool listening, IPAddress address = null, int port = DefaultPort)
@@ -313,8 +316,7 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm
 
         public bool InitUdp()
         {
-            _udp?.Stop();
-            _udp2?.Stop();
+            StopUdpServers();
 
             try
             {
@@ -327,9 +329,11 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm
                 }
 
                 _udp = new LdnProxyUdpServer(_protocol, LocalAddr, DefaultPort);
+                _scanUdp = new LdnProxyUdpServer(_protocol, LocalAddr, 0, respondsToScanRequests: false);
             }
             catch (Exception ex)
             {
+                StopUdpServers();
                 Logger.Error?.PrintMsg(LogClass.ServiceLdn, $"Failed to create LdnProxyUdpServer: {ex}");
 
                 return false;
@@ -340,10 +344,19 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm
 
         public NetworkInfo[] Scan(ushort channel, ScanFilter filter)
         {
-            _udp.ClearScanResults();
-
-            if (_protocol.SendBroadcast(_udp, LanPacketType.Scan, DefaultPort) < 0)
+            if (_scanUdp == null)
             {
+                Logger.Warning?.PrintMsg(LogClass.ServiceLdn, "LanDiscovery Scan: Cannot scan before UDP is initialized.");
+
+                return [];
+            }
+
+            _scanUdp.ClearScanResults();
+
+            if (_protocol.SendBroadcast(_scanUdp, LanPacketType.Scan, DefaultPort) < 0)
+            {
+                Logger.Warning?.PrintMsg(LogClass.ServiceLdn, $"LanDiscovery Scan: Failed to send scan broadcast to {LocalBroadcastAddr}:{DefaultPort}");
+
                 return [];
             }
 
@@ -352,6 +365,11 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm
             foreach (KeyValuePair<ulong, NetworkInfo> item in _udp.GetScanResults())
             {
                 bool copy = true;
+
+                if (IsSelf(item.Value))
+                {
+                    continue;
+                }
 
                 if (filter.Flag.HasFlag(ScanFilterFlag.LocalCommunicationId))
                 {
@@ -382,15 +400,13 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm
 
                 if (copy)
                 {
-                    if (item.Value.Ldn.Nodes[0].UserName[0] != 0)
-                    {
-                        outNetworkInfo.Add(item.Value);
-                    }
-                    else
-                    {
-                        Logger.Warning?.PrintMsg(LogClass.ServiceLdn, "LanDiscovery Scan: Got empty Username. There might be a timing issue somewhere...");
-                    }
+                    outNetworkInfo.Add(item.Value);
                 }
+            }
+
+            if (outNetworkInfo.Count > 0)
+            {
+                Logger.Debug?.PrintMsg(LogClass.ServiceLdn, $"LanDiscovery Scan: Found {outNetworkInfo.Count} network(s) on channel {channel}.");
             }
 
             return outNetworkInfo.ToArray();
@@ -572,6 +588,24 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm
 
         public void DisconnectAndStop()
         {
+            StopUdpServers();
+
+            if (_tcp != null)
+            {
+                try
+                {
+                    _tcp.DisconnectAndStop();
+                }
+                finally
+                {
+                    _tcp.Dispose();
+                    _tcp = null;
+                }
+            }
+        }
+
+        private void StopUdpServers()
+        {
             if (_udp != null)
             {
                 try
@@ -598,16 +632,16 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm
                 }
             }
 
-            if (_tcp != null)
+            if (_scanUdp != null)
             {
                 try
                 {
-                    _tcp.DisconnectAndStop();
+                    _scanUdp.Stop();
                 }
                 finally
                 {
-                    _tcp.Dispose();
-                    _tcp = null;
+                    _scanUdp.Dispose();
+                    _scanUdp = null;
                 }
             }
         }

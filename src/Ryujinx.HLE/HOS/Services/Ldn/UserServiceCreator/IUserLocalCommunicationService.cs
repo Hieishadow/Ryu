@@ -998,14 +998,14 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator
                                 if (isPrivate)
                                 {
                                     resultCode = _station.ConnectPrivate(securityConfig, securityParameter, userConfig, localCommunicationVersion, optionUnknown, networkConfig);
-                                    Logger.NetLog?.PrintMsg(LogClass.ServiceLdn, $"ConnectImpl: Private connection established! " +
+                                    Logger.NetLog?.PrintMsg(LogClass.ServiceLdn, $"ConnectImpl: Private connection result = {resultCode} " +
                                         $"| securityConfig = {securityConfig} | securityParameter = {securityParameter} | userConfig = {userConfig} " +
                                         $"| localCommunicationVersion = {localCommunicationVersion} | optionUnknown = {optionUnknown} | networkConfig = {networkConfig}");
                                 }
                                 else
                                 {
                                     resultCode = _station.Connect(securityConfig, userConfig, localCommunicationVersion, optionUnknown, networkInfo);
-                                    Logger.NetLog?.PrintMsg(LogClass.ServiceLdn, $"ConnectImpl: Connection established! " +
+                                    Logger.NetLog?.PrintMsg(LogClass.ServiceLdn, $"ConnectImpl: Connection result = {resultCode} " +
                                         $"| securityConfig = {securityConfig} | userConfig = {userConfig} " +
                                         $"| localCommunicationVersion = {localCommunicationVersion} | optionUnknown = {optionUnknown} | networkConfig = {networkConfig}");
                                 }

@@ -25,10 +25,18 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm.Proxy
         private readonly AutoResetEvent _scanResponse = new(false);
         private long _lastScanTime;
 
-        public LdnProxyUdpServer(LanProtocol protocol, IPAddress address, int port) : base(address, port)
+        private readonly bool _respondsToScanRequests;
+
+        public LdnProxyUdpServer(LanProtocol protocol, IPAddress address, int port, bool respondsToScanRequests = true) : base(address, port)
         {
             _protocol = protocol;
-            _protocol.Scan += HandleScan;
+            _respondsToScanRequests = respondsToScanRequests;
+
+            if (_respondsToScanRequests)
+            {
+                _protocol.Scan += HandleScan;
+            }
+
             _protocol.ScanResponse += HandleScanResponse;
             _buffer = new byte[LanProtocol.BufferSize];
             OptionReuseAddress = true;
@@ -64,7 +72,11 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnMitm.Proxy
 
         protected override void Dispose(bool disposingManagedResources)
         {
-            _protocol.Scan -= HandleScan;
+            if (_respondsToScanRequests)
+            {
+                _protocol.Scan -= HandleScan;
+            }
+
             _protocol.ScanResponse -= HandleScanResponse;
 
             _scanResponse.Dispose();
