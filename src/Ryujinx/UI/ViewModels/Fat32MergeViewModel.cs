@@ -3,6 +3,7 @@ using Avalonia.Platform.Storage;
 using Gommon;
 using LibHac.Common.Keys;
 using LibHac.FsSystem;
+using LibHac.Tools.Fs;
 using LibHac.Tools.FsSystem;
 using Ryujinx.Ava.Common.Locale;
 using Ryujinx.Ava.Systems.AppLibrary;
@@ -30,6 +31,8 @@ namespace Ryujinx.Ava.UI.ViewModels
         public string keydir = AppDataManager.KeysDirPath;
 
         private KeySet _KeySet = KeySet.CreateDefaultKeySet(); // Check VirtualFileSystem.ReloadKeySet() perhaps
+        
+        List<ApplicationData> applications;
         
         public string MergedName
         {
@@ -103,8 +106,9 @@ namespace Ryujinx.Ava.UI.ViewModels
                 if (IsXci)
                 {
                     // For XCI games
-                    LibHac.Tools.Fs.Xci xci = new(_KeySet, file.AsStorage());
-                    //applications = GetApplicationsFromPfs(xci.OpenPartition(XciPartitionType.Secure), applicationPath);
+                    Xci xci = new(_KeySet, file.AsStorage());
+                    GetKeySet(); // This can probably just be run on INIT of the view
+                    applications = GetApplicationsFromPfs(xci.OpenPartition(XciPartitionType.Secure), SplitPaths[0]); // Poop its private!
                 }
                 else
                 {
