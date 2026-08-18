@@ -1178,7 +1178,7 @@ namespace Ryujinx.Ava.Systems
                 }
             });
 
-            (RendererHost.EmbeddedWindow as EmbeddedWindowOpenGL)?.MakeCurrent(true, false);
+            (RendererHost.EmbeddedWindow as EmbeddedWindowOpenGL)?.MakeCurrent(true);
 
             // Reload settings when the game is turned off
             // (resets custom settings if there were any)
