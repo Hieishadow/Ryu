@@ -73,7 +73,8 @@ namespace Ryujinx.Ava.UI.ViewModels
                     // For XCI games
                     Xci xci = new(_mainWindowViewModel.VirtualFileSystem.KeySet, file.AsStorage());
                     IFileSystem pfs = xci.OpenPartition(XciPartitionType.Secure);
-                    //FileName = pfs.GetContentData(ContentMetaType.Application, , IntegrityCheckLevel.ErrorOnInvalid); // Why do all these methods need VFS!
+                    Dictionary<ulong, ContentMetaData> metadata = pfs.GetContentData(ContentMetaType.Application, _mainWindowViewModel.VirtualFileSystem , IntegrityCheckLevel.None); // So I should have checked if ContentMetaData included the title...
+                    
                 }
                 else
                 {
