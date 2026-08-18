@@ -36,8 +36,6 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu.Proxy
         private readonly AutoResetEvent _receiveEvent = new(false);
         private readonly Queue<ProxyDataPacket> _receiveQueue = new();
 
-        // private int _sendTimeout = -1; // Sends are techically instant right now, so not _really_ used.
-
         private bool _connecting;
         private bool _readShutdown;
         private bool _writeShutdown;
@@ -212,8 +210,6 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu.Proxy
                 {
                     _receiveQueue.Enqueue(packet);
                 }
-
-                Logger.Debug?.PrintMsg(LogClass.ServiceLdn, $"Proxy socket queued data: {FormatEndpoint(LocalEndPoint)} <- {FormatEndpoint(RemoteEndPoint)}, length={packet.Data.Length}, queued={Available}");
 
                 _receiveEvent.Set();
             }
@@ -742,8 +738,6 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu.Proxy
                 }
             }
 
-            Logger.Debug?.PrintMsg(LogClass.ServiceLdn, $"Proxy socket read data: {FormatEndpoint(LocalEndPoint)} <- {FormatEndpoint(remoteEp)}, length={read}, peek={peek}, queued={Available}");
-
             return read;
         }
 
@@ -802,8 +796,6 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu.Proxy
             }
 
             socketError = SocketError.Success;
-
-            Logger.Debug?.PrintMsg(LogClass.ServiceLdn, $"Proxy socket read data: {FormatEndpoint(LocalEndPoint)} <- {FormatEndpoint(remoteEp)}, length={read}, peek={peek}, queued={Available}");
 
             return read;
         }
@@ -907,7 +899,6 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu.Proxy
 
             if (remoteEP is not IPEndPoint)
             {
-                // throw new NotSupportedException();
                 socketError = SocketError.OperationNotSupported;
                 return -1;
             }
@@ -938,7 +929,6 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu.Proxy
             switch (optionName)
             {
                 case SocketOptionName.SendTimeout:
-                    //_sendTimeout = optionValue;
                     break;
                 case SocketOptionName.ReceiveTimeout:
                     _receiveTimeout = optionValue;

@@ -33,21 +33,6 @@ namespace Ryujinx.HLE.HOS.Services.Am.AppletAE.AllSystemAppletProxiesService.Lib
             }
         }
 
-        private static string FormatDataPreview(byte[] data)
-        {
-            const int MaxPreviewLength = 16;
-
-            if (data.Length == 0)
-            {
-                return "<empty>";
-            }
-
-            ReadOnlySpan<byte> preview = data.AsSpan()[..Math.Min(data.Length, MaxPreviewLength)];
-            string suffix = data.Length > MaxPreviewLength ? "..." : string.Empty;
-
-            return $"{Convert.ToHexString(preview)}{suffix}";
-        }
-
         [CommandCmif(0)]
         // PopInData() -> object<nn::am::service::IStorage>
         public ResultCode PopInData(ServiceCtx context)
@@ -58,8 +43,6 @@ namespace Ryujinx.HLE.HOS.Services.Am.AppletAE.AllSystemAppletProxiesService.Lib
             {
                 return ResultCode.NotAvailable;
             }
-
-            Logger.Debug?.PrintMsg(LogClass.ServiceAm, $"MiiEdit PopInData: size={appletData.Length}, data={FormatDataPreview(appletData)}");
 
             MakeObject(context, new IStorage(appletData));
 
@@ -76,8 +59,6 @@ namespace Ryujinx.HLE.HOS.Services.Am.AppletAE.AllSystemAppletProxiesService.Lib
             {
                 return ResultCode.NullObject;
             }
-
-            Logger.Debug?.PrintMsg(LogClass.ServiceAm, $"MiiEdit PushOutData: size={appletData.Data.Length}, data={FormatDataPreview(appletData.Data)}");
     
             _appletStandalone.InputData.Enqueue(appletData.Data);
 

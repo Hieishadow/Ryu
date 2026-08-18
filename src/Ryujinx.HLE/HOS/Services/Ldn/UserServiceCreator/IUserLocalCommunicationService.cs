@@ -39,33 +39,6 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator
         private const string DefaultSubnetMask = "255.255.255.0";
         private const bool IsDevelopment = false;
 
-        private static string FormatDataPreview(ReadOnlySpan<byte> data)
-        {
-            const int MaxPreviewLength = 16;
-
-            if (data.Length == 0)
-            {
-                return "<empty>";
-            }
-
-            ReadOnlySpan<byte> preview = data[..Math.Min(data.Length, MaxPreviewLength)];
-            string suffix = data.Length > MaxPreviewLength ? "..." : string.Empty;
-
-            return $"{Convert.ToHexString(preview)}{suffix}";
-        }
-
-        private static string FormatAdvertiseData(ReadOnlySpan<byte> advertiseData)
-        {
-            return $"advertiseSize={advertiseData.Length}, advertiseData={FormatDataPreview(advertiseData)}";
-        }
-
-        private static string FormatAdvertiseData(NetworkInfo networkInfo)
-        {
-            int size = Math.Min((int)networkInfo.Ldn.AdvertiseDataSize, LdnConst.AdvertiseDataSizeMax);
-
-            return FormatAdvertiseData(networkInfo.Ldn.AdvertiseData.AsSpan()[..size]);
-        }
-
         private readonly KEvent _stateChangeEvent;
         private int _stateChangeEventHandle;
 
@@ -184,7 +157,7 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator
                 return ResultCode.InvalidState;
             }
 
-            Logger.Debug?.PrintMsg(LogClass.ServiceLdn, $"GetNetworkInfoImpl: {FormatAdvertiseData(networkInfo)}, nodeCount={networkInfo.Ldn.NodeCount}, nodeCountMax={networkInfo.Ldn.NodeCountMax}");
+            Logger.Debug?.PrintMsg(LogClass.ServiceLdn, $"GetNetworkInfoImpl: state={_state}, nodeCount={networkInfo.Ldn.NodeCount}, nodeCountMax={networkInfo.Ldn.NodeCountMax}");
             return ResultCode.Success;
         }
 
@@ -518,11 +491,6 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator
                 }
             }
 
-            if (counter > 0)
-            {
-                Logger.Debug?.PrintMsg(LogClass.ServiceLdn, $"ScanInternal: found {counter} network(s), available={availableGames.Length}, max={maxGames}");
-            }
-
             return ResultCode.Success;
         }
 
@@ -811,7 +779,6 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator
                 byte[] advertiseData = new byte[bufferSize];
 
                 context.Memory.Read(bufferPosition, advertiseData);
-                Logger.Debug?.PrintMsg(LogClass.ServiceLdn, $"SetAdvertiseData: {FormatAdvertiseData(advertiseData)}");
                 return _accessPoint.SetAdvertiseData(advertiseData);
             }
             else
