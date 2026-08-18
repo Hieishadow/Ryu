@@ -2,7 +2,9 @@ using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using Gommon;
 using LibHac.Common.Keys;
+using LibHac.Fs.Fsa;
 using LibHac.FsSystem;
+using LibHac.Ncm;
 using LibHac.Tools.Fs;
 using LibHac.Tools.FsSystem;
 using Ryujinx.Ava.Common.Locale;
@@ -12,6 +14,7 @@ using Ryujinx.Ava.Utilities;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Logging;
 using Ryujinx.HLE.FileSystem;
+using Ryujinx.HLE.Loaders.Processes.Extensions;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -34,6 +37,8 @@ namespace Ryujinx.Ava.UI.ViewModels
         
         List<ApplicationData> applications;
         
+        private readonly MainWindowViewModel _mainWindowViewModel;
+        
         public string MergedName
         {
             get
@@ -41,50 +46,10 @@ namespace Ryujinx.Ava.UI.ViewModels
                 return $"{LocaleManager.Instance[LocaleKeys.Fat32Merge_FileNamePrefix]}{FileName}";
             }
         }
-
-        private void GetKeySet()
+        
+        public Fat32MergeViewModel(MainWindowViewModel mainWindowViewModel)
         {
-            string prodKeyFile = null;
-            string titleKeyFile = null;
-            string consoleKeyFile = null;
-            string devKeyFile = null;
-            
-            if (AppDataManager.Mode == AppDataManager.LaunchMode.UserProfile)
-            {
-                LoadSetAtPath(AppDataManager.KeysDirPathUser);
-            }
-
-            LoadSetAtPath(AppDataManager.KeysDirPath);
-            
-            void LoadSetAtPath(string basePath)
-            {
-                string localProdKeyFile = Path.Combine(basePath, "prod.keys");
-                string localTitleKeyFile = Path.Combine(basePath, "title.keys");
-                string localConsoleKeyFile = Path.Combine(basePath, "console.keys");
-                string localDevKeyFile = Path.Combine(basePath, "dev.keys");
-
-                if (File.Exists(localProdKeyFile))
-                {
-                    prodKeyFile = localProdKeyFile;
-                }
-
-                if (File.Exists(localTitleKeyFile))
-                {
-                    titleKeyFile = localTitleKeyFile;
-                }
-
-                if (File.Exists(localConsoleKeyFile))
-                {
-                    consoleKeyFile = localConsoleKeyFile;
-                }
-
-                if (File.Exists(localDevKeyFile))
-                {
-                    devKeyFile = localDevKeyFile;
-                }
-            }
-            
-            ExternalKeyReader.ReadKeyFile(_KeySet, prodKeyFile, devKeyFile, titleKeyFile, consoleKeyFile, null);
+            _mainWindowViewModel = mainWindowViewModel;
         }
 
         public async void OpenFolderPicker()
@@ -106,9 +71,9 @@ namespace Ryujinx.Ava.UI.ViewModels
                 if (IsXci)
                 {
                     // For XCI games
-                    Xci xci = new(_KeySet, file.AsStorage());
-                    GetKeySet(); // This can probably just be run on INIT of the view
-                    applications = GetApplicationsFromPfs(xci.OpenPartition(XciPartitionType.Secure), SplitPaths[0]); // Poop its private!
+                    Xci xci = new(_mainWindowViewModel.VirtualFileSystem.KeySet, file.AsStorage());
+                    IFileSystem pfs = xci.OpenPartition(XciPartitionType.Secure);
+                    //FileName = pfs.GetContentData(ContentMetaType.Application, , IntegrityCheckLevel.ErrorOnInvalid); // Why do all these methods need VFS!
                 }
                 else
                 {

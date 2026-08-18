@@ -26,7 +26,7 @@ namespace Ryujinx.Ava.UI.Views.Dialog
                 CloseButtonText = string.Empty,
                 Content = new Fat32MergeView
                 {
-                    ViewModel = new Fat32MergeViewModel()
+                    ViewModel = new Fat32MergeViewModel(RyujinxApp.MainWindow.ViewModel)
                 },
                 Title = LocaleManager.Instance[LocaleKeys.MenuBar_Actions_MergeDumpButton]
             };
