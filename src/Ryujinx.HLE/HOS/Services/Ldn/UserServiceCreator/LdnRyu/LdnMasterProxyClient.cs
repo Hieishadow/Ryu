@@ -521,6 +521,7 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu
                 UserName = request.UserConfig.UserName
             };
             "12345678123456781234567812345678"u8.ToArray().CopyTo(networkChangeEvent.Info.Common.Ssid.Name.AsSpan());
+            advertiseData.CopyTo(networkChangeEvent.Info.Ldn.AdvertiseData.AsSpan());
             NetworkChange?.Invoke(this, networkChangeEvent);
 
             return CreateNetworkCommon();

@@ -63,6 +63,10 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator
         {
             _advertiseData = advertiseData;
 
+            NetworkInfo.Ldn.AdvertiseData.AsSpan().Clear();
+            advertiseData.CopyTo(NetworkInfo.Ldn.AdvertiseData.AsSpan());
+            NetworkInfo.Ldn.AdvertiseDataSize = (ushort)advertiseData.Length;
+
             _parent.NetworkClient.SetAdvertiseData(_advertiseData);
 
             return ResultCode.Success;

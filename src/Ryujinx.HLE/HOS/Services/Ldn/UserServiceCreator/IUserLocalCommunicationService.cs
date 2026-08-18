@@ -39,6 +39,33 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator
         private const string DefaultSubnetMask = "255.255.255.0";
         private const bool IsDevelopment = false;
 
+        private static string FormatDataPreview(ReadOnlySpan<byte> data)
+        {
+            const int MaxPreviewLength = 16;
+
+            if (data.Length == 0)
+            {
+                return "<empty>";
+            }
+
+            ReadOnlySpan<byte> preview = data[..Math.Min(data.Length, MaxPreviewLength)];
+            string suffix = data.Length > MaxPreviewLength ? "..." : string.Empty;
+
+            return $"{Convert.ToHexString(preview)}{suffix}";
+        }
+
+        private static string FormatAdvertiseData(ReadOnlySpan<byte> advertiseData)
+        {
+            return $"advertiseSize={advertiseData.Length}, advertiseData={FormatDataPreview(advertiseData)}";
+        }
+
+        private static string FormatAdvertiseData(NetworkInfo networkInfo)
+        {
+            int size = Math.Min((int)networkInfo.Ldn.AdvertiseDataSize, LdnConst.AdvertiseDataSizeMax);
+
+            return FormatAdvertiseData(networkInfo.Ldn.AdvertiseData.AsSpan()[..size]);
+        }
+
         private readonly KEvent _stateChangeEvent;
         private int _stateChangeEventHandle;
 
@@ -157,7 +184,7 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator
                 return ResultCode.InvalidState;
             }
 
-            Logger.NetLog?.PrintMsg(LogClass.ServiceLdn,$"GetNetworkInfoImpl: networkInfo = {networkInfo}");
+            Logger.Debug?.PrintMsg(LogClass.ServiceLdn, $"GetNetworkInfoImpl: {FormatAdvertiseData(networkInfo)}, nodeCount={networkInfo.Ldn.NodeCount}, nodeCountMax={networkInfo.Ldn.NodeCountMax}");
             return ResultCode.Success;
         }
 
@@ -784,7 +811,7 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator
                 byte[] advertiseData = new byte[bufferSize];
 
                 context.Memory.Read(bufferPosition, advertiseData);
-                Logger.NetLog?.PrintMsg(LogClass.ServiceLdn, $"SetAdvertiseData: advertiseData = {advertiseData}");
+                Logger.Debug?.PrintMsg(LogClass.ServiceLdn, $"SetAdvertiseData: {FormatAdvertiseData(advertiseData)}");
                 return _accessPoint.SetAdvertiseData(advertiseData);
             }
             else

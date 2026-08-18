@@ -39,19 +39,44 @@ namespace Ryujinx.HLE.HOS.Services
 
         private readonly KernelContext _context;
         private KProcess _selfProcess;
-        private KThread _selfThread;
         private KEvent _wakeEvent;
         private int _wakeHandle = 0;
+        private ulong _heapAddr;
 
         private readonly ReaderWriterLockSlim _handleLock = new();
         private readonly Dictionary<int, IpcService> _sessions = new();
         private readonly Dictionary<int, Func<IpcService>> _ports = new();
+        private readonly List<KThread> _serverThreads = [];
 
-        private readonly RecyclableMemoryStream _requestDataStream;
-        private readonly BinaryReader _requestDataReader;
+        private readonly int _threadCount;
 
-        private readonly RecyclableMemoryStream _responseDataStream;
-        private readonly BinaryWriter _responseDataWriter;
+        private sealed class ServerLoopState : IDisposable
+        {
+            public readonly KThread Thread;
+            public readonly ulong RecvListAddr;
+            public readonly RecyclableMemoryStream RequestDataStream;
+            public readonly BinaryReader RequestDataReader;
+            public readonly RecyclableMemoryStream ResponseDataStream;
+            public readonly BinaryWriter ResponseDataWriter;
+
+            public ServerLoopState(KThread thread, ulong recvListAddr)
+            {
+                Thread = thread;
+                RecvListAddr = recvListAddr;
+                RequestDataStream = MemoryStreamManager.Shared.GetStream();
+                RequestDataReader = new BinaryReader(RequestDataStream);
+                ResponseDataStream = MemoryStreamManager.Shared.GetStream();
+                ResponseDataWriter = new BinaryWriter(ResponseDataStream);
+            }
+
+            public void Dispose()
+            {
+                RequestDataReader.Dispose();
+                RequestDataStream.Dispose();
+                ResponseDataWriter.Dispose();
+                ResponseDataStream.Dispose();
+            }
+        }
 
         private int _isDisposed = 0;
 
@@ -59,15 +84,10 @@ namespace Ryujinx.HLE.HOS.Services
         public string Name { get; }
         public Func<IpcService> SmObjectFactory { get; }
 
-        public ServerBase(KernelContext context, string name, Func<IpcService> smObjectFactory = null)
+        public ServerBase(KernelContext context, string name, Func<IpcService> smObjectFactory = null, int threadCount = 1)
         {
             _context = context;
-
-            _requestDataStream = MemoryStreamManager.Shared.GetStream();
-            _requestDataReader = new BinaryReader(_requestDataStream);
-
-            _responseDataStream = MemoryStreamManager.Shared.GetStream();
-            _responseDataWriter = new BinaryWriter(_responseDataStream);
+            _threadCount = Math.Max(threadCount, 1);
 
             InitDone = new ManualResetEvent(false);
             Name = name;
@@ -176,20 +196,7 @@ namespace Ryujinx.HLE.HOS.Services
 
         private void Main()
         {
-            ServerLoop();
-        }
-
-        private void ServerLoop()
-        {
             _selfProcess = KernelStatic.GetCurrentProcess();
-            _selfThread = KernelStatic.GetCurrentThread();
-
-            HorizonStatic.Register(
-                default,
-                _context.Syscall,
-                _selfProcess.CpuMemory,
-                _selfThread.ThreadContext,
-                (int)_selfThread.ThreadContext.GetX(1));
 
             if (SmObjectFactory != null)
             {
@@ -201,14 +208,81 @@ namespace Ryujinx.HLE.HOS.Services
             _wakeEvent = new KEvent(_context);
             Result result = _selfProcess.HandleTable.GenerateHandle(_wakeEvent.ReadableEvent, out _wakeHandle);
 
+            if (result != Result.Success)
+            {
+                throw new InvalidOperationException($"Failed to create wake event handle for {Name}: {result}");
+            }
+
+            _context.Syscall.SetHeapSize(out _heapAddr, Math.Max(0x200000UL, (ulong)PointerBufferSize * (ulong)_threadCount));
+
+            KThread currentThread = KernelStatic.GetCurrentThread();
+
+            lock (_serverThreads)
+            {
+                _serverThreads.Add(currentThread);
+            }
+
             InitDone.Set();
 
-            ulong messagePtr = _selfThread.TlsAddress;
-            _context.Syscall.SetHeapSize(out ulong heapAddr, 0x200000);
+            for (int i = 1; i < _threadCount; i++)
+            {
+                int workerIndex = i;
 
+                result = _context.Syscall.CreateThread(
+                    out int handle,
+                    0,
+                    0,
+                    0,
+                    currentThread.DynamicPriority,
+                    _selfProcess.DefaultCpuCore,
+                    () =>
+                    {
+                        KernelStatic.GetCurrentThread().HostThread.Name = $"{{{Name}.{workerIndex}}}";
+                        ServerLoop(workerIndex);
+                    });
+
+                if (result != Result.Success)
+                {
+                    Logger.Warning?.Print(LogClass.Service, $"Failed to create {Name} service worker {workerIndex}: {result}");
+                    continue;
+                }
+
+                KThread workerThread = _selfProcess.HandleTable.GetKThread(handle);
+
+                lock (_serverThreads)
+                {
+                    _serverThreads.Add(workerThread);
+                }
+
+                result = _context.Syscall.StartThread(handle);
+                _context.Syscall.CloseHandle(handle);
+
+                if (result != Result.Success)
+                {
+                    Logger.Warning?.Print(LogClass.Service, $"Failed to start {Name} service worker {workerIndex}: {result}");
+                }
+            }
+
+            ServerLoop(0);
+        }
+
+        private void ServerLoop(int workerIndex)
+        {
+            KThread selfThread = KernelStatic.GetCurrentThread();
+
+            HorizonStatic.Register(
+                default,
+                _context.Syscall,
+                _selfProcess.CpuMemory,
+                selfThread.ThreadContext,
+                (int)selfThread.ThreadContext.GetX(1));
+
+            using ServerLoopState state = new(selfThread, _heapAddr + (ulong)(PointerBufferSize * workerIndex));
+
+            ulong messagePtr = selfThread.TlsAddress;
             _selfProcess.CpuMemory.Write(messagePtr + 0x0, 0);
             _selfProcess.CpuMemory.Write(messagePtr + 0x4, 2 << 10);
-            _selfProcess.CpuMemory.Write(messagePtr + 0x8, heapAddr | ((ulong)PointerBufferSize << 48));
+            _selfProcess.CpuMemory.Write(messagePtr + 0x8, state.RecvListAddr | ((ulong)PointerBufferSize << 48));
             int replyTargetHandle = 0;
 
             while (true)
@@ -244,9 +318,9 @@ namespace Ryujinx.HLE.HOS.Services
 
                 Result rc = _context.Syscall.ReplyAndReceive(out int signaledIndex, handles.AsSpan(0, handleCount), replyTargetHandle, -1);
 
-                _selfThread.HandlePostSyscall();
+                selfThread.HandlePostSyscall();
 
-                if (!_selfThread.Context.Running)
+                if (!selfThread.Context.Running)
                 {
                     break;
                 }
@@ -258,7 +332,7 @@ namespace Ryujinx.HLE.HOS.Services
                     // We got a IPC request, process it, pass to the appropriate service if needed.
                     int signaledHandle = handles[signaledIndex];
 
-                    if (Process(signaledHandle, heapAddr))
+                    if (Process(state, signaledHandle))
                     {
                         replyTargetHandle = signaledHandle;
                     }
@@ -301,7 +375,7 @@ namespace Ryujinx.HLE.HOS.Services
 
                     _selfProcess.CpuMemory.Write(messagePtr + 0x0, 0);
                     _selfProcess.CpuMemory.Write(messagePtr + 0x4, 2 << 10);
-                    _selfProcess.CpuMemory.Write(messagePtr + 0x8, heapAddr | ((ulong)PointerBufferSize << 48));
+                    _selfProcess.CpuMemory.Write(messagePtr + 0x8, state.RecvListAddr | ((ulong)PointerBufferSize << 48));
                 }
 
                 ArrayPool<int>.Shared.Return(handles);
@@ -320,13 +394,13 @@ namespace Ryujinx.HLE.HOS.Services
             }
         }
 
-        private bool Process(int serverSessionHandle, ulong recvListAddr)
+        private bool Process(ServerLoopState state, int serverSessionHandle)
         {
-            IpcMessage request = ReadRequest();
+            IpcMessage request = ReadRequest(state);
 
             IpcMessage response = new();
 
-            ulong tempAddr = recvListAddr;
+            ulong tempAddr = state.RecvListAddr;
             int sizesOffset = request.RawData.Length - ((request.RecvListBuff.Count * 2 + 3) & ~3);
 
             bool noReceive = true;
@@ -355,54 +429,54 @@ namespace Ryujinx.HLE.HOS.Services
             bool shouldReply = true;
             bool isTipcCommunication = false;
 
-            _requestDataStream.SetLength(0);
-            _requestDataStream.Write(request.RawData);
-            _requestDataStream.Position = 0;
+            state.RequestDataStream.SetLength(0);
+            state.RequestDataStream.Write(request.RawData);
+            state.RequestDataStream.Position = 0;
 
             if (request.Type is IpcMessageType.CmifRequest or
                 IpcMessageType.CmifRequestWithContext)
             {
                 response.Type = IpcMessageType.CmifResponse;
 
-                _responseDataStream.SetLength(0);
+                state.ResponseDataStream.SetLength(0);
 
                 ServiceCtx context = new(
                     _context.Device,
                     _selfProcess,
                     _selfProcess.CpuMemory,
-                    _selfThread,
+                    state.Thread,
                     request,
                     response,
-                    _requestDataReader,
-                    _responseDataWriter);
+                    state.RequestDataReader,
+                    state.ResponseDataWriter);
 
                 GetSessionObj(serverSessionHandle).CallCmifMethod(context);
 
-                response.RawData = _responseDataStream.ToArray();
+                response.RawData = state.ResponseDataStream.ToArray();
             }
             else if (request.Type is IpcMessageType.CmifControl or
                      IpcMessageType.CmifControlWithContext)
             {
 #pragma warning disable IDE0059 // Remove unnecessary value assignment
-                uint magic = (uint)_requestDataReader.ReadUInt64();
+                uint magic = (uint)state.RequestDataReader.ReadUInt64();
 #pragma warning restore IDE0059
-                uint cmdId = (uint)_requestDataReader.ReadUInt64();
+                uint cmdId = (uint)state.RequestDataReader.ReadUInt64();
 
                 switch (cmdId)
                 {
                     case 0:
-                        FillHipcResponse(response, 0, GetSessionObj(serverSessionHandle).ConvertToDomain());
+                        FillHipcResponse(state, response, 0, GetSessionObj(serverSessionHandle).ConvertToDomain());
                         break;
 
                     case 3:
-                        FillHipcResponse(response, 0, PointerBufferSize);
+                        FillHipcResponse(state, response, 0, PointerBufferSize);
                         break;
 
                     // TODO: Whats the difference between IpcDuplicateSession/Ex?
                     case 2:
                     case 4:
                         {
-                            _ = _requestDataReader.ReadInt32();
+                            _ = state.RequestDataReader.ReadInt32();
 
                             _context.Syscall.CreateSession(out int dupServerSessionHandle, out int dupClientSessionHandle, false, 0);
 
@@ -422,7 +496,7 @@ namespace Ryujinx.HLE.HOS.Services
 
                             response.HandleDesc = IpcHandleDesc.MakeMove(dupClientSessionHandle);
 
-                            FillHipcResponse(response, 0);
+                            FillHipcResponse(state, response, 0);
 
                             break;
                         }
@@ -444,24 +518,24 @@ namespace Ryujinx.HLE.HOS.Services
                 // Response type is always the same as request on TIPC.
                 response.Type = request.Type;
 
-                _responseDataStream.SetLength(0);
+                state.ResponseDataStream.SetLength(0);
 
                 ServiceCtx context = new(
                     _context.Device,
                     _selfProcess,
                     _selfProcess.CpuMemory,
-                    _selfThread,
+                    state.Thread,
                     request,
                     response,
-                    _requestDataReader,
-                    _responseDataWriter);
+                    state.RequestDataReader,
+                    state.ResponseDataWriter);
 
                 GetSessionObj(serverSessionHandle).CallTipcMethod(context);
 
-                response.RawData = _responseDataStream.ToArray();
+                response.RawData = state.ResponseDataStream.ToArray();
 
                 RecyclableMemoryStream responseStream = response.GetStreamTipc();
-                _selfProcess.CpuMemory.Write(_selfThread.TlsAddress, responseStream.GetReadOnlySequence());
+                _selfProcess.CpuMemory.Write(state.Thread.TlsAddress, responseStream.GetReadOnlySequence());
                 MemoryStreamManager.Shared.ReleaseStream(responseStream);
             }
             else
@@ -471,15 +545,15 @@ namespace Ryujinx.HLE.HOS.Services
 
             if (!isTipcCommunication)
             {
-                RecyclableMemoryStream responseStream = response.GetStream((long)_selfThread.TlsAddress, recvListAddr | ((ulong)PointerBufferSize << 48));
-                _selfProcess.CpuMemory.Write(_selfThread.TlsAddress, responseStream.GetReadOnlySequence());
+                RecyclableMemoryStream responseStream = response.GetStream((long)state.Thread.TlsAddress, state.RecvListAddr | ((ulong)PointerBufferSize << 48));
+                _selfProcess.CpuMemory.Write(state.Thread.TlsAddress, responseStream.GetReadOnlySequence());
                 MemoryStreamManager.Shared.ReleaseStream(responseStream);
             }
 
             return shouldReply;
         }
 
-        private IpcMessage ReadRequest()
+        private IpcMessage ReadRequest(ServerLoopState state)
         {
             const int MessageSize = 0x100;
 
@@ -487,72 +561,79 @@ namespace Ryujinx.HLE.HOS.Services
 
             Span<byte> reqDataSpan = reqDataOwner.Span;
 
-            _selfProcess.CpuMemory.Read(_selfThread.TlsAddress, reqDataSpan);
+            _selfProcess.CpuMemory.Read(state.Thread.TlsAddress, reqDataSpan);
 
-            IpcMessage request = new(reqDataSpan, (long)_selfThread.TlsAddress);
+            IpcMessage request = new(reqDataSpan, (long)state.Thread.TlsAddress);
 
             return request;
         }
 
-        private void FillHipcResponse(IpcMessage response, long result)
+        private void FillHipcResponse(ServerLoopState state, IpcMessage response, long result)
         {
-            FillHipcResponse(response, result, ReadOnlySpan<byte>.Empty);
+            FillHipcResponse(state, response, result, ReadOnlySpan<byte>.Empty);
         }
 
-        private void FillHipcResponse(IpcMessage response, long result, int value)
+        private void FillHipcResponse(ServerLoopState state, IpcMessage response, long result, int value)
         {
             Span<byte> span = stackalloc byte[sizeof(int)];
             BinaryPrimitives.WriteInt32LittleEndian(span, value);
-            FillHipcResponse(response, result, span);
+            FillHipcResponse(state, response, result, span);
         }
 
-        private void FillHipcResponse(IpcMessage response, long result, ReadOnlySpan<byte> data)
+        private void FillHipcResponse(ServerLoopState state, IpcMessage response, long result, ReadOnlySpan<byte> data)
         {
             response.Type = IpcMessageType.CmifResponse;
 
-            _responseDataStream.SetLength(0);
+            state.ResponseDataStream.SetLength(0);
 
-            _responseDataStream.Write(IpcMagic.Sfco);
-            _responseDataStream.Write(result);
+            state.ResponseDataStream.Write(IpcMagic.Sfco);
+            state.ResponseDataStream.Write(result);
 
-            _responseDataStream.Write(data);
+            state.ResponseDataStream.Write(data);
 
-            response.RawData = _responseDataStream.ToArray();
+            response.RawData = state.ResponseDataStream.ToArray();
         }
 
         protected virtual void Dispose(bool disposing)
         {
-            if (disposing && _selfThread != null)
+            if (disposing && Interlocked.Exchange(ref _isDisposed, 1) == 0)
             {
-                if (_selfThread.HostThread.ManagedThreadId != Environment.CurrentManagedThreadId && _selfThread.HostThread.Join(_threadJoinTimeout) == false)
-                {
-                    Logger.Warning?.Print(LogClass.Service, $"The ServerBase thread didn't terminate within {_threadJoinTimeout:g}, waiting longer.");
+                List<KThread> serverThreads;
 
-                    _selfThread.HostThread.Join(Timeout.Infinite);
+                lock (_serverThreads)
+                {
+                    serverThreads = [.. _serverThreads];
                 }
 
-                if (Interlocked.Exchange(ref _isDisposed, 1) == 0)
+                foreach (KThread thread in serverThreads)
                 {
-                    _selfProcess.HandleTable.CloseHandle(_wakeHandle);
-
-                    foreach (IpcService service in _sessions.Values)
+                    if (thread?.HostThread == null || thread.HostThread.ManagedThreadId == Environment.CurrentManagedThreadId)
                     {
-                        (service as IDisposable)?.Dispose();
-
-                        service.DestroyAtExit();
+                        continue;
                     }
 
-                    _sessions.Clear();
-                    _ports.Clear();
-                    _handleLock.Dispose();
+                    if (thread.HostThread.Join(_threadJoinTimeout) == false)
+                    {
+                        Logger.Warning?.Print(LogClass.Service, $"The ServerBase thread didn't terminate within {_threadJoinTimeout:g}, waiting longer.");
 
-                    _requestDataReader.Dispose();
-                    _requestDataStream.Dispose();
-                    _responseDataWriter.Dispose();
-                    _responseDataStream.Dispose();
-
-                    InitDone.Dispose();
+                        thread.HostThread.Join(Timeout.Infinite);
+                    }
                 }
+
+                _selfProcess.HandleTable.CloseHandle(_wakeHandle);
+
+                foreach (IpcService service in _sessions.Values)
+                {
+                    (service as IDisposable)?.Dispose();
+
+                    service.DestroyAtExit();
+                }
+
+                _sessions.Clear();
+                _ports.Clear();
+                _handleLock.Dispose();
+
+                InitDone.Dispose();
             }
         }
 

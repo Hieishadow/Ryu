@@ -1,4 +1,5 @@
 using Ryujinx.Common;
+using Ryujinx.Common.Logging;
 using Ryujinx.HLE.HOS.Ipc;
 using Ryujinx.HLE.HOS.Services.Mii.Types;
 using System;
@@ -57,6 +58,8 @@ namespace Ryujinx.HLE.HOS.Services.Mii.StaticService
 
             WriteSpanToBuffer(context, outputBuffer, elementsSpan);
 
+            Logger.Debug?.PrintMsg(LogClass.ServiceMii, $"Get: flag={flag}, count={count}, result={result}");
+
             return result;
         }
 
@@ -77,6 +80,8 @@ namespace Ryujinx.HLE.HOS.Services.Mii.StaticService
             context.ResponseData.Write(count);
 
             WriteSpanToBuffer(context, outputBuffer, elementsSpan);
+
+            Logger.Debug?.PrintMsg(LogClass.ServiceMii, $"Get1: flag={flag}, count={count}, result={result}");
 
             return result;
         }
@@ -141,6 +146,8 @@ namespace Ryujinx.HLE.HOS.Services.Mii.StaticService
 
             WriteSpanToBuffer(context, outputBuffer, elementsSpan);
 
+            Logger.Debug?.PrintMsg(LogClass.ServiceMii, $"Get2: flag={flag}, count={count}, result={result}");
+
             return result;
         }
 
@@ -161,6 +168,8 @@ namespace Ryujinx.HLE.HOS.Services.Mii.StaticService
             context.ResponseData.Write(count);
 
             WriteSpanToBuffer(context, outputBuffer, elementsSpan);
+
+            Logger.Debug?.PrintMsg(LogClass.ServiceMii, $"Get3: flag={flag}, count={count}, result={result}");
 
             return result;
         }
@@ -346,7 +355,11 @@ namespace Ryujinx.HLE.HOS.Services.Mii.StaticService
         {
             CharInfo charInfo = context.RequestData.ReadStruct<CharInfo>();
 
-            return Append(charInfo);
+            ResultCode result = Append(charInfo);
+
+            Logger.Debug?.PrintMsg(LogClass.ServiceMii, $"Append: result={result}");
+
+            return result;
         }
 
         private Span<byte> CreateByteSpanFromBuffer(ServiceCtx context, IpcBuffDesc ipcBuff, bool isOutput)

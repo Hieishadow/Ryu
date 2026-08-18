@@ -159,6 +159,7 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu.Proxy
 
             IPEndPoint localEp = new(_proxy.LocalAddress, _proxy.GetEphemeralPort(ProtocolType));
             LocalEndPoint = localEp;
+            IsBound = true;
 
             return localEp;
         }
@@ -166,12 +167,13 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu.Proxy
         public LdnProxySocket AsAccepted(IPEndPoint localEp, IPEndPoint remoteEp)
         {
             Connected = true;
-            LocalEndPoint = localEp;
+            LocalEndPoint = GetConnectedLocalEndpoint(localEp);
             RemoteEndPoint = remoteEp;
+            IsBound = true;
 
             Logger.Debug?.PrintMsg(LogClass.ServiceLdn, $"Proxy socket accepted: {FormatEndpoint(LocalEndPoint)} <- {FormatEndpoint(RemoteEndPoint)} ({ProtocolType})");
 
-            _proxy.SignalConnected(localEp, remoteEp, ProtocolType);
+            _proxy.SignalConnected((IPEndPoint)LocalEndPoint, remoteEp, ProtocolType);
 
             return this;
         }
@@ -190,6 +192,16 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu.Proxy
             Array.Reverse(address);
 
             return new IPEndPoint(new IPAddress(address), port);
+        }
+
+        private IPEndPoint GetConnectedLocalEndpoint(IPEndPoint localEp)
+        {
+            if (localEp.Address.Equals(IPAddress.Any) || localEp.Address.Equals(IPAddress.IPv6Any))
+            {
+                return new IPEndPoint(_proxy.LocalAddress, localEp.Port);
+            }
+
+            return localEp;
         }
 
         public void IncomingData(ProxyDataPacket packet)
