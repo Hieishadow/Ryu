@@ -213,6 +213,10 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu.Proxy
             {
                 Logger.Warning?.PrintMsg(LogClass.ServiceLdn, $"ProxyData had no receiving socket: {FormatInfo(proxyHeader.Info)}");
             }
+            else
+            {
+                Logger.Debug?.PrintMsg(LogClass.ServiceLdn, $"ProxyData received: {FormatInfo(proxyHeader.Info)}, length={data.Length}");
+            }
         }
 
         public void HandleDisconnect(LdnHeader header, ProxyDisconnectMessage disconnect)
@@ -294,6 +298,8 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu.Proxy
                 Info = MakeInfo(localEp, remoteEp, type)
             };
 
+            Logger.Debug?.PrintMsg(LogClass.ServiceLdn, $"ProxyConnect sent: {FormatInfo(request.Info)}");
+
             _parent.SendAsync(_protocol.Encode(PacketId.ProxyConnect, request));
         }
 
@@ -305,6 +311,8 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu.Proxy
             {
                 Info = MakeInfo(localEp, remoteEp, type)
             };
+
+            Logger.Debug?.PrintMsg(LogClass.ServiceLdn, $"ProxyConnectReply sent: {FormatInfo(request.Info)}");
 
             _parent.SendAsync(_protocol.Encode(PacketId.ProxyConnectReply, request));
         }
@@ -332,6 +340,8 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu.Proxy
                 Info = MakeInfo(localEp, remoteEp, type),
                 DataLength = (uint)buffer.Length
             };
+
+            Logger.Debug?.PrintMsg(LogClass.ServiceLdn, $"ProxyData sent: {FormatInfo(request.Info)}, length={buffer.Length}");
 
             _parent.SendAsync(_protocol.Encode(PacketId.ProxyData, request, buffer.ToArray()));
 

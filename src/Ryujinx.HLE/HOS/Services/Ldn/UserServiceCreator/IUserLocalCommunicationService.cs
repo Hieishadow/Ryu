@@ -462,7 +462,11 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator
                 }
             }
             
-            Logger.NetLog?.PrintMsg(LogClass.ServiceLdn, $"ScanImpl: resultCode = {resultCode}");
+            if (resultCode != ResultCode.Success)
+            {
+                Logger.NetLog?.PrintMsg(LogClass.ServiceLdn, $"ScanImpl: resultCode = {resultCode}");
+            }
+
             return resultCode;
         }
 
@@ -487,7 +491,11 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator
                 }
             }
 
-            Logger.NetLog?.PrintMsg(LogClass.ServiceLdn, $"ScanInternal: availableGames = {availableGames}");
+            if (counter > 0)
+            {
+                Logger.Debug?.PrintMsg(LogClass.ServiceLdn, $"ScanInternal: found {counter} network(s), available={availableGames.Length}, max={maxGames}");
+            }
+
             return ResultCode.Success;
         }
 

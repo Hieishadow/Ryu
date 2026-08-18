@@ -1,3 +1,4 @@
+using Ryujinx.Common.Logging;
 using Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu.Types;
 using Ryujinx.HLE.HOS.Services.Sockets.Bsd.Impl;
 using Ryujinx.HLE.HOS.Services.Sockets.Bsd.Proxy;
@@ -168,6 +169,8 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu.Proxy
             LocalEndPoint = localEp;
             RemoteEndPoint = remoteEp;
 
+            Logger.Debug?.PrintMsg(LogClass.ServiceLdn, $"Proxy socket accepted: {FormatEndpoint(LocalEndPoint)} <- {FormatEndpoint(RemoteEndPoint)} ({ProtocolType})");
+
             _proxy.SignalConnected(localEp, remoteEp, ProtocolType);
 
             return this;
@@ -197,6 +200,8 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu.Proxy
                 {
                     _receiveQueue.Enqueue(packet);
                 }
+
+                Logger.Debug?.PrintMsg(LogClass.ServiceLdn, $"Proxy socket queued data: {FormatEndpoint(LocalEndPoint)} <- {FormatEndpoint(RemoteEndPoint)}, length={packet.Data.Length}, queued={Available}");
 
                 _receiveEvent.Set();
             }
@@ -388,6 +393,8 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu.Proxy
                 RemoteEndPoint = remoteEp;
 
                 Connected = true;
+
+                Logger.Debug?.PrintMsg(LogClass.ServiceLdn, $"Proxy socket connected: {FormatEndpoint(LocalEndPoint)} -> {FormatEndpoint(RemoteEndPoint)} ({ProtocolType})");
             }
             else
             {
@@ -723,6 +730,8 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu.Proxy
                 }
             }
 
+            Logger.Debug?.PrintMsg(LogClass.ServiceLdn, $"Proxy socket read data: {FormatEndpoint(LocalEndPoint)} <- {FormatEndpoint(remoteEp)}, length={read}, peek={peek}, queued={Available}");
+
             return read;
         }
 
@@ -782,7 +791,19 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu.Proxy
 
             socketError = SocketError.Success;
 
+            Logger.Debug?.PrintMsg(LogClass.ServiceLdn, $"Proxy socket read data: {FormatEndpoint(LocalEndPoint)} <- {FormatEndpoint(remoteEp)}, length={read}, peek={peek}, queued={Available}");
+
             return read;
+        }
+
+        private static string FormatEndpoint(EndPoint endpoint)
+        {
+            if (endpoint is not IPEndPoint ipEndPoint)
+            {
+                return "<none>";
+            }
+
+            return $"{ipEndPoint.Address}:{ipEndPoint.Port}";
         }
 
         public int Send(ReadOnlySpan<byte> buffer)
