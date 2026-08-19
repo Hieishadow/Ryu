@@ -60,6 +60,13 @@ namespace Ryujinx.Ava.UI.ViewModels
                 Dir = folder.Value.Path.LocalPath; 
                 SplitPaths = Directory.EnumerateFiles(Dir, "*").ToList();
                 SplitPaths.Sort();
+                foreach (string path in SplitPaths)
+                {
+                    if (Path.GetExtension(path).ToLower().Contains(".xci") || Path.GetExtension(path).ToLower().Contains(".nsp"))
+                    {
+                        SplitPaths.Remove(path);
+                    }
+                }
 
                 
                 bool IsXci = true;
@@ -95,12 +102,6 @@ namespace Ryujinx.Ava.UI.ViewModels
                 // Replace this with libhac or something idk
                 FileName = Path.GetDirectoryName(Dir);
                 FileName = FileName.Remove(0, FileName.LastIndexOf(Path.DirectorySeparatorChar) + 1);
-                
-                
-                if (SplitPaths.Contains($"{Dir}{FileName}"))
-                {
-                    SplitPaths.Remove($"{Dir}{FileName}");
-                }
             }
             catch (Exception exception)
             {
