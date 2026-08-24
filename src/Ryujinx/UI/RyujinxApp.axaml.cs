@@ -74,6 +74,11 @@ namespace Ryujinx.Ava
 
         public override void OnFrameworkInitializationCompleted()
         {
+            if (Program.PreviewerDetached)
+            {
+                ApplyConfiguredTheme(ConfigurationState.Instance.UI.BaseStyle);
+            }
+
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
                 desktop.MainWindow = new MainWindow();
@@ -83,8 +88,6 @@ namespace Ryujinx.Ava
 
             if (Program.PreviewerDetached)
             {
-                ApplyConfiguredTheme(ConfigurationState.Instance.UI.BaseStyle);
-
                 ConfigurationState.Instance.UI.BaseStyle.Event += ThemeChanged_Event;
             }
         }

@@ -12,7 +12,6 @@ using Ryujinx.Ava.Systems.Configuration;
 using Ryujinx.Ava.UI.Controls;
 using Microsoft.Win32;
 using System;
-using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 
 namespace Ryujinx.Ava.UI.Windows
@@ -73,10 +72,14 @@ namespace Ryujinx.Ava.UI.Windows
             await window.ShowDialog(owner ?? RyujinxApp.MainWindow);
         }
 
-        protected StyleableWindow()
+        protected StyleableWindow(bool useBackdrop = true)
         {
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
-            WindowBackdrop.Configure(this);
+
+            if (useBackdrop)
+            {
+                WindowBackdrop.Configure(this);
+            }
 
             LocaleManager.Instance.LocaleChanged += LocaleChanged;
             LocaleChanged();
@@ -99,8 +102,6 @@ namespace Ryujinx.Ava.UI.Windows
 
     static class WindowBackdrop
     {
-        private static readonly ConditionalWeakTable<Window, object> DisabledWindows = new();
-
         public static void Configure(Window window)
         {
             if (!OperatingSystem.IsWindows())
@@ -111,6 +112,8 @@ namespace Ryujinx.Ava.UI.Windows
                 return;
             }
 
+            Update(window, false);
+
             window.Transitions =
             [
                 new BrushTransition
@@ -120,28 +123,12 @@ namespace Ryujinx.Ava.UI.Windows
                 },
             ];
 
-            Update(window, false);
-
             window.Activated += (_, _) => Update(window, false);
             window.Deactivated += (_, _) => Update(window, true);
         }
 
-        public static void Disable(Window window)
-        {
-            DisabledWindows.Remove(window);
-            DisabledWindows.Add(window, new object());
-
-            window.TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
-            window.Background = Brushes.Transparent;
-        }
-
         private static void Update(Window window, bool inactive)
         {
-            if (DisabledWindows.TryGetValue(window, out _))
-            {
-                return;
-            }
-
             bool transparencyEnabled = IsWindowsTransparencyEnabled();
 
             window.TransparencyLevelHint = transparencyEnabled
@@ -153,7 +140,10 @@ namespace Ryujinx.Ava.UI.Windows
 
         private static void ApplyBackground(Window window, bool opaque)
         {
-            bool isDark = window.ActualThemeVariant == ThemeVariant.Dark;
+            ThemeVariant themeVariant = window.IsVisible
+                ? window.ActualThemeVariant
+                : Application.Current?.ActualThemeVariant ?? window.ActualThemeVariant;
+            bool isDark = themeVariant == ThemeVariant.Dark;
 
             byte alpha = opaque ? byte.MaxValue : (byte)0x80;
             byte channel = isDark ? (byte)0x20 : (byte)0xF3;

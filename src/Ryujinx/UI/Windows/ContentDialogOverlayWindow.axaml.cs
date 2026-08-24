@@ -5,16 +5,16 @@ namespace Ryujinx.Ava.UI.Windows
 {
     public partial class ContentDialogOverlayWindow : StyleableWindow
     {
-        public ContentDialogOverlayWindow()
+        public ContentDialogOverlayWindow() : base(false)
         {
+            TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
+            Background = Brushes.Transparent;
+
             InitializeComponent();
 
-            WindowBackdrop.Disable(this);
-            TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
             WindowStartupLocation = WindowStartupLocation.Manual;
             WindowDecorations = WindowDecorations.None;
             ExtendClientAreaTitleBarHeightHint = 0;
-            Background = Brushes.Transparent;
             CanResize = false;
         }
     }
