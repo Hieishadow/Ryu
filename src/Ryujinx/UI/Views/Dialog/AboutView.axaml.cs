@@ -31,7 +31,7 @@ namespace Ryujinx.Ava.UI.Views.Dialog
                 Content = new AboutView { ViewModel = viewModel }
             };
 
-            await ContentDialogHelper.ShowAsync(contentDialog.ApplyStyles());
+            await contentDialog.ApplyStyles().ShowAsync();
         }
 
         private void Button_OnClick(object sender, RoutedEventArgs e)
