@@ -16,6 +16,7 @@
     <Grid RowDefinitions="*">
         <ListBox
             Name="GameListBox"
+            Classes="mica"
             Grid.Row="0"
             Padding="8"
             HorizontalAlignment="Stretch"

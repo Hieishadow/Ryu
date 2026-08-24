@@ -72,7 +72,7 @@
     </Style>
     <Style Selector="Border.settings">
         <Setter Property="Background"
-                Value="{DynamicResource ThemeDarkColor}" />
+                Value="{DynamicResource MicaPanelBackgroundBrush}" />
         <Setter Property="BorderBrush"
                 Value="{DynamicResource MenuFlyoutPresenterBorderColor}" />
         <Setter Property="BorderThickness"
@@ -385,6 +385,30 @@
         <Setter Property="Background"
                 Value="{DynamicResource ThemeContentBackgroundColor}" />
     </Style>
+    <Style Selector="ListBox.mica">
+        <Setter Property="Background"
+                Value="Transparent" />
+    </Style>
+    <Style Selector="ListBox.mica ListBoxItem">
+        <Setter Property="Background"
+                Value="{DynamicResource MicaPanelBackgroundBrush}" />
+    </Style>
+    <Style Selector="ListBox.mica ListBoxItem /template/ ContentPresenter">
+        <Setter Property="Background"
+                Value="{DynamicResource MicaPanelBackgroundBrush}" />
+    </Style>
+    <Style Selector="ListBox.settings">
+        <Setter Property="Background"
+                Value="{DynamicResource MicaControlBackgroundBrush}" />
+    </Style>
+    <Style Selector="ListBox.settings ListBoxItem">
+        <Setter Property="Background"
+                Value="Transparent" />
+    </Style>
+    <Style Selector="ListBox.settings ListBoxItem /template/ ContentPresenter">
+        <Setter Property="Background"
+                Value="Transparent" />
+    </Style>
     <Style Selector="FlyoutPresenter, ContextMenu, MenuFlyoutPresenter">
         <Setter Property="BorderBrush"
                 Value="{DynamicResource MenuFlyoutPresenterBorderColor}" />
@@ -409,6 +433,10 @@
     <Styles.Resources>
         <SolidColorBrush x:Key="ThemeAccentColorBrush"
                          Color="{DynamicResource SystemAccentColor}" />
+        <SolidColorBrush x:Key="MicaPanelBackgroundBrush"
+                         Color="{DynamicResource MicaPanelBackgroundColor}" />
+        <SolidColorBrush x:Key="MicaControlBackgroundBrush"
+                         Color="{DynamicResource MicaControlBackgroundColor}" />
         <StaticResource x:Key="ListViewItemBackgroundSelected"
                         ResourceKey="ThemeAccentColorBrush" />
         <StaticResource x:Key="ListViewItemBackgroundPressed"

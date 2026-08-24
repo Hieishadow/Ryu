@@ -1,13 +1,18 @@
 using Avalonia;
+using Avalonia.Animation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Platform;
+using Avalonia.Styling;
 using FluentAvalonia.UI.Windowing;
 using Ryujinx.Ava.Common.Locale;
 using Ryujinx.Ava.Systems.Configuration;
 using Ryujinx.Ava.UI.Controls;
+using Microsoft.Win32;
+using System;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 
 namespace Ryujinx.Ava.UI.Windows
@@ -27,7 +32,7 @@ namespace Ryujinx.Ava.UI.Windows
         protected StyleableAppWindow(bool useCustomTitleBar = false, double? titleBarHeight = null)
         {
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
-            TransparencyLevelHint = [WindowTransparencyLevel.None];
+            WindowBackdrop.Configure(this);
 
             LocaleManager.Instance.LocaleChanged += LocaleChanged;
             LocaleChanged();
@@ -71,7 +76,7 @@ namespace Ryujinx.Ava.UI.Windows
         protected StyleableWindow()
         {
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
-            TransparencyLevelHint = [WindowTransparencyLevel.None];
+            WindowBackdrop.Configure(this);
 
             LocaleManager.Instance.LocaleChanged += LocaleChanged;
             LocaleChanged();
@@ -90,5 +95,84 @@ namespace Ryujinx.Ava.UI.Windows
 
             ExtendClientAreaChromeHints = ExtendClientAreaChromeHints.SystemChrome | ExtendClientAreaChromeHints.OSXThickTitleBar;
         } */
+    }
+
+    static class WindowBackdrop
+    {
+        private static readonly ConditionalWeakTable<Window, object> DisabledWindows = new();
+
+        public static void Configure(Window window)
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                window.TransparencyLevelHint = [WindowTransparencyLevel.None];
+                ApplyBackground(window, true);
+
+                return;
+            }
+
+            window.Transitions =
+            [
+                new BrushTransition
+                {
+                    Property = Window.BackgroundProperty,
+                    Duration = TimeSpan.FromMilliseconds(220),
+                },
+            ];
+
+            Update(window, false);
+
+            window.Activated += (_, _) => Update(window, false);
+            window.Deactivated += (_, _) => Update(window, true);
+        }
+
+        public static void Disable(Window window)
+        {
+            DisabledWindows.Remove(window);
+            DisabledWindows.Add(window, new object());
+
+            window.TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
+            window.Background = Brushes.Transparent;
+        }
+
+        private static void Update(Window window, bool inactive)
+        {
+            if (DisabledWindows.TryGetValue(window, out _))
+            {
+                return;
+            }
+
+            bool transparencyEnabled = IsWindowsTransparencyEnabled();
+
+            window.TransparencyLevelHint = transparencyEnabled
+                ? [WindowTransparencyLevel.Mica, WindowTransparencyLevel.None]
+                : [WindowTransparencyLevel.None];
+
+            ApplyBackground(window, inactive || !transparencyEnabled);
+        }
+
+        private static void ApplyBackground(Window window, bool opaque)
+        {
+            bool isDark = window.ActualThemeVariant == ThemeVariant.Dark;
+
+            byte alpha = opaque ? byte.MaxValue : (byte)0x80;
+            byte channel = isDark ? (byte)0x20 : (byte)0xF3;
+
+            window.Background = new SolidColorBrush(Color.FromArgb(alpha, channel, channel, channel));
+        }
+
+        private static bool IsWindowsTransparencyEnabled()
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                return false;
+            }
+
+            const string personalizeKey = @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
+            const string enableTransparencyValue = "EnableTransparency";
+
+            return Registry.GetValue(personalizeKey, enableTransparencyValue, 1) is not int enableTransparency ||
+                   enableTransparency != 0;
+        }
     }
 }

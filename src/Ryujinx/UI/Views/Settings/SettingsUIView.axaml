@@ -188,6 +188,7 @@
                         Spacing="10">
                         <ListBox
                             Name="GameDirsList"
+                            Classes="settings"
                             MinHeight="120"
                             ItemsSource="{Binding GameDirectories}">
                             <ListBox.Styles>
@@ -240,6 +241,7 @@
                         Spacing="10">
                         <ListBox
                             Name="AutoloadDirsList"
+                            Classes="settings"
                             MinHeight="100"
                             ItemsSource="{Binding AutoloadDirectories}">
                             <ListBox.Styles>

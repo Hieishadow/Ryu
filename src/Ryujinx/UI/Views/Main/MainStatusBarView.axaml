@@ -20,7 +20,7 @@
         MinHeight="22"
         HorizontalAlignment="Stretch"
         VerticalAlignment="Bottom"
-        Background="{DynamicResource ThemeContentBackgroundColor}"
+        Background="{DynamicResource MicaPanelBackgroundBrush}"
         DockPanel.Dock="Bottom"
         IsVisible="{Binding ShowMenuAndStatusBar}"
         ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto">

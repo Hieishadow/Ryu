@@ -9,6 +9,7 @@ namespace Ryujinx.Ava.UI.Windows
         {
             InitializeComponent();
 
+            WindowBackdrop.Disable(this);
             TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
             WindowStartupLocation = WindowStartupLocation.Manual;
             WindowDecorations = WindowDecorations.None;
