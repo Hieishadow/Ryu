@@ -308,8 +308,7 @@ namespace Ryujinx.Ava.UI.ViewModels
         public bool IsCustomResolutionScaleActive => _resolutionScale == 4;
         public bool IsScalingFilterActive => _scalingFilter == (int)Ryujinx.Common.Configuration.ScalingFilter.Fsr;
 
-        public bool IsVulkanSelected =>
-            GraphicsBackendIndex == 1 || (GraphicsBackendIndex == 0 && !OperatingSystem.IsMacOS());
+        public bool IsVulkanSelected => (GraphicsBackend)GraphicsBackendIndex == GraphicsBackend.Vulkan;
         public bool UseHypervisor { get; set; }
         public bool GCLowLatency { get; set; }
         public bool DisableP2P { get; set; }
