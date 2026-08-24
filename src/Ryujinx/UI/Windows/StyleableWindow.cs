@@ -140,10 +140,7 @@ namespace Ryujinx.Ava.UI.Windows
 
         private static void ApplyBackground(Window window, bool opaque)
         {
-            ThemeVariant themeVariant = window.IsVisible
-                ? window.ActualThemeVariant
-                : Application.Current?.ActualThemeVariant ?? window.ActualThemeVariant;
-            bool isDark = themeVariant == ThemeVariant.Dark;
+            bool isDark = (Application.Current?.ActualThemeVariant ?? window.ActualThemeVariant) == ThemeVariant.Dark;
 
             byte alpha = opaque ? byte.MaxValue : (byte)0x80;
             byte channel = isDark ? (byte)0x20 : (byte)0xF3;
