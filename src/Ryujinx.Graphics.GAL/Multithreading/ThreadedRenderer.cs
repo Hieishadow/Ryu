@@ -530,22 +530,34 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
             // Dispose must happen from the render thread, after all commands have completed.
 
-            // Stop the GPU thread.
-            _running = false;
-            _galWorkAvailable.Set();
-
+            // Wait for the GPU thread while the backend thread is still able to drain commands.
             if (_gpuThread is { IsAlive: true })
             {
                 _gpuThread.Join();
             }
-            
+
+            if (_backendThread is { IsAlive: true })
+            {
+                // Resource disposal can enqueue commands from threads other than the GPU thread.
+                // Drain those commands before disposing the base renderer.
+                FlushThreadedCommands();
+
+                Interrupt(_baseRenderer.Dispose);
+            }
+            else
+            {
+                // The run loop may not have started if application loading was cancelled.
+                _baseRenderer.Dispose();
+            }
+
+            // Stop the backend thread after the renderer has released its resources.
+            _running = false;
+            _galWorkAvailable.Set();
+
             if (_backendThread is { IsAlive: true })
             {
                 _backendThread.Join();
             }
-
-            // Dispose the renderer.
-            _baseRenderer.Dispose();
 
             // Dispose events.
             _frameComplete.Dispose();

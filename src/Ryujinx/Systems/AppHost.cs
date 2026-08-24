@@ -113,6 +113,7 @@ namespace Ryujinx.Ava.Systems
         private bool _isStopped;
         private bool _isActive;
         private bool _renderingStarted;
+        private bool _renderingThreadStarted;
 
         private readonly ManualResetEvent _gpuDoneEvent;
 
@@ -491,6 +492,7 @@ namespace Ryujinx.Ava.Systems
             _isActive = true;
 
             _renderingThread.Start();
+            _renderingThreadStarted = true;
 
             _viewModel.Volume = ConfigurationState.Instance.System.AudioVolume.Value;
 
@@ -625,22 +627,29 @@ namespace Ryujinx.Ava.Systems
             TouchScreenManager.Dispose();
             Device.Dispose();
             
-            // NOTE: The render loop is allowed to stay alive until the renderer itself is disposed, as it may handle resource dispose.
-            // We only need to wait for all commands submitted during the main gpu loop to be processed.
-            // If the GPU has no work and is cancelled, we need to handle that as well.
-
-            WaitHandle.WaitAny(new[] { _gpuDoneEvent, _gpuCancellationTokenSource.Token.WaitHandle });
+            // The render loop is allowed to stay alive until the renderer itself is disposed, as it may handle resource disposal.
+            // Wait for the GPU loop when it was started, but skip the wait if application loading was cancelled before Start.
+            if (_renderingThreadStarted)
+            {
+                _gpuDoneEvent.WaitOne();
+            }
 
             if (_renderingStarted)
             {
                 // Waiting for work to be finished before we dispose.
                 Device.Gpu.WaitUntilGpuReady();
             }
-            
+
+            if (Device.Gpu.Renderer is not ThreadedRenderer && _renderingThread.IsAlive)
+            {
+                _renderingThread.Join();
+            }
+
+            DisposeGpu();
+
             _gpuDoneEvent.Dispose();
             _gpuCancellationTokenSource.Dispose();
-            
-            DisposeGpu();
+
             AppExit?.Invoke(this, EventArgs.Empty);
         }
 
@@ -686,7 +695,8 @@ namespace Ryujinx.Ava.Systems
                 _windowsMultimediaTimerResolution = null;
             }
 
-            if (RendererHost.EmbeddedWindow is EmbeddedWindowOpenGL openGlWindow)
+            if (RendererHost.EmbeddedWindow is EmbeddedWindowOpenGL openGlWindow &&
+                Device.Gpu.Renderer is not ThreadedRenderer)
             {
                 // Try to bind the OpenGL context before calling the shutdown event.
                 openGlWindow.MakeCurrent(false, false);
@@ -1089,6 +1099,20 @@ namespace Ryujinx.Ava.Systems
         }
 
         private void RenderLoop()
+        {
+            try
+            {
+                RenderLoopImpl();
+            }
+            finally
+            {
+                // The GPU callback signals this as soon as GPU work is complete. Signal it here as well
+                // so shutdown cannot wait forever if render-thread setup fails before the callback starts.
+                _gpuDoneEvent.Set();
+            }
+        }
+
+        private void RenderLoopImpl()
         {
             Dispatcher.UIThread.InvokeAsync(() =>
             {
