@@ -1,7 +1,9 @@
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using Gommon;
+using LibHac.Common;
 using LibHac.Common.Keys;
+using LibHac.Fs;
 using LibHac.Fs.Fsa;
 using LibHac.FsSystem;
 using LibHac.Ncm;
@@ -14,11 +16,14 @@ using Ryujinx.Ava.Utilities;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Logging;
 using Ryujinx.HLE.FileSystem;
+using Ryujinx.HLE.HOS;
+using Ryujinx.HLE.Loaders.Npdm;
 using Ryujinx.HLE.Loaders.Processes.Extensions;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Path = System.IO.Path;
 
 
 namespace Ryujinx.Ava.UI.ViewModels
@@ -60,6 +65,7 @@ namespace Ryujinx.Ava.UI.ViewModels
                 Dir = folder.Value.Path.LocalPath; 
                 SplitPaths = Directory.EnumerateFiles(Dir, "*").ToList();
                 SplitPaths.Sort();
+                /*
                 foreach (string path in SplitPaths)
                 {
                     if (Path.GetExtension(path).ToLower().Contains(".xci") || Path.GetExtension(path).ToLower().Contains(".nsp"))
@@ -67,21 +73,21 @@ namespace Ryujinx.Ava.UI.ViewModels
                         SplitPaths.Remove(path);
                     }
                 }
+                */
 
-                
+                // All this shit failed to load the xci AHHHHHHHHHHHH
                 bool IsXci = true;
                 // Check ApplicationLibrary.TryGetApplicationsFromFile() for pointers.
                 using FileStream file = new(SplitPaths[0], FileMode.Open, FileAccess.Read);
                 // NOTE: Either the 00 or the merged dump will be first, so this is probably fine! (I sure hope so me)
-                
-
                 if (IsXci)
                 {
                     // For XCI games
                     Xci xci = new(_mainWindowViewModel.VirtualFileSystem.KeySet, file.AsStorage());
                     IFileSystem pfs = xci.OpenPartition(XciPartitionType.Secure);
-                    Dictionary<ulong, ContentMetaData> metadata = pfs.GetContentData(ContentMetaType.Application, _mainWindowViewModel.VirtualFileSystem , IntegrityCheckLevel.None); // So I should have checked if ContentMetaData included the title...
+                    Console.WriteLine(xci.Header.FwVersion);
                     
+                    // OK so ApplicationLibrary.GetApplicationFromExeFs() is the key!
                 }
                 else
                 {
@@ -105,7 +111,7 @@ namespace Ryujinx.Ava.UI.ViewModels
             }
             catch (Exception exception)
             {
-                Logger.Error?.Print(LogClass.Application, $"{LocaleManager.Instance[LocaleKeys.Fat32Merge_MergeEndFailed]}");
+                Logger.Error?.Print(LogClass.Application, $"{LocaleManager.Instance[LocaleKeys.Fat32Merge_FilePickerFailed]}");
                 Logger.Error?.Print(LogClass.Application, exception.ToString());
             }
         }
