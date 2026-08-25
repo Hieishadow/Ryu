@@ -9,6 +9,7 @@ using Ryujinx.Graphics.GAL.Multithreading.Resources.Programs;
 using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 
@@ -58,6 +59,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         public uint ProgramCount { get; set; } = 0;
 
         private Action _interruptAction;
+        private Exception _interruptException;
         private readonly Lock _interruptLock = new();
 
         public event EventHandler<ScreenCaptureImageInfo> ScreenCaptured;
@@ -126,10 +128,19 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
                 if (Volatile.Read(ref _interruptAction) != null)
                 {
-                    _interruptAction();
-                    _interruptRun.Set();
-
-                    Interlocked.Exchange(ref _interruptAction, null);
+                    try
+                    {
+                        _interruptAction();
+                    }
+                    catch (Exception exception)
+                    {
+                        _interruptException = exception;
+                    }
+                    finally
+                    {
+                        _interruptRun.Set();
+                        Interlocked.Exchange(ref _interruptAction, null);
+                    }
                 }
 
                 // The other thread can only increase the command count.
@@ -500,6 +511,13 @@ namespace Ryujinx.Graphics.GAL.Multithreading
                     _galWorkAvailable.Set();
 
                     _interruptRun.WaitOne();
+
+                    Exception exception = Interlocked.Exchange(ref _interruptException, null);
+
+                    if (exception != null)
+                    {
+                        ExceptionDispatchInfo.Capture(exception).Throw();
+                    }
                 }
             }
         }
@@ -536,13 +554,22 @@ namespace Ryujinx.Graphics.GAL.Multithreading
                 _gpuThread.Join();
             }
 
+            ExceptionDispatchInfo disposeException = null;
+
             if (_backendThread is { IsAlive: true })
             {
                 // Resource disposal can enqueue commands from threads other than the GPU thread.
                 // Drain those commands before disposing the base renderer.
                 FlushThreadedCommands();
 
-                Interrupt(_baseRenderer.Dispose);
+                try
+                {
+                    Interrupt(_baseRenderer.Dispose);
+                }
+                catch (Exception exception)
+                {
+                    disposeException = ExceptionDispatchInfo.Capture(exception);
+                }
             }
             else
             {
@@ -566,6 +593,8 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             _interruptRun.Dispose();
 
             Sync.Dispose();
+
+            disposeException?.Throw();
         }
     }
 }
