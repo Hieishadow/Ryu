@@ -1,159 +1,15 @@
-using Ryujinx.Input;
 using System;
 using System.Collections.Generic;
-using AvaKey = Avalonia.Input.Key;
 using AvaPhysicalKey = Avalonia.Input.PhysicalKey;
+using PhysicalKey = Ryujinx.Common.Configuration.Hid.PhysicalKey;
 
 namespace Ryujinx.Ava.Input
 {
     internal static class AvaloniaKeyboardMappingHelper
     {
-        private static readonly AvaKey[] _keyMapping =
-        [
-            // NOTE: Invalid
-            AvaKey.None,
-
-            AvaKey.LeftShift,
-            AvaKey.RightShift,
-            AvaKey.LeftCtrl,
-            AvaKey.RightCtrl,
-            AvaKey.LeftAlt,
-            AvaKey.RightAlt,
-            AvaKey.LWin,
-            AvaKey.RWin,
-            AvaKey.Apps,
-            AvaKey.F1,
-            AvaKey.F2,
-            AvaKey.F3,
-            AvaKey.F4,
-            AvaKey.F5,
-            AvaKey.F6,
-            AvaKey.F7,
-            AvaKey.F8,
-            AvaKey.F9,
-            AvaKey.F10,
-            AvaKey.F11,
-            AvaKey.F12,
-            AvaKey.F13,
-            AvaKey.F14,
-            AvaKey.F15,
-            AvaKey.F16,
-            AvaKey.F17,
-            AvaKey.F18,
-            AvaKey.F19,
-            AvaKey.F20,
-            AvaKey.F21,
-            AvaKey.F22,
-            AvaKey.F23,
-            AvaKey.F24,
-
-            AvaKey.None,
-            AvaKey.None,
-            AvaKey.None,
-            AvaKey.None,
-            AvaKey.None,
-            AvaKey.None,
-            AvaKey.None,
-            AvaKey.None,
-            AvaKey.None,
-            AvaKey.None,
-            AvaKey.None,
-
-            AvaKey.Up,
-            AvaKey.Down,
-            AvaKey.Left,
-            AvaKey.Right,
-            AvaKey.Return,
-            AvaKey.Escape,
-            AvaKey.Space,
-            AvaKey.Tab,
-            AvaKey.Back,
-            AvaKey.Insert,
-            AvaKey.Delete,
-            AvaKey.PageUp,
-            AvaKey.PageDown,
-            AvaKey.Home,
-            AvaKey.End,
-            AvaKey.CapsLock,
-            AvaKey.Scroll,
-            AvaKey.Print,
-            AvaKey.Pause,
-            AvaKey.NumLock,
-            AvaKey.Clear,
-            AvaKey.NumPad0,
-            AvaKey.NumPad1,
-            AvaKey.NumPad2,
-            AvaKey.NumPad3,
-            AvaKey.NumPad4,
-            AvaKey.NumPad5,
-            AvaKey.NumPad6,
-            AvaKey.NumPad7,
-            AvaKey.NumPad8,
-            AvaKey.NumPad9,
-            AvaKey.Divide,
-            AvaKey.Multiply,
-            AvaKey.Subtract,
-            AvaKey.Add,
-            AvaKey.Decimal,
-            AvaKey.Enter,
-            AvaKey.A,
-            AvaKey.B,
-            AvaKey.C,
-            AvaKey.D,
-            AvaKey.E,
-            AvaKey.F,
-            AvaKey.G,
-            AvaKey.H,
-            AvaKey.I,
-            AvaKey.J,
-            AvaKey.K,
-            AvaKey.L,
-            AvaKey.M,
-            AvaKey.N,
-            AvaKey.O,
-            AvaKey.P,
-            AvaKey.Q,
-            AvaKey.R,
-            AvaKey.S,
-            AvaKey.T,
-            AvaKey.U,
-            AvaKey.V,
-            AvaKey.W,
-            AvaKey.X,
-            AvaKey.Y,
-            AvaKey.Z,
-            AvaKey.D0,
-            AvaKey.D1,
-            AvaKey.D2,
-            AvaKey.D3,
-            AvaKey.D4,
-            AvaKey.D5,
-            AvaKey.D6,
-            AvaKey.D7,
-            AvaKey.D8,
-            AvaKey.D9,
-            AvaKey.OemTilde,
-            AvaKey.Oem102,
-            AvaKey.OemMinus,
-            AvaKey.OemPlus,
-            AvaKey.OemOpenBrackets,
-            AvaKey.OemCloseBrackets,
-            AvaKey.OemSemicolon,
-            AvaKey.OemQuotes,
-            AvaKey.OemComma,
-            AvaKey.OemPeriod,
-            AvaKey.OemQuestion,
-            AvaKey.OemPipe,
-
-            // NOTE: invalid
-            AvaKey.None
-        ];
-
         private static readonly AvaPhysicalKey[] _physicalKeyMapping =
         [
-            // NOTE: Invalid
             AvaPhysicalKey.None,
-
             AvaPhysicalKey.ShiftLeft,
             AvaPhysicalKey.ShiftRight,
             AvaPhysicalKey.ControlLeft,
@@ -187,7 +43,6 @@ namespace Ryujinx.Ava.Input
             AvaPhysicalKey.F22,
             AvaPhysicalKey.F23,
             AvaPhysicalKey.F24,
-
             AvaPhysicalKey.None,
             AvaPhysicalKey.None,
             AvaPhysicalKey.None,
@@ -199,7 +54,6 @@ namespace Ryujinx.Ava.Input
             AvaPhysicalKey.None,
             AvaPhysicalKey.None,
             AvaPhysicalKey.None,
-
             AvaPhysicalKey.ArrowUp,
             AvaPhysicalKey.ArrowDown,
             AvaPhysicalKey.ArrowLeft,
@@ -285,92 +139,43 @@ namespace Ryujinx.Ava.Input
             AvaPhysicalKey.Period,
             AvaPhysicalKey.Slash,
             AvaPhysicalKey.Backslash,
-
-            // NOTE: invalid
-            AvaPhysicalKey.None
+            AvaPhysicalKey.None,
         ];
 
-        private static readonly Dictionary<AvaKey, Key> _avaKeyMapping;
-        private static readonly Dictionary<AvaPhysicalKey, Key> _avaPhysicalKeyMapping;
+        private static readonly Dictionary<AvaPhysicalKey, PhysicalKey> _reversePhysicalKeyMapping;
 
         static AvaloniaKeyboardMappingHelper()
         {
-            Key[] inputKeys = Enum.GetValues<Key>();
+            _reversePhysicalKeyMapping = [];
 
-            // NOTE: Avalonia.Input.Key is not contiguous and quite large, so use a dictionary instead of an array.
-            _avaKeyMapping = new Dictionary<AvaKey, Key>();
-            _avaPhysicalKeyMapping = new Dictionary<AvaPhysicalKey, Key>();
-
-            foreach (Key key in inputKeys)
+            foreach (PhysicalKey key in Enum.GetValues<PhysicalKey>())
             {
-                if (TryGetAvaKey(key, out AvaKey avaKey))
+                if (TryGetAvaPhysicalKey(key, out AvaPhysicalKey avaloniaKey))
                 {
-                    _avaKeyMapping[avaKey] = key;
-                }
-
-                if (TryGetAvaPhysicalKey(key, out AvaPhysicalKey avaPhysicalKey))
-                {
-                    _avaPhysicalKeyMapping[avaPhysicalKey] = key;
+                    _reversePhysicalKeyMapping[avaloniaKey] = key;
                 }
             }
 
-            // Alias additional Avalonia key values to improve non-US layout support.
-            _avaKeyMapping[AvaKey.Oem1] = Key.Semicolon;
-            _avaKeyMapping[AvaKey.Oem2] = Key.Slash;
-            _avaKeyMapping[AvaKey.Oem3] = Key.Tilde;
-            _avaKeyMapping[AvaKey.Oem4] = Key.BracketLeft;
-            _avaKeyMapping[AvaKey.Oem5] = Key.BackSlash;
-            _avaKeyMapping[AvaKey.Oem6] = Key.BracketRight;
-            _avaKeyMapping[AvaKey.Oem7] = Key.Quote;
-            _avaKeyMapping[AvaKey.OemBackslash] = Key.Grave;
-            _avaKeyMapping[AvaKey.Oem102] = Key.Grave;
-
-            // Common alternates for non-US/JIS physical keys.
-            _avaPhysicalKeyMapping[AvaPhysicalKey.IntlRo] = Key.BackSlash;
-            _avaPhysicalKeyMapping[AvaPhysicalKey.IntlYen] = Key.BackSlash;
+            _reversePhysicalKeyMapping[AvaPhysicalKey.IntlRo] = PhysicalKey.BackSlash;
+            _reversePhysicalKeyMapping[AvaPhysicalKey.IntlYen] = PhysicalKey.BackSlash;
         }
 
-        public static bool TryGetAvaKey(Key key, out AvaKey avaKey)
+        public static bool TryGetAvaPhysicalKey(PhysicalKey key, out AvaPhysicalKey avaloniaKey)
         {
-            avaKey = AvaKey.None;
+            avaloniaKey = AvaPhysicalKey.None;
 
-            bool keyExist = key < Key.Count && (int)key < _keyMapping.Length;
-            if (keyExist)
+            bool keyExists = key < PhysicalKey.Count && (int)key < _physicalKeyMapping.Length;
+            if (keyExists)
             {
-                avaKey = _keyMapping[(int)key];
+                avaloniaKey = _physicalKeyMapping[(int)key];
             }
 
-            return keyExist;
+            return keyExists && avaloniaKey != AvaPhysicalKey.None;
         }
 
-        public static bool TryGetAvaPhysicalKey(Key key, out AvaPhysicalKey avaPhysicalKey)
+        public static PhysicalKey ToPhysicalKey(AvaPhysicalKey key)
         {
-            avaPhysicalKey = AvaPhysicalKey.None;
-
-            bool keyExist = key < Key.Count && (int)key < _physicalKeyMapping.Length;
-            if (keyExist)
-            {
-                avaPhysicalKey = _physicalKeyMapping[(int)key];
-            }
-
-            return keyExist;
-        }
-
-        public static Key ToInputKey(AvaKey key)
-        {
-            return _avaKeyMapping.GetValueOrDefault(key, Key.Unknown);
-        }
-
-        public static Key ToInputKey(AvaPhysicalKey key)
-        {
-            return _avaPhysicalKeyMapping.GetValueOrDefault(key, Key.Unknown);
-        }
-
-        public static Key ToInputKey(AvaPhysicalKey physicalKey, AvaKey key)
-        {
-            Key inputKey = ToInputKey(key);
-
-            return inputKey != Key.Unknown ? inputKey : ToInputKey(physicalKey);
+            return _reversePhysicalKeyMapping.GetValueOrDefault(key, PhysicalKey.Unknown);
         }
     }
 }

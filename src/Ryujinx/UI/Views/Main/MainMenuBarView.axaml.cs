@@ -147,7 +147,6 @@ namespace Ryujinx.Ava.UI.Views.Main
 
             Window.SettingsWindow = null;
 
-            ViewModel.LoadConfigurableHotKeys();
         }
 
         public AppletMetadata MiiEditor => new(ViewModel.ContentManager, LocaleManager.Instance[LocaleKeys.MenuBar_Actions_MiiEditorButton], 0x0100000000001009);

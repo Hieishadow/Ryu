@@ -1,4 +1,5 @@
 using Ryujinx.Common.Logging;
+using PhysicalKey = Ryujinx.Common.Configuration.Hid.PhysicalKey;
 
 namespace Ryujinx.Input.Assigner
 {
@@ -37,7 +38,7 @@ namespace Ryujinx.Input.Assigner
             if (_pressedButton is not null)
             {
                 string source = _pressedButton.HasValue && GetPressedButtonFromState() is not null ? "state" : "buffered-press";
-                Logger.Debug?.Print(LogClass.UI, $"Keyboard assigner registered key={_pressedButton.Value.AsHidType<Key>()}, source={source}, cancelPressed={ShouldCancel()}");
+                Logger.Debug?.Print(LogClass.UI, $"Keyboard assigner registered key={_pressedButton.Value.AsHidType<PhysicalKey>()}, source={source}, cancelPressed={ShouldCancel()}");
             }
         }
 
@@ -48,7 +49,7 @@ namespace Ryujinx.Input.Assigner
 
         public bool ShouldCancel()
         {
-            return _keyboardState.IsPressed(Key.Escape);
+            return _keyboardState.IsPressed(PhysicalKey.Escape);
         }
 
         public Button? GetPressedButton()
@@ -58,14 +59,14 @@ namespace Ryujinx.Input.Assigner
 
         private Button? GetPressedButtonFromState()
         {
-            Key aliasedKey = GetAliasedPressedKey();
+            PhysicalKey aliasedKey = GetAliasedPressedKey();
 
-            if (aliasedKey != Key.Unknown)
+            if (aliasedKey != PhysicalKey.Unknown)
             {
                 return new Button(aliasedKey);
             }
 
-            for (Key key = Key.Unknown; key < Key.Count; key++)
+            for (PhysicalKey key = PhysicalKey.Unknown; key < PhysicalKey.Count; key++)
             {
                 if (_keyboardState.IsPressed(key))
                 {
@@ -78,28 +79,28 @@ namespace Ryujinx.Input.Assigner
 
         private Button? GetPressedButtonFromBufferedPress()
         {
-            return _keyboard.TryConsumePressedKey(out Key key) ? new Button(key) : null;
+            return _keyboard.TryConsumePressedKey(out PhysicalKey key) ? new Button(key) : null;
         }
 
-        private Key GetAliasedPressedKey()
+        private PhysicalKey GetAliasedPressedKey()
         {
             // On some layouts (for example AltGr on Windows), Right Alt is reported as Ctrl+Alt.
             // Prefer AltRight in that case so the binding reflects the physical key used.
-            if (_keyboardState.IsPressed(Key.ControlLeft) && _keyboardState.IsPressed(Key.AltRight))
+            if (_keyboardState.IsPressed(PhysicalKey.ControlLeft) && _keyboardState.IsPressed(PhysicalKey.AltRight))
             {
-                return Key.AltRight;
+                return PhysicalKey.AltRight;
             }
 
             // On some Copilot keyboards, the key in the right-control position is reported as
             // ShiftLeft+Win+F23. Prefer ControlRight so the binding reflects that physical key.
-            if (_keyboardState.IsPressed(Key.ShiftLeft) &&
-                _keyboardState.IsPressed(Key.F23) &&
-                (_keyboardState.IsPressed(Key.WinLeft) || _keyboardState.IsPressed(Key.WinRight)))
+            if (_keyboardState.IsPressed(PhysicalKey.ShiftLeft) &&
+                _keyboardState.IsPressed(PhysicalKey.F23) &&
+                (_keyboardState.IsPressed(PhysicalKey.WinLeft) || _keyboardState.IsPressed(PhysicalKey.WinRight)))
             {
-                return Key.ControlRight;
+                return PhysicalKey.ControlRight;
             }
 
-            return Key.Unknown;
+            return PhysicalKey.Unknown;
         }
     }
 }

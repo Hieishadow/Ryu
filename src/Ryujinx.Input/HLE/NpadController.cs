@@ -17,6 +17,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using CemuHookClient = Ryujinx.Input.Motion.CemuHook.Client;
 using ConfigControllerType = Ryujinx.Common.Configuration.Hid.ControllerType;
+using Key = Ryujinx.Common.Configuration.Hid.PhysicalKey;
 
 namespace Ryujinx.Input.HLE
 {
@@ -813,11 +814,6 @@ namespace Ryujinx.Input.HLE
             if (driver == null || string.IsNullOrEmpty(id))
             {
                 return null;
-            }
-
-            if (keyboard && driver is IKeyboardModeDriver keyboardModeDriver)
-            {
-                return keyboardModeDriver.GetKeyboard(id, KeyboardInputMode.Physical);
             }
 
             return driver.GetGamepad(id);

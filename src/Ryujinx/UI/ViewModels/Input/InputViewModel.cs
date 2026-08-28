@@ -2348,7 +2348,7 @@ namespace Ryujinx.Ava.UI.ViewModels.Input
 
             _keyboardDriverControl = target;
 
-            AvaloniaKeyboardDriver keyboardDriver = new(target, KeyboardInputMode.Physical);
+            AvaloniaKeyboardDriver keyboardDriver = new(target);
             keyboardDriver.KeyPressed += PhysicalKeyLabelHelper.ObserveKeyPress;
             AvaloniaKeyboardDriver = keyboardDriver;
 

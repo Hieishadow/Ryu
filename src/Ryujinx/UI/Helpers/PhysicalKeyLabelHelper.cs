@@ -10,7 +10,6 @@ using System.IO;
 using System.Text.Json;
 using AvaPhysicalKey = Avalonia.Input.PhysicalKey;
 using ConfigPhysicalKey = Ryujinx.Common.Configuration.Hid.PhysicalKey;
-using InputKey = Ryujinx.Input.Key;
 
 namespace Ryujinx.Ava.UI.Helpers
 {
@@ -59,8 +58,8 @@ namespace Ryujinx.Ava.UI.Helpers
                 return;
             }
 
-            InputKey inputKey = AvaloniaKeyboardMappingHelper.ToInputKey(args.PhysicalKey);
-            if (!TryConvertToConfigPhysicalKey(inputKey, out ConfigPhysicalKey physicalKey) ||
+            ConfigPhysicalKey physicalKey = AvaloniaKeyboardMappingHelper.ToPhysicalKey(args.PhysicalKey);
+            if (physicalKey is ConfigPhysicalKey.Unknown or ConfigPhysicalKey.Unbound ||
                 KeyboardLayoutLocaleHelper.TryGetPhysicalLocaleKey(physicalKey, out _))
             {
                 return;
@@ -169,7 +168,7 @@ namespace Ryujinx.Ava.UI.Helpers
                 return true;
             }
 
-            if (!AvaloniaKeyboardMappingHelper.TryGetAvaPhysicalKey((InputKey)(int)key, out AvaPhysicalKey avaPhysicalKey))
+            if (!AvaloniaKeyboardMappingHelper.TryGetAvaPhysicalKey(key, out AvaPhysicalKey avaPhysicalKey))
             {
                 label = string.Empty;
                 return false;
@@ -219,16 +218,5 @@ namespace Ryujinx.Ava.UI.Helpers
             return true;
         }
 
-        private static bool TryConvertToConfigPhysicalKey(InputKey key, out ConfigPhysicalKey physicalKey)
-        {
-            if (key is >= InputKey.Unknown and < InputKey.Count)
-            {
-                physicalKey = (ConfigPhysicalKey)(int)key;
-                return true;
-            }
-
-            physicalKey = ConfigPhysicalKey.Unknown;
-            return false;
-        }
     }
 }

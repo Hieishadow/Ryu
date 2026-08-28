@@ -2,7 +2,7 @@ namespace Ryujinx.Input
 {
     public enum ButtonType
     {
-        Key,
+        PhysicalKey,
         GamepadButtonInputId,
         StickId,
     }

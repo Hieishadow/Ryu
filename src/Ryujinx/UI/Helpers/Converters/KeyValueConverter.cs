@@ -5,8 +5,6 @@ using Ryujinx.Common.Configuration.Hid.Controller;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using Key = Ryujinx.Input.Key;
-using HidKey = Ryujinx.Common.Configuration.Hid.Key;
 
 namespace Ryujinx.Ava.UI.Helpers
 {
@@ -53,12 +51,6 @@ namespace Ryujinx.Ava.UI.Helpers
         {
             return value switch
             {
-                Key key => KeyboardLayoutLocaleHelper.TryGetSemanticLabel(key, out string localizedKeyLabel)
-                        ? localizedKeyLabel
-                        : key.ToString(),
-                HidKey key => KeyboardLayoutLocaleHelper.TryGetSemanticLabel((Key)(int)key, out string localizedHidKeyLabel)
-                        ? localizedHidKeyLabel
-                        : key.ToString(),
                 PhysicalKey physicalKey => PhysicalKeyLabelHelper.GetDisplayString(physicalKey),
                 GamepadInputId gamepadInputId => GetLocalizedMappedValue(gamepadInputId, _gamepadInputIdMap),
                 StickInputId stickInputId => GetLocalizedMappedValue(stickInputId, _stickInputIdMap),

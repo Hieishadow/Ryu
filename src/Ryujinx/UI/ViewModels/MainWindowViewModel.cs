@@ -56,7 +56,6 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Key = Ryujinx.Input.Key;
 using MissingKeyException = LibHac.Common.Keys.MissingKeyException;
 using Path = System.IO.Path;
 using ShaderCacheLoadingState = Ryujinx.Graphics.Gpu.Shader.ShaderCacheState;
@@ -173,9 +172,6 @@ namespace Ryujinx.Ava.UI.ViewModels
         private bool _isGameRunning;
         private string _searchText;
         private Timer _searchTimer;
-        private string _showUiKey = "F4";
-        private string _pauseKey = "F5";
-        private string _screenshotKey = "F8";
         private float _volume;
         private ApplicationData _currentApplicationData;
         private bool _pendingRestart;
@@ -231,8 +227,6 @@ namespace Ryujinx.Ava.UI.ViewModels
 
             if (Program.PreviewerDetached)
             {
-                LoadConfigurableHotKeys();
-
                 IsRyuLdnEnabled = ConfigurationState.Instance.Multiplayer.Mode.Value is MultiplayerMode.LdnRyu;
                 ConfigurationState.Instance.Multiplayer.Mode.Event += OnLdnModeChanged;
 
@@ -864,39 +858,6 @@ namespace Ryujinx.Ava.UI.ViewModels
             }
         }
 
-        public KeyGesture ShowUiKey
-        {
-            get => KeyGesture.Parse(_showUiKey);
-            set
-            {
-                _showUiKey = value.ToString();
-
-                OnPropertyChanged();
-            }
-        }
-
-        public KeyGesture ScreenshotKey
-        {
-            get => KeyGesture.Parse(_screenshotKey);
-            set
-            {
-                _screenshotKey = value.ToString();
-
-                OnPropertyChanged();
-            }
-        }
-
-        public KeyGesture PauseKey
-        {
-            get => KeyGesture.Parse(_pauseKey);
-            set
-            {
-                _pauseKey = value.ToString();
-
-                OnPropertyChanged();
-            }
-        }
-
         public ContentManager ContentManager { get; private set; }
         public IStorageProvider StorageProvider { get; private set; }
         public ApplicationLibrary ApplicationLibrary { get; private set; }
@@ -1494,28 +1455,6 @@ namespace Ryujinx.Ava.UI.ViewModels
 
             emulationContext.Gpu.ShaderCacheStateChanged -= ProgressHandler;
             emulationContext.Gpu.ShaderCacheStateChanged += ProgressHandler;
-        }
-
-        public void LoadConfigurableHotKeys()
-        {
-            if (AvaloniaKeyboardMappingHelper.TryGetAvaKey((Key)ConfigurationState.Instance.Hid.Hotkeys.Value.ShowUI,
-                    out Avalonia.Input.Key showUiKey))
-            {
-                ShowUiKey = new KeyGesture(showUiKey);
-            }
-
-            if (AvaloniaKeyboardMappingHelper.TryGetAvaKey(
-                    (Key)ConfigurationState.Instance.Hid.Hotkeys.Value.Screenshot,
-                    out Avalonia.Input.Key screenshotKey))
-            {
-                ScreenshotKey = new KeyGesture(screenshotKey);
-            }
-
-            if (AvaloniaKeyboardMappingHelper.TryGetAvaKey((Key)ConfigurationState.Instance.Hid.Hotkeys.Value.Pause,
-                    out Avalonia.Input.Key pauseKey))
-            {
-                PauseKey = new KeyGesture(pauseKey);
-            }
         }
 
         public void TakeScreenshot()

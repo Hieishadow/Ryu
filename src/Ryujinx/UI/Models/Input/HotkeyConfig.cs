@@ -7,40 +7,40 @@ namespace Ryujinx.Ava.UI.Models.Input
     public partial class HotkeyConfig : BaseModel
     {
         [ObservableProperty]
-        public partial Key ToggleVSyncMode { get; set; }
+        public partial PhysicalKey ToggleVSyncMode { get; set; }
 
         [ObservableProperty]
-        public partial Key Screenshot { get; set; }
+        public partial PhysicalKey Screenshot { get; set; }
 
         [ObservableProperty]
-        public partial Key ShowUI { get; set; }
+        public partial PhysicalKey ShowUI { get; set; }
 
         [ObservableProperty]
-        public partial Key Pause { get; set; }
+        public partial PhysicalKey Pause { get; set; }
 
         [ObservableProperty]
-        public partial Key ToggleMute { get; set; }
+        public partial PhysicalKey ToggleMute { get; set; }
 
         [ObservableProperty]
-        public partial Key ResScaleUp { get; set; }
+        public partial PhysicalKey ResScaleUp { get; set; }
 
         [ObservableProperty]
-        public partial Key ResScaleDown { get; set; }
+        public partial PhysicalKey ResScaleDown { get; set; }
 
         [ObservableProperty]
-        public partial Key VolumeUp { get; set; }
+        public partial PhysicalKey VolumeUp { get; set; }
 
         [ObservableProperty]
-        public partial Key VolumeDown { get; set; }
+        public partial PhysicalKey VolumeDown { get; set; }
 
         [ObservableProperty]
-        public partial Key CustomVSyncIntervalIncrement { get; set; }
+        public partial PhysicalKey CustomVSyncIntervalIncrement { get; set; }
 
         [ObservableProperty]
-        public partial Key CustomVSyncIntervalDecrement { get; set; }
+        public partial PhysicalKey CustomVSyncIntervalDecrement { get; set; }
 
         [ObservableProperty]
-        public partial Key TurboMode { get; set; }
+        public partial PhysicalKey TurboMode { get; set; }
 
         [ObservableProperty]
         public partial bool TurboModeWhileHeld { get; set; }

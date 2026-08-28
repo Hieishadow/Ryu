@@ -13,7 +13,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Key = Ryujinx.Common.Configuration.Hid.Key;
 using PhysicalKey = Ryujinx.Common.Configuration.Hid.PhysicalKey;
 using RyuLogger = Ryujinx.Common.Logging.Logger;
 
@@ -238,7 +237,7 @@ namespace Ryujinx.Ava.Systems.Configuration
                 (9, static cff =>
                 {
                     cff.ColumnSort = new ColumnSort { SortColumnId = 0, SortAscending = false };
-                    cff.Hotkeys = new KeyboardHotkeys { ToggleVSyncMode = Key.F1 };
+                    cff.Hotkeys = new KeyboardHotkeys { ToggleVSyncMode = PhysicalKey.F1 };
                 }
         ),
                 (10, static cff => cff.AudioBackend = AudioBackend.OpenAl),
@@ -326,9 +325,9 @@ namespace Ryujinx.Ava.Systems.Configuration
                     static cff =>
                         cff.Hotkeys = new KeyboardHotkeys
                         {
-                            ToggleVSyncMode = Key.F1,
-                            Screenshot = Key.F8,
-                            ShowUI = Key.F4
+                            ToggleVSyncMode = PhysicalKey.F1,
+                            Screenshot = PhysicalKey.F8,
+                            ShowUI = PhysicalKey.F4
                         }),
                 (30, static cff =>
                 {
@@ -350,7 +349,7 @@ namespace Ryujinx.Ava.Systems.Configuration
                     ToggleVSyncMode = cff.Hotkeys.ToggleVSyncMode,
                     Screenshot = cff.Hotkeys.Screenshot,
                     ShowUI = cff.Hotkeys.ShowUI,
-                    Pause = Key.F5,
+                    Pause = PhysicalKey.F5,
                 }),
                 (33, static cff =>
                 {
@@ -360,7 +359,7 @@ namespace Ryujinx.Ava.Systems.Configuration
                         Screenshot = cff.Hotkeys.Screenshot,
                         ShowUI = cff.Hotkeys.ShowUI,
                         Pause = cff.Hotkeys.Pause,
-                        ToggleMute = Key.F2,
+                        ToggleMute = PhysicalKey.F2,
                     };
 
                     cff.AudioVolume = 1;
@@ -397,8 +396,8 @@ namespace Ryujinx.Ava.Systems.Configuration
                         ShowUI = cff.Hotkeys.ShowUI,
                         Pause = cff.Hotkeys.Pause,
                         ToggleMute = cff.Hotkeys.ToggleMute,
-                        ResScaleUp = Key.Unbound,
-                        ResScaleDown = Key.Unbound
+                        ResScaleUp = PhysicalKey.Unbound,
+                        ResScaleDown = PhysicalKey.Unbound
                     }),
                 (40, static cff => cff.GraphicsBackend = GraphicsBackend.OpenGl),
                 (41,
@@ -411,8 +410,8 @@ namespace Ryujinx.Ava.Systems.Configuration
                         ToggleMute = cff.Hotkeys.ToggleMute,
                         ResScaleUp = cff.Hotkeys.ResScaleUp,
                         ResScaleDown = cff.Hotkeys.ResScaleDown,
-                        VolumeUp = Key.Unbound,
-                        VolumeDown = Key.Unbound
+                        VolumeUp = PhysicalKey.Unbound,
+                        VolumeDown = PhysicalKey.Unbound
                     }),
                 (42, static cff => cff.EnableMacroHLE = true),
                 (43, static cff => cff.UseHypervisor = true),
@@ -466,7 +465,7 @@ namespace Ryujinx.Ava.Systems.Configuration
 
                     cff.Hotkeys = new KeyboardHotkeys
                     {
-                        ToggleVSyncMode = Key.F1,
+                        ToggleVSyncMode = PhysicalKey.F1,
                         Screenshot = cff.Hotkeys.Screenshot,
                         ShowUI = cff.Hotkeys.ShowUI,
                         Pause = cff.Hotkeys.Pause,
@@ -475,8 +474,8 @@ namespace Ryujinx.Ava.Systems.Configuration
                         ResScaleDown = cff.Hotkeys.ResScaleDown,
                         VolumeUp = cff.Hotkeys.VolumeUp,
                         VolumeDown = cff.Hotkeys.VolumeDown,
-                        CustomVSyncIntervalIncrement = Key.Unbound,
-                        CustomVSyncIntervalDecrement = Key.Unbound,
+                        CustomVSyncIntervalIncrement = PhysicalKey.Unbound,
+                        CustomVSyncIntervalDecrement = PhysicalKey.Unbound,
                     };
 
                     cff.CustomVSyncInterval = 120;
@@ -530,7 +529,7 @@ namespace Ryujinx.Ava.Systems.Configuration
                         VolumeDown = cff.Hotkeys.VolumeDown,
                         CustomVSyncIntervalIncrement = cff.Hotkeys.CustomVSyncIntervalIncrement,
                         CustomVSyncIntervalDecrement = cff.Hotkeys.CustomVSyncIntervalDecrement,
-                        TurboMode = Key.Unbound,
+                        TurboMode = PhysicalKey.Unbound,
                         TurboModeWhileHeld = false
                     };
                 }

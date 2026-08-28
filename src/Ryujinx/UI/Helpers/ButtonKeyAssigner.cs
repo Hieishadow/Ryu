@@ -5,6 +5,7 @@ using Ryujinx.Input;
 using Ryujinx.Input.Assigner;
 using System;
 using System.Threading.Tasks;
+using PhysicalKey = Ryujinx.Common.Configuration.Hid.PhysicalKey;
 
 namespace Ryujinx.Ava.UI.Helpers
 {
@@ -67,7 +68,7 @@ namespace Ryujinx.Ava.UI.Helpers
 
                     assigner.ReadInput();
 
-                    if (assigner.IsAnyButtonPressed() || assigner.ShouldCancel() || (keyboard != null && keyboard.IsPressed(Key.Escape)))
+                    if (assigner.IsAnyButtonPressed() || assigner.ShouldCancel() || (keyboard != null && keyboard.IsPressed(PhysicalKey.Escape)))
                     {
                         break;
                     }
@@ -89,9 +90,9 @@ namespace Ryujinx.Ava.UI.Helpers
                 ToggledButton.IsChecked = false;
                 ClearKeyboardState(_keyboard);
 
-                if (pressedButton.HasValue && pressedButton.Value.AsHidType<Key>() == Key.BackSpace)
+                if (pressedButton.HasValue && pressedButton.Value.AsHidType<PhysicalKey>() == PhysicalKey.BackSpace)
                 {
-                    ButtonAssigned?.Invoke(this, new ButtonAssignedEventArgs(ToggledButton, new Button(Key.Unbound)));
+                    ButtonAssigned?.Invoke(this, new ButtonAssignedEventArgs(ToggledButton, new Button(PhysicalKey.Unbound)));
                     return;
                 }
 

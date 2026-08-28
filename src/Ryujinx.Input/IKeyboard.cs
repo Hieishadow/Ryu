@@ -16,7 +16,7 @@ namespace Ryujinx.Input
         /// </summary>
         /// <param name="key">The key</param>
         /// <returns>True if the given key is pressed on the keyboard</returns>
-        bool IsPressed(Key key);
+        bool IsPressed(ConfigPhysicalKey key);
 
         /// <summary>
         /// Get a snaphost of the state of the keyboard.
@@ -39,7 +39,7 @@ namespace Ryujinx.Input
             
             for (ConfigPhysicalKey key = 0; key < ConfigPhysicalKey.Count; key++)
             {
-                _keyState[(int)key] = keyboard.IsPressed((Key)(int)key);
+                _keyState[(int)key] = keyboard.IsPressed(key);
             }
 
             return new KeyboardStateSnapshot(_keyState);
@@ -50,9 +50,9 @@ namespace Ryujinx.Input
         /// </summary>
         /// <param name="key">The pressed key, if available.</param>
         /// <returns>True if a key press was consumed.</returns>
-        bool TryConsumePressedKey(out Key key)
+        bool TryConsumePressedKey(out ConfigPhysicalKey key)
         {
-            key = Key.Unknown;
+            key = ConfigPhysicalKey.Unknown;
             return false;
         }
     }

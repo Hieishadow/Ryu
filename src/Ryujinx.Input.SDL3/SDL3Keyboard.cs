@@ -305,7 +305,7 @@ namespace Ryujinx.Input.SDL3
             throw new NotSupportedException();
         }
 
-        public bool IsPressed(Key key)
+        public bool IsPressed(ConfigPhysicalKey key)
         {
             // We only implement GetKeyboardStateSnapshot.
             throw new NotSupportedException();

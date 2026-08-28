@@ -8,7 +8,8 @@ using Ryujinx.Ava.UI.Windows;
 using Ryujinx.HLE.UI;
 using System;
 using System.Threading;
-using HidKey = Ryujinx.Common.Configuration.Hid.Key;
+using AvaKey = Avalonia.Input.Key;
+using PhysicalKey = Ryujinx.Common.Configuration.Hid.PhysicalKey;
 
 namespace Ryujinx.Ava.UI.Applet
 {
@@ -67,42 +68,137 @@ namespace Ryujinx.Ava.UI.Applet
 
         private void AvaloniaDynamicTextInputHandler_KeyRelease(object sender, KeyEventArgs e)
         {
-            HidKey key = (HidKey)AvaloniaKeyboardMappingHelper.ToInputKey(e.PhysicalKey, e.Key);
+            PhysicalKey key = AvaloniaKeyboardMappingHelper.ToPhysicalKey(e.PhysicalKey);
 
             if (!(KeyReleasedEvent?.Invoke(key)).GetValueOrDefault(true))
             {
                 return;
             }
 
-            e.RoutedEvent = OffscreenTextBox.GetKeyUpRoutedEvent();
+            KeyEventArgs textBoxEvent = CreateTextBoxKeyEvent(e, false);
 
             Dispatcher.UIThread.InvokeAsync(() =>
             {
-                if (_canProcessInput)
+                if (_canProcessInput && textBoxEvent != null)
                 {
-                    _hiddenTextBox.SendKeyUpEvent(e);
+                    _hiddenTextBox.SendKeyUpEvent(textBoxEvent);
                 }
             });
         }
 
         private void AvaloniaDynamicTextInputHandler_KeyPressed(object sender, KeyEventArgs e)
         {
-            HidKey key = (HidKey)AvaloniaKeyboardMappingHelper.ToInputKey(e.PhysicalKey, e.Key);
+            PhysicalKey key = AvaloniaKeyboardMappingHelper.ToPhysicalKey(e.PhysicalKey);
 
             if (!(KeyPressedEvent?.Invoke(key)).GetValueOrDefault(true))
             {
                 return;
             }
 
-            e.RoutedEvent = OffscreenTextBox.GetKeyUpRoutedEvent();
+            KeyEventArgs textBoxEvent = CreateTextBoxKeyEvent(e, true);
 
             Dispatcher.UIThread.InvokeAsync(() =>
             {
-                if (_canProcessInput)
+                if (_canProcessInput && textBoxEvent != null)
                 {
-                    _hiddenTextBox.SendKeyDownEvent(e);
+                    _hiddenTextBox.SendKeyDownEvent(textBoxEvent);
                 }
             });
+        }
+
+        private KeyEventArgs CreateTextBoxKeyEvent(KeyEventArgs sourceEvent, bool isPressed)
+        {
+            PhysicalKey physicalKey = AvaloniaKeyboardMappingHelper.ToPhysicalKey(sourceEvent.PhysicalKey);
+            AvaKey key = ToTextBoxKey(physicalKey);
+
+            if (key == AvaKey.None)
+            {
+                return null;
+            }
+
+            return new KeyEventArgs
+            {
+                Key = key,
+                PhysicalKey = sourceEvent.PhysicalKey,
+                KeyModifiers = GetPhysicalModifiers(),
+                Source = _hiddenTextBox,
+                RoutedEvent = isPressed ? OffscreenTextBox.GetKeyDownRoutedEvent() : OffscreenTextBox.GetKeyUpRoutedEvent(),
+            };
+        }
+
+        private KeyModifiers GetPhysicalModifiers()
+        {
+            KeyModifiers modifiers = KeyModifiers.None;
+
+            if (_avaloniaKeyboardDriver.IsPressed(PhysicalKey.ShiftLeft) || _avaloniaKeyboardDriver.IsPressed(PhysicalKey.ShiftRight))
+            {
+                modifiers |= KeyModifiers.Shift;
+            }
+
+            if (_avaloniaKeyboardDriver.IsPressed(PhysicalKey.ControlLeft) || _avaloniaKeyboardDriver.IsPressed(PhysicalKey.ControlRight))
+            {
+                modifiers |= KeyModifiers.Control;
+            }
+
+            if (_avaloniaKeyboardDriver.IsPressed(PhysicalKey.AltLeft) || _avaloniaKeyboardDriver.IsPressed(PhysicalKey.AltRight))
+            {
+                modifiers |= KeyModifiers.Alt;
+            }
+
+            if (_avaloniaKeyboardDriver.IsPressed(PhysicalKey.WinLeft) || _avaloniaKeyboardDriver.IsPressed(PhysicalKey.WinRight))
+            {
+                modifiers |= KeyModifiers.Meta;
+            }
+
+            return modifiers;
+        }
+
+        private static AvaKey ToTextBoxKey(PhysicalKey key)
+        {
+            // TextBox requires Avalonia key values for editing commands. Derive them only from
+            // physical positions; printable characters arrive separately through TextInput.
+            if (key is >= PhysicalKey.A and <= PhysicalKey.Z)
+            {
+                return (AvaKey)((int)AvaKey.A + (int)(key - PhysicalKey.A));
+            }
+
+            if (key is >= PhysicalKey.Number0 and <= PhysicalKey.Number9)
+            {
+                return (AvaKey)((int)AvaKey.D0 + (int)(key - PhysicalKey.Number0));
+            }
+
+            if (key is >= PhysicalKey.F1 and <= PhysicalKey.F24)
+            {
+                return (AvaKey)((int)AvaKey.F1 + (int)(key - PhysicalKey.F1));
+            }
+
+            return key switch
+            {
+                PhysicalKey.ShiftLeft => AvaKey.LeftShift,
+                PhysicalKey.ShiftRight => AvaKey.RightShift,
+                PhysicalKey.ControlLeft => AvaKey.LeftCtrl,
+                PhysicalKey.ControlRight => AvaKey.RightCtrl,
+                PhysicalKey.AltLeft => AvaKey.LeftAlt,
+                PhysicalKey.AltRight => AvaKey.RightAlt,
+                PhysicalKey.WinLeft => AvaKey.LWin,
+                PhysicalKey.WinRight => AvaKey.RWin,
+                PhysicalKey.Enter => AvaKey.Return,
+                PhysicalKey.Escape => AvaKey.Escape,
+                PhysicalKey.Space => AvaKey.Space,
+                PhysicalKey.Tab => AvaKey.Tab,
+                PhysicalKey.BackSpace => AvaKey.Back,
+                PhysicalKey.Insert => AvaKey.Insert,
+                PhysicalKey.Delete => AvaKey.Delete,
+                PhysicalKey.PageUp => AvaKey.PageUp,
+                PhysicalKey.PageDown => AvaKey.PageDown,
+                PhysicalKey.Home => AvaKey.Home,
+                PhysicalKey.End => AvaKey.End,
+                PhysicalKey.Up => AvaKey.Up,
+                PhysicalKey.Down => AvaKey.Down,
+                PhysicalKey.Left => AvaKey.Left,
+                PhysicalKey.Right => AvaKey.Right,
+                _ => AvaKey.None,
+            };
         }
 
         public bool TextProcessingEnabled

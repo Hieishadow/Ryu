@@ -7,7 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Threading;
-using Key = Ryujinx.Input.Key;
+using PhysicalKey = Ryujinx.Common.Configuration.Hid.PhysicalKey;
 
 namespace Ryujinx.Ava.Input
 {
@@ -15,7 +15,6 @@ namespace Ryujinx.Ava.Input
     {
         private readonly List<KeyboardInputMappingHelper.KeyboardButtonMapping> _buttonsUserMapping;
         private readonly AvaloniaKeyboardDriver _driver;
-        private readonly KeyboardInputMode _mode;
         private StandardKeyboardInputConfig _configuration;
 
         private readonly Lock _userMappingLock = new();
@@ -25,12 +24,11 @@ namespace Ryujinx.Ava.Input
 
         public bool IsConnected => true;
         public GamepadFeaturesFlag Features => GamepadFeaturesFlag.None;
-        public AvaloniaKeyboard(AvaloniaKeyboardDriver driver, string id, string name, KeyboardInputMode mode)
+        public AvaloniaKeyboard(AvaloniaKeyboardDriver driver, string id, string name)
         {
             _buttonsUserMapping = [];
 
             _driver = driver;
-            _mode = mode;
             Id = id;
             Name = name;
         }
@@ -87,11 +85,11 @@ namespace Ryujinx.Ava.Input
             throw new NotSupportedException();
         }
 
-        public bool IsPressed(Key key)
+        public bool IsPressed(PhysicalKey key)
         {
             try
             {
-                return _driver.IsPressed(key, _mode);
+                return _driver.IsPressed(key);
             }
             catch
             {
@@ -99,15 +97,15 @@ namespace Ryujinx.Ava.Input
             }
         }
 
-        public bool TryConsumePressedKey(out Key key)
+        public bool TryConsumePressedKey(out PhysicalKey key)
         {
             try
             {
-                return _driver.TryConsumePressedKey(_mode, out key);
+                return _driver.TryConsumePressedKey(out key);
             }
             catch
             {
-                key = Key.Unknown;
+                key = PhysicalKey.Unknown;
                 return false;
             }
         }
@@ -146,7 +144,7 @@ namespace Ryujinx.Ava.Input
 
         public void Clear()
         {
-            _driver?.Clear(_mode);
+            _driver?.Clear();
         }
 
         public void Dispose() { }

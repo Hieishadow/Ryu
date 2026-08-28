@@ -27,7 +27,7 @@ namespace Ryujinx.HLE.HOS.Applets
         private const int MaxUserWords = 0x1388;
         private const int MaxUiTextSize = 100;
 
-        private const Key CycleInputModesKey = Key.F6;
+        private const PhysicalKey CycleInputModesKey = PhysicalKey.F6;
 
         private readonly Switch _device;
 
@@ -542,7 +542,7 @@ namespace Ryujinx.HLE.HOS.Applets
             }
         }
 
-        private bool HandleKeyPressedEvent(Key key)
+        private bool HandleKeyPressedEvent(PhysicalKey key)
         {
             if (key == CycleInputModesKey)
             {

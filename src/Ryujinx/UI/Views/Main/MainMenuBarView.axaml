@@ -106,14 +106,12 @@
                     Name="PauseEmulationMenuItem"
                     Header="{ext:Locale MenuBar_Actions_PauseEmulationButton}"
                     Icon="{ext:Icon fa-solid fa-pause}"
-                    InputGesture="{Binding PauseKey}"
                     IsEnabled="{Binding !IsPaused}"
                     IsVisible="{Binding !IsPaused}" />
                 <MenuItem
                     Name="ResumeEmulationMenuItem"
                     Header="{ext:Locale MenuBar_Actions_ResumeEmulationButton}"
                     Icon="{ext:Icon fa-solid fa-play}"
-                    InputGesture="{Binding PauseKey}"
                     IsEnabled="{Binding IsPaused}"
                     IsVisible="{Binding IsPaused}" />
                 <MenuItem
@@ -162,13 +160,11 @@
                     Command="{Binding TakeScreenshot}"
                     Header="{ext:Locale MenuBar_Actions_TakeScreenshotButton}"
                     Icon="{ext:Icon fa-solid fa-camera}"
-                    InputGesture="{Binding ScreenshotKey}"
                     IsEnabled="{Binding IsGameRunning}" />
                 <MenuItem
                     Command="{Binding HideUi}"
                     Header="{ext:Locale MenuBar_Actions_HideUiButton}"
                     Icon="{ext:Icon fa-solid fa-eye-slash}"
-                    InputGesture="{Binding ShowUiKey}"
                     IsEnabled="{Binding IsGameRunning}" />
                 <Separator IsVisible="{Binding RenderDocIsAvailable}" />
                 <MenuItem

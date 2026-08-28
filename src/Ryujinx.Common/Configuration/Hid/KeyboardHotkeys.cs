@@ -2,18 +2,18 @@ namespace Ryujinx.Common.Configuration.Hid
 {
     public class KeyboardHotkeys
     {
-        public Key ToggleVSyncMode { get; set; }
-        public Key Screenshot { get; set; }
-        public Key ShowUI { get; set; }
-        public Key Pause { get; set; }
-        public Key ToggleMute { get; set; }
-        public Key ResScaleUp { get; set; }
-        public Key ResScaleDown { get; set; }
-        public Key VolumeUp { get; set; }
-        public Key VolumeDown { get; set; }
-        public Key CustomVSyncIntervalIncrement { get; set; }
-        public Key CustomVSyncIntervalDecrement { get; set; }
-        public Key TurboMode { get; set; }
+        public PhysicalKey ToggleVSyncMode { get; set; }
+        public PhysicalKey Screenshot { get; set; }
+        public PhysicalKey ShowUI { get; set; }
+        public PhysicalKey Pause { get; set; }
+        public PhysicalKey ToggleMute { get; set; }
+        public PhysicalKey ResScaleUp { get; set; }
+        public PhysicalKey ResScaleDown { get; set; }
+        public PhysicalKey VolumeUp { get; set; }
+        public PhysicalKey VolumeDown { get; set; }
+        public PhysicalKey CustomVSyncIntervalIncrement { get; set; }
+        public PhysicalKey CustomVSyncIntervalDecrement { get; set; }
+        public PhysicalKey TurboMode { get; set; }
         public bool TurboModeWhileHeld { get; set; }
     }
 }

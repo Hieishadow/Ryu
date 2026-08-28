@@ -8,7 +8,6 @@ using Ryujinx.Graphics.Vulkan;
 using Ryujinx.HLE;
 using System;
 using System.Linq;
-using Key = Ryujinx.Common.Configuration.Hid.Key;
 using PhysicalKey = Ryujinx.Common.Configuration.Hid.PhysicalKey;
 
 namespace Ryujinx.Ava.Systems.Configuration
@@ -269,18 +268,18 @@ namespace Ryujinx.Ava.Systems.Configuration
             Hid.DisableInputWhenOutOfFocus.Value = false;
             Hid.Hotkeys.Value = new KeyboardHotkeys
             {
-                ToggleVSyncMode = Key.F1,
-                ToggleMute = Key.F2,
-                Screenshot = Key.F8,
-                ShowUI = Key.F4,
-                Pause = Key.F5,
-                ResScaleUp = Key.Unbound,
-                ResScaleDown = Key.Unbound,
-                VolumeUp = Key.Unbound,
-                VolumeDown = Key.Unbound,
-                CustomVSyncIntervalIncrement = Key.Unbound,
-                CustomVSyncIntervalDecrement = Key.Unbound,
-                TurboMode = Key.Unbound,
+                ToggleVSyncMode = PhysicalKey.F1,
+                ToggleMute = PhysicalKey.F2,
+                Screenshot = PhysicalKey.F8,
+                ShowUI = PhysicalKey.F4,
+                Pause = PhysicalKey.F5,
+                ResScaleUp = PhysicalKey.Unbound,
+                ResScaleDown = PhysicalKey.Unbound,
+                VolumeUp = PhysicalKey.Unbound,
+                VolumeDown = PhysicalKey.Unbound,
+                CustomVSyncIntervalIncrement = PhysicalKey.Unbound,
+                CustomVSyncIntervalDecrement = PhysicalKey.Unbound,
+                TurboMode = PhysicalKey.Unbound,
                 TurboModeWhileHeld = false
             };
             Hid.RainbowSpeed.Value = 1f;

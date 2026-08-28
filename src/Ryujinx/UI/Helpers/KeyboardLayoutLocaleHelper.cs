@@ -2,7 +2,7 @@ using Ryujinx.Ava.Common.Locale;
 using System;
 using System.Collections.Generic;
 using ConfigPhysicalKey = Ryujinx.Common.Configuration.Hid.PhysicalKey;
-using InputKey = Ryujinx.Input.Key;
+using InputKey = Ryujinx.Common.Configuration.Hid.PhysicalKey;
 
 namespace Ryujinx.Ava.UI.Helpers
 {
@@ -59,44 +59,6 @@ namespace Ryujinx.Ava.UI.Helpers
             [InputKey.Unbound] = LocaleKeys.KeyboardLayout_KeyUnbound,
         };
 
-        private static readonly Dictionary<InputKey, LocaleKeys> _semanticPrintableKeysMap = new()
-        {
-            [InputKey.Number0] = LocaleKeys.KeyboardLayout_KeyNumber0,
-            [InputKey.Number1] = LocaleKeys.KeyboardLayout_KeyNumber1,
-            [InputKey.Number2] = LocaleKeys.KeyboardLayout_KeyNumber2,
-            [InputKey.Number3] = LocaleKeys.KeyboardLayout_KeyNumber3,
-            [InputKey.Number4] = LocaleKeys.KeyboardLayout_KeyNumber4,
-            [InputKey.Number5] = LocaleKeys.KeyboardLayout_KeyNumber5,
-            [InputKey.Number6] = LocaleKeys.KeyboardLayout_KeyNumber6,
-            [InputKey.Number7] = LocaleKeys.KeyboardLayout_KeyNumber7,
-            [InputKey.Number8] = LocaleKeys.KeyboardLayout_KeyNumber8,
-            [InputKey.Number9] = LocaleKeys.KeyboardLayout_KeyNumber9,
-            [InputKey.Tilde] = LocaleKeys.KeyboardLayout_KeyTilde,
-            [InputKey.Grave] = LocaleKeys.KeyboardLayout_KeyGrave,
-            [InputKey.Minus] = LocaleKeys.KeyboardLayout_KeyMinus,
-            [InputKey.Plus] = LocaleKeys.KeyboardLayout_KeyPlus,
-            [InputKey.BracketLeft] = LocaleKeys.KeyboardLayout_KeyBracketLeft,
-            [InputKey.BracketRight] = LocaleKeys.KeyboardLayout_KeyBracketRight,
-            [InputKey.Semicolon] = LocaleKeys.KeyboardLayout_KeySemicolon,
-            [InputKey.Quote] = LocaleKeys.KeyboardLayout_KeyQuote,
-            [InputKey.Comma] = LocaleKeys.KeyboardLayout_KeyComma,
-            [InputKey.Period] = LocaleKeys.KeyboardLayout_KeyPeriod,
-            [InputKey.Slash] = LocaleKeys.KeyboardLayout_KeySlash,
-            [InputKey.BackSlash] = LocaleKeys.KeyboardLayout_KeyBackSlash,
-        };
-
-        public static bool TryGetSemanticLabel(InputKey key, out string label)
-        {
-            if (TryGetSemanticLocaleKey(key, out LocaleKeys localeKey))
-            {
-                label = GetLocalizedString(localeKey);
-                return true;
-            }
-
-            label = string.Empty;
-            return false;
-        }
-
         public static bool TryGetPhysicalLabel(ConfigPhysicalKey key, out string label)
         {
             if (TryGetPhysicalLocaleKey(key, out LocaleKeys localeKey))
@@ -111,13 +73,7 @@ namespace Ryujinx.Ava.UI.Helpers
 
         public static bool TryGetPhysicalLocaleKey(ConfigPhysicalKey key, out LocaleKeys localeKey)
         {
-            return _sharedLocalizedKeysMap.TryGetValue((InputKey)(int)key, out localeKey);
-        }
-
-        private static bool TryGetSemanticLocaleKey(InputKey key, out LocaleKeys localeKey)
-        {
-            return _sharedLocalizedKeysMap.TryGetValue(key, out localeKey) ||
-                   _semanticPrintableKeysMap.TryGetValue(key, out localeKey);
+            return _sharedLocalizedKeysMap.TryGetValue(key, out localeKey);
         }
 
         private static string GetLocalizedString(LocaleKeys localeKey)

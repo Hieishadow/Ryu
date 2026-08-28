@@ -1,4 +1,5 @@
 using System;
+using PhysicalKey = Ryujinx.Common.Configuration.Hid.PhysicalKey;
 
 namespace Ryujinx.Input
 {
@@ -7,9 +8,9 @@ namespace Ryujinx.Input
         public readonly ButtonType Type;
         private readonly uint _rawValue;
 
-        public Button(Key key)
+        public Button(PhysicalKey key)
         {
-            Type = ButtonType.Key;
+            Type = ButtonType.PhysicalKey;
             _rawValue = (uint)key;
         }
 
