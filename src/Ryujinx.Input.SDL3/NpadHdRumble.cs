@@ -261,6 +261,8 @@ namespace Ryujinx.Input.SDL3
     {
         // TODO: Currently, HD Rumble only supports the Pro Controller and JoyCons.
         //       We need to initialize and report to each device differently.
+        //       
+        //       Don't comment out controllers unless they are fully supported.
         
         // Nintendo Switch: 0x057e
         JoyconLeft = 0x2006,
