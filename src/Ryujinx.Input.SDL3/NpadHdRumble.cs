@@ -253,8 +253,8 @@ namespace Ryujinx.Input.SDL3
     public enum HDRumbleSupportedVendor : ushort
     {
         Nintendo = 0x057e,
-        Valve = 0x28de,
-        Sony = 0x054c
+        // Valve = 0x28de,
+        // Sony = 0x054c
     }
 
     public enum HDRumbleSupportedProduct : ushort
@@ -269,20 +269,21 @@ namespace Ryujinx.Input.SDL3
         ProController = 0x2009,
         JoyconGrip = 0x200e,
         
+        // TODO: Switch 1 Controller Protocol might be supported
         // Nintendo Switch 2: 0x057e
-        Joycon2Right = 0x2066,
-        Joycon2Left = 0x2067,
-        Joycon2Pair = 0x2068,
-        Switch2ProController = 0x2069,
-        GamecubeController = 0x2073,
+        // Joycon2Right = 0x2066,
+        // Joycon2Left = 0x2067,
+        // Joycon2Pair = 0x2068,
+        // Switch2ProController = 0x2069,
+        // GamecubeController = 0x2073,
         
         // Valve Steam Family: 0x28de
         // https://github.com/libsdl-org/SDL/issues/9148
-        SteamDeck = 0x11ff,
-        SteamDeckVirtualDevice = 0x1205,
-        SteamController = 0x1106,
+        // SteamDeck = 0x11ff,
+        // SteamDeckVirtualDevice = 0x1205,
+        // SteamController = 0x1106,
         
         // PlayStation Dualsense: 0x054c
-        Dualsense = 0x0ce6
+        // Dualsense = 0x0ce6
     }
 }
