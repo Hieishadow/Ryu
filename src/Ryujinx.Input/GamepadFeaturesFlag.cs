@@ -11,29 +11,29 @@ namespace Ryujinx.Input
         /// <summary>
         /// No features are supported
         /// </summary>
-        None,
+        None = 0,
 
         /// <summary>
         /// Rumble
         /// </summary>
         /// <remarks>Also named haptic</remarks>
-        Rumble,
+        Rumble = 1,
         
         /// <summary>
         /// HD Rumble
         /// </summary>
         /// <remarks>Also named haptic</remarks>
-        HdRumble,
+        HdRumble = 2,
 
         /// <summary>
         /// Motion
         /// <remarks>Also named sixaxis</remarks>
         /// </summary>
-        Motion,
+        Motion = 4,
 
         /// <summary>
         ///     The LED on the back of modern PlayStation controllers (DualSense &amp; DualShock 4).
         /// </summary>
-        Led,
+        Led = 8,
     }
 }
