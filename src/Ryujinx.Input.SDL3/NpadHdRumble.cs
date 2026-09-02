@@ -151,11 +151,12 @@ namespace Ryujinx.Input.SDL3
 
         public bool HdRumble(VibrationValue left, VibrationValue right)
         {
-            if(_product is (ushort) HDRumbleSupportedProduct.ProController
-               or (ushort) HDRumbleSupportedProduct.JoyconLeft
-               or (ushort) HDRumbleSupportedProduct.JoyconRight
-               or (ushort) HDRumbleSupportedProduct.JoyconPair
-               or (ushort) HDRumbleSupportedProduct.JoyconGrip)
+            if(_vendor is (ushort) HDRumbleSupportedVendor.Nintendo &&
+               (_product is (ushort) HDRumbleSupportedProduct.ProController
+                or (ushort) HDRumbleSupportedProduct.JoyconLeft
+                or (ushort) HDRumbleSupportedProduct.JoyconRight
+                or (ushort) HDRumbleSupportedProduct.JoyconPair
+                or (ushort) HDRumbleSupportedProduct.JoyconGrip))
             {
                 return WriteNintendoHdRumble(left, right);
             }
