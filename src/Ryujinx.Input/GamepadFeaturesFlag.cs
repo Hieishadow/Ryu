@@ -18,6 +18,12 @@ namespace Ryujinx.Input
         /// </summary>
         /// <remarks>Also named haptic</remarks>
         Rumble,
+        
+        /// <summary>
+        /// HD Rumble
+        /// </summary>
+        /// <remarks>Also named haptic</remarks>
+        HdRumble,
 
         /// <summary>
         /// Motion

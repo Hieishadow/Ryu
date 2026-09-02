@@ -150,6 +150,11 @@ namespace Ryujinx.Input.SDL3
                 result |= GamepadFeaturesFlag.Rumble;
             }
 
+            if (NpadHdRumble.SupportsHdRumble(_gamepadHandle))
+            {
+                result |=  GamepadFeaturesFlag.HdRumble;
+            }
+
             if (SDL_GetBooleanProperty(propID, SDL_PROP_GAMEPAD_CAP_MONO_LED_BOOLEAN, false))
             {
                 result |= GamepadFeaturesFlag.Led;
@@ -195,6 +200,10 @@ namespace Ryujinx.Input.SDL3
 
         public bool HDRumble(VibrationValue left, VibrationValue right)
         {
+            if ((Features & GamepadFeaturesFlag.HdRumble) == 0)
+            {
+                return false;
+            }
             return _hdRumble?.HdRumble(left, right) ?? false;
         }
 

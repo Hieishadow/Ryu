@@ -55,7 +55,8 @@
             </StackPanel>
             <CheckBox
                 Margin="5"
-                IsChecked="{Binding EnableHDRumble}">
+                IsChecked="{Binding EnableHDRumble}"
+                IsVisible="{Binding ControllerModel.ParentModel.HasHdRumble}">
                 <TextBlock
                     Margin="0,3,0,0"
                     VerticalAlignment="Center"

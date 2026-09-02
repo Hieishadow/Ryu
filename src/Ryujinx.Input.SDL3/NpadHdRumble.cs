@@ -26,16 +26,26 @@ namespace Ryujinx.Input.SDL3
             InitializeDevice();
         }
 
-        public static NpadHdRumble Create(SDL_Gamepad* gamepadHandle)
+        public static bool SupportsHdRumble(SDL_Gamepad* gamepadHandle)
         {
             _vendor = SDL_GetGamepadVendor(gamepadHandle);
             if (!Enum.IsDefined(typeof(HDRumbleSupportedVendor), _vendor))
             {
-                return null;
+                return false;
             }
 
             _product = SDL_GetGamepadProduct(gamepadHandle);
             if (!Enum.IsDefined(typeof(HDRumbleSupportedProduct), _product))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        public static NpadHdRumble Create(SDL_Gamepad* gamepadHandle)
+        {
+            if (!SupportsHdRumble(gamepadHandle))
             {
                 return null;
             }

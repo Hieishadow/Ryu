@@ -18,7 +18,7 @@ namespace Ryujinx.Ava.UI.Views.Input
         {
             GamepadInputConfig config = viewModel.Config;
 
-            ViewModel = new RumbleInputViewModel
+            ViewModel = new RumbleInputViewModel(viewModel)
             {
                 StrongRumble = config.StrongRumble,
                 WeakRumble = config.WeakRumble,

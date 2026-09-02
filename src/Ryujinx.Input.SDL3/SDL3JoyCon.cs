@@ -133,6 +133,11 @@ namespace Ryujinx.Input.SDL3
             {
                 result |= GamepadFeaturesFlag.Rumble;
             }
+            
+            if (NpadHdRumble.SupportsHdRumble(_gamepadHandle))
+            {
+                result |=  GamepadFeaturesFlag.HdRumble;
+            }
 
             return result;
         }
@@ -167,6 +172,10 @@ namespace Ryujinx.Input.SDL3
         
         public bool HDRumble(VibrationValue left, VibrationValue right)
         {
+            if ((Features & GamepadFeaturesFlag.HdRumble) == 0)
+            {
+                return false;
+            }
             return _hdRumble?.HdRumble(left, right) ?? false;
         }
 

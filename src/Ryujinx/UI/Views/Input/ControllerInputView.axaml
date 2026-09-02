@@ -521,7 +521,7 @@
                                     <pt:Icon Value="fa-solid fa-gear" />
                                 </Button>
                             </StackPanel>
-                            <controls:MiniVerticalSeparator Height="64"/>
+                            <controls:MiniVerticalSeparator Height="64" IsVisible="{Binding ParentModel.HasRumble}"/>
                             <StackPanel Orientation="Vertical" Spacing="5">
                                 <CheckBox
                                     Margin="10, 10, 10, 0"

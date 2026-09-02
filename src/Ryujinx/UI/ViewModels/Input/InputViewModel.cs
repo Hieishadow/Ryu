@@ -92,6 +92,8 @@ namespace Ryujinx.Ava.UI.ViewModels.Input
 
                 field = value;
 
+                OnPropertyChanged(nameof(HasRumble));
+                OnPropertyChanged(nameof(HasHdRumble));
                 OnPropertiesChanged(nameof(HasLed), nameof(CanClearLed));
             }
         }
@@ -115,6 +117,8 @@ namespace Ryujinx.Ava.UI.ViewModels.Input
         public bool CanEditProfileName => !IsDefaultProfileName(ProfileName);
         public bool IsRight { get; set; }
         public bool IsLeft { get; set; }
+        public bool HasRumble => (SelectedGamepad?.Features & GamepadFeaturesFlag.Rumble) != 0;
+        public bool HasHdRumble => (SelectedGamepad?.Features & GamepadFeaturesFlag.HdRumble) != 0;
         public bool HasLed => (SelectedGamepad?.Features & GamepadFeaturesFlag.Led) != 0;
         public bool CanClearLed => SelectedGamepad?.Name?.ContainsIgnoreCase("DualSense") == true;
 
