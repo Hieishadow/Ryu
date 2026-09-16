@@ -12,7 +12,7 @@ using Ryujinx.HLE;
 
 namespace Ryujinx.Android
 {
-    [Activity(Label = "DragoNX Fafnir V15 GPU", MainLauncher = true, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape)]
+    [Activity(Label = "DragoNX Fafnir V15.1 SCROLL", MainLauncher = true, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape)]
     public class MainActivity : Activity
     {
         string basePath = ""; LinearLayout lista = null!;
@@ -31,7 +31,7 @@ namespace Ryujinx.Android
             var root = new LinearLayout(this){ Orientation = Orientation.Vertical };
             root.SetPadding(30,20,30,20);
             lista = new LinearLayout(this){ Orientation = Orientation.Vertical };
-            root.AddView(new TextView(this){ Text="DragoNX Fafnir V15 - GPU FIX\n", TextSize=18f });
+            root.AddView(new TextView(this){ Text="DragoNX Fafnir V15.1 - SCROLL FIX\n", TextSize=18f });
             root.AddView(lista);
             scroll.AddView(root);
             SetContentView(scroll);
@@ -46,9 +46,9 @@ namespace Ryujinx.Android
             lista.AddView(new TextView(this){ Text=$"Keys: {(File.Exists(key)?"OK":"FALTA")} | Firmware: {(fwCount>10?$"OK {fwCount}":"FALTA")}\n" });
             try {
                 var bases = Directory.GetFiles(games, "*.nsp").Where(x => x.Contains("[v0]")).ToArray();
-                lista.AddView(new TextView(this){ Text=$"JOGOS BASE ({bases.Length}) - V15 GPU:" });
+                lista.AddView(new TextView(this){ Text=$"JOGOS BASE ({bases.Length}) - V15.1:" });
                 foreach(var f in bases) {
-                    var btn = new Button(this){ Text = "🌈 "+Path.GetFileName(f)+" [V15 GPU]" };
+                    var btn = new Button(this){ Text = "🌈 "+Path.GetFileName(f)+" [V15.1 SCROLL]" };
                     btn.Click += (s,e) => { var i = new global::Android.Content.Intent(this, typeof(GameActivity)); i.PutExtra("gamePath", f); i.PutExtra("basePath", basePath); StartActivity(i); };
                     lista.AddView(btn);
                 }
@@ -56,32 +56,61 @@ namespace Ryujinx.Android
         }
     }
 
-    [Activity(Label = "DragoNX Game V15", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape, ConfigurationChanges = global::Android.Content.PM.ConfigChanges.Orientation | global::Android.Content.PM.ConfigChanges.KeyboardHidden | global::Android.Content.PM.ConfigChanges.ScreenSize)]
+    [Activity(Label = "DragoNX Game V15.1", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape, ConfigurationChanges = global::Android.Content.PM.ConfigChanges.Orientation | global::Android.Content.PM.ConfigChanges.KeyboardHidden | global::Android.Content.PM.ConfigChanges.ScreenSize)]
     public class GameActivity : Activity, ISurfaceHolderCallback
     {
         TextView log = null!; SurfaceView surfaceView = null!;
         object device = null!; bool surfaceReady = false;
-        string gamePath = "", basePath = "";
+        string gamePath = "", basePath = "", logFile = "";
+        ScrollView scrollLog = null!;
 
         protected override void OnCreate(Bundle? b)
         {
             base.OnCreate(b);
             gamePath = Intent.GetStringExtra("gamePath")!;
             basePath = Intent.GetStringExtra("basePath")!;
+            logFile = Path.Combine(basePath, "log_V15.txt");
             var layout = new LinearLayout(this){ Orientation = Orientation.Vertical };
-            log = new TextView(this){ TextSize=8f, Text=$"Fafnir V15 - GPU FIX\n{Path.GetFileName(gamePath)}\nAguardando Vulkan...\n" };
+
+            log = new TextView(this){ TextSize=7f, Text=$"Fafnir V15.1 - GPU FIX SCROLL\n{Path.GetFileName(gamePath)}\n" };
+            log.SetTextIsSelectable(true);
+            scrollLog = new ScrollView(this);
+            var lpScroll = new LinearLayout.LayoutParams(-1, 0); lpScroll.Weight = 1;
+            scrollLog.LayoutParameters = lpScroll;
+            scrollLog.AddView(log);
+
             surfaceView = new SurfaceView(this);
             surfaceView.Holder.AddCallback(this);
-            var lp = new LinearLayout.LayoutParams(-1, 0); lp.Weight = 1;
+            var lp = new LinearLayout.LayoutParams(-1, 300);
             surfaceView.LayoutParameters = lp;
             surfaceView.SetBackgroundColor(global::Android.Graphics.Color.Black);
-            var btnVoltar = new Button(this){ Text="VOLTAR" };
-            btnVoltar.Click += (s,e) => { try{ device?.GetType().GetMethod("Dispose")?.Invoke(device,null); } catch{} Finish(); };
-            layout.AddView(log); layout.AddView(surfaceView); layout.AddView(btnVoltar);
+
+            var btnLog = new Button(this){ Text="VER LOG COMPLETO (arquivo)" };
+            btnLog.Click += (s,e) => {
+                try{
+                    var txt = File.Exists(logFile)? File.ReadAllText(logFile) : log.Text;
+                    log.Text = txt + "\n--- FIM ---\n"+logFile;
+                    scrollLog.Post(() => scrollLog.FullScroll(FocusSearchDirection.Down));
+                } catch{}
+            };
+            var btnSair = new Button(this){ Text="SAIR" };
+            btnSair.Click += (s,e) => { try{ device?.GetType().GetMethod("Dispose")?.Invoke(device,null); } catch{} Finish(); };
+
+            layout.AddView(scrollLog);
+            layout.AddView(surfaceView);
+            layout.AddView(btnLog);
+            layout.AddView(btnSair);
             SetContentView(layout);
+            try{ File.WriteAllText(logFile, $"START V15.1 {DateTime.Now}\nGame: {gamePath}\n"); } catch{}
         }
 
-        void AddLog(string s) { RunOnUiThread(() => log.Text += s + "\n"); }
+        void AddLog(string s) {
+            try{ File.AppendAllText(logFile, s+"\n"); } catch{}
+            RunOnUiThread(() => {
+                log.Text += s + "\n";
+                scrollLog.Post(() => scrollLog.FullScroll(FocusSearchDirection.Down));
+            });
+        }
 
         object GetDefault(Type t) {
             if(t.IsEnum) { var vals = Enum.GetValues(t); return vals.Length>0? vals.GetValue(0): Activator.CreateInstance(t); }
@@ -104,17 +133,13 @@ namespace Ryujinx.Android
             Task.Run(() => {
                 try {
                     AddLog($"[1/5] Keys: 16025 bytes OK | FW: 229 files OK");
-                    AddLog($"[2/5] Criando HleConfiguration V15 + GpuRenderer...");
+                    AddLog($"[2/5] Criando HleConfiguration V15.1...");
 
                     var switchType = typeof(Ryujinx.HLE.Switch);
                     var hleConfigType = switchType.Assembly.GetTypes().First(t=>t.Name=="HleConfiguration");
-
                     var ctors = hleConfigType.GetConstructors();
-                    AddLog($"> Achados {ctors.Length} ctors");
-                    foreach(var c in ctors) {
-                        var ps = c.GetParameters();
-                        AddLog($"> ctor {ps.Length}: {string.Join(",", ps.Select(p=>p.Name))}");
-                    }
+                    AddLog($"> Achados {ctors.Length} ctors HleConfiguration");
+                    foreach(var c in ctors) AddLog($"> ctor {c.GetParameters().Length}: {string.Join(",", c.GetParameters().Select(p=>p.Name))}");
 
                     var ctor = ctors.OrderByDescending(c=>c.GetParameters().Length).First();
                     var pars = ctor.GetParameters();
@@ -124,105 +149,17 @@ namespace Ryujinx.Android
                         var pt = pars[i].ParameterType;
                         var pn = pars[i].Name.ToLower();
                         try {
-                            if(pn.Contains("memoryconfiguration")) {
-                                var memVal = Enum.GetValues(pt).Cast<object>().FirstOrDefault(x=>x.ToString().Contains("4GiB"))?? Enum.GetValues(pt).GetValue(0);
-                                args[i] = memVal;
-                            } else if(pn.Contains("vsyncmode")) {
-                                var v = Enum.GetValues(pt).Cast<object>().FirstOrDefault(x=>x.ToString().ToLower().Contains("switch"))?? Enum.GetValues(pt).GetValue(0);
-                                args[i] = v;
-                            } else if(pn.Contains("customvsync")) {
-                                args[i] = pt.IsEnum? Enum.GetValues(pt).GetValue(0) : GetDefault(pt);
-                            } else if(pn.Contains("gdbstubport")) { args[i] = (ushort)0; }
-                            else if(pn.Contains("fsglobalaccess")) {
-                                args[i] = pt.IsEnum? Enum.GetValues(pt).GetValue(0) : 0;
-                            } else if(pn.Contains("systemlanguage")) {
-                                var v = Enum.GetValues(pt).Cast<object>().FirstOrDefault(x=>x.ToString().Contains("American"))?? Enum.GetValues(pt).GetValue(0);
-                                args[i] = v;
-                            } else if(pn.Contains("region")) {
-                                var v = Enum.GetValues(pt).Cast<object>().FirstOrDefault(x=>x.ToString().Contains("Americas"))?? Enum.GetValues(pt).GetValue(0);
-                                args[i] = v;
-                            } else if(pn.Contains("memorymanagermode") || pn.Contains("aspectratio") || pn.Contains("multiplayermode") || pn.Contains("fsintegrity")) {
-                                args[i] = Enum.GetValues(pt).GetValue(0);
-                            } else if(pn.Contains("rend") || pn.Contains("gpu")) {
-                                AddLog($">> Criando GpuRenderer {pt.FullName}");
-                                try {
-                                    var allTypes = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a=>{try{return a.GetTypes();}catch{return new Type[0];}}).Concat(switchType.Assembly.GetTypes()).ToArray();
-                                    var rendererTypes = allTypes.Where(t=>!t.IsAbstract &&!t.IsInterface && pt.IsAssignableFrom(t)).Where(t=>t.Name.Contains("Vulkan") || t.Name.Contains("Dummy") || t.Name.Contains("Software") || t.Name.Contains("Gpu")).ToArray();
-                                    AddLog($">> Candidatos: {string.Join(",", rendererTypes.Select(t=>t.Name).Take(5))}");
-                                    if(rendererTypes.Length>0) {
-                                        args[i] = Activator.CreateInstance(rendererTypes[0]);
-                                        AddLog($">> GpuRenderer={rendererTypes[0].Name} OK!");
-                                    } else {
-                                        args[i] = Activator.CreateInstance(pt);
-                                    }
-                                } catch(Exception exR) { AddLog($">> GpuRenderer ERRO {exR.Message}"); args[i]=GetDefault(pt); }
-                            } else if(pn.Contains("dock")) { args[i] = true; }
-                            else if(pn.Contains("ptc")) { args[i] = true; }
-                            else if(pn.Contains("ticks")) { args[i] = (long)1; }
-                            else if(pn.Contains("timezone")) { args[i] = "UTC"; }
-                            else if(pn.Contains("audiovolume")) { args[i] = 1.0f; }
-                            else if(pn.Contains("timeoffset")) { args[i] = (long)0; }
-                            else if(pn.Contains("dirtyhacks")) { args[i] = Array.CreateInstance(pt.GetElementType(), 0); }
-                            else if(pn.Contains("hypervisor")) { args[i] = false; }
-                            else if(pn.Contains("gdbstub")) { args[i] = false; }
-                            else if(pn.Contains("suspendonstart")) { args[i] = false; }
-                            else if(pn.Contains("internet")) { args[i] = false; }
-                            else if(pn.Contains("ignore")) { args[i] = true; }
-                            else if(pn.Contains("disablep2p")) { args[i] = false; }
-                            else if(pt == typeof(bool)) { args[i] = false; }
-                            else if(pt == typeof(string)) { args[i] = ""; }
-                            else { args[i] = GetDefault(pt); }
-                            AddLog($"> arg[{i}] {pars[i].Name}={args[i]}");
-                        } catch(Exception exA) { args[i] = GetDefault(pt); AddLog($"> arg[{i}] ERRO {pars[i].Name}:{exA.Message}"); }
-                    }
-
-                    var hleConfig = ctor.Invoke(args);
-                    AddLog($">> HleConfiguration CRIADO com {pars.Length} params!");
-
-                    var gpuProp = hleConfigType.GetProperties().FirstOrDefault(p=>p.Name.ToLower().Contains("gpu"));
-                    if(gpuProp!=null) {
-                        var cur = gpuProp.GetValue(hleConfig);
-                        AddLog($"> prop {gpuProp.Name} = {(cur==null?"NULL":cur.GetType().Name)}");
-                        if(cur==null) {
-                            try {
-                                var allTypes = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a=>{try{return a.GetTypes();}catch{return new Type[0];}}).ToArray();
-                                var dummy = allTypes.FirstOrDefault(t=>t.Name=="DummyRenderer" || t.Name.Contains("VulkanRenderer"));
-                                if(dummy!=null) {
-                                    var inst = Activator.CreateInstance(dummy);
-                                    gpuProp.SetValue(hleConfig, inst);
-                                    AddLog($"> GpuRenderer SETADO para {dummy.Name}!");
-                                }
-                            } catch(Exception exG) { AddLog($"> SET GPU ERRO {exG.Message}"); }
-                        }
-                    }
-
-                    AddLog($"[3/5] Criando Switch(HleConfiguration)...");
-                    device = Activator.CreateInstance(switchType, new object[]{ hleConfig });
-                    AddLog($">> Switch OK! PASSOU DO GPU! 🔥");
-
-                    AddLog($"[4/5] LoadNsp: {Path.GetFileName(gamePath)}");
-                    var loadNsp = switchType.GetMethod("LoadNsp");
-                    var result = loadNsp.Invoke(device, new object[]{ gamePath });
-                    AddLog($">> LoadNsp = {result}");
-
-                    if(result is bool b && b) {
-                        AddLog($"[5/5] LOOP VIDEO COR! 🌈");
-                        RunOnUiThread(() => { log.Visibility = ViewStates.Gone; });
-                        var processFrame = switchType.GetMethod("ProcessFrame");
-                        var presentFrame = switchType.GetMethod("PresentFrame");
-                        while(true) {
-                            try { processFrame?.Invoke(device,null); presentFrame?.Invoke(device,null); System.Threading.Thread.Sleep(8); }
-                            catch(Exception exL) { AddLog($"Loop: {exL.InnerException?.Message}"); break; }
-                        }
-                    } else { AddLog($">> LoadNsp FALSO"); }
-                } catch (Exception ex) {
-                    AddLog($"ERRO GERAL V15: {ex.InnerException?.Message?? ex.Message}\n{ex.StackTrace?.Substring(0,2500)}");
-                }
-            });
-        }
-
-        public void SurfaceCreated(ISurfaceHolder holder) { AddLog("SurfaceCreated - Vulkan OK! Boot V15..."); surfaceReady = true; TryBoot(); }
-        public void SurfaceChanged(ISurfaceHolder holder, global::Android.Graphics.Format format, int w, int h) { }
-        public void SurfaceDestroyed(ISurfaceHolder holder) { surfaceReady = false; }
-    }
-}
+                            if(pn.Contains("memoryconfiguration")) args[i] = Enum.GetValues(pt).Cast<object>().FirstOrDefault(x=>x.ToString().Contains("4GiB"))?? Enum.GetValues(pt).GetValue(0);
+                            else if(pn.Contains("vsyncmode")) args[i] = Enum.GetValues(pt).Cast<object>().FirstOrDefault(x=>x.ToString().ToLower().Contains("switch"))?? Enum.GetValues(pt).GetValue(0);
+                            else if(pn.Contains("customvsync")) args[i] = pt.IsEnum? Enum.GetValues(pt).GetValue(0) : GetDefault(pt);
+                            else if(pn.Contains("gdbstubport")) args[i] = (ushort)0;
+                            else if(pn.Contains("fsglobalaccess")) args[i] = pt.IsEnum? Enum.GetValues(pt).GetValue(0) : 0;
+                            else if(pn.Contains("systemlanguage")) args[i] = Enum.GetValues(pt).Cast<object>().FirstOrDefault(x=>x.ToString().Contains("American"))?? Enum.GetValues(pt).GetValue(0);
+                            else if(pn.Contains("region")) args[i] = Enum.GetValues(pt).Cast<object>().FirstOrDefault(x=>x.ToString().Contains("Americas"))?? Enum.GetValues(pt).GetValue(0);
+                            else if(pn.Contains("memorymanagermode") || pn.Contains("aspectratio") || pn.Contains("multiplayermode") || pn.Contains("fsintegrity")) args[i] = Enum.GetValues(pt).GetValue(0);
+                            else if(pn.Contains("dock")) args[i] = true;
+                            else if(pn.Contains("ptc")) args[i] = true;
+                            else if(pn.Contains("ticks")) args[i] = (long)1;
+                            else if(pn.Contains("timezone")) args[i] = "UTC";
+                            else if(pn.Contains("audiovolume")) args[i] = 1.0f;
+                            else if
