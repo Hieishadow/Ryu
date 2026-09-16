@@ -3,10 +3,11 @@ using System.Linq;
 using System.Reflection;
 using Android.App;
 using Android.OS;
+using Android.Content.PM;
 
 namespace RyujinxAndroid
 {
-    [Activity(Label = "Ryujinx", MainLauncher = true)]
+    [Activity(Label = "Ryujinx", MainLauncher = true, ScreenOrientation = ScreenOrientation.Landscape)]
     public class MainActivity : Activity
     {
         protected override void OnCreate(Bundle savedInstanceState)
@@ -14,38 +15,42 @@ namespace RyujinxAndroid
             base.OnCreate(savedInstanceState);
             try
             {
-                var allAssemblies = AppDomain.CurrentDomain.GetAssemblies();
-                string log = "V17.2 HUNTER3\n\n";
-                var allTypes = allAssemblies.SelectMany(a => {
-                    try { return a.GetTypes(); } catch { return new Type[0]; }
-                }).ToList();
-
-                var renderers = allTypes.Where(t => t.Name.Contains("Renderer") && t.IsInterface).Take(10).ToList();
-                log += $"--- RENDERER ({renderers.Count}) ---\n";
-                foreach(var r in renderers)
+                string log = "V17.4 HUNTER4 - ALL REFS\n\n";
+                
+                // Carrega todos os referenciados
+                var loaded = AppDomain.CurrentDomain.GetAssemblies().ToList();
+                var refs = Assembly.GetExecutingAssembly().GetReferencedAssemblies();
+                log += $"Loaded:{loaded.Count} Refs:{refs.Length}\n";
+                
+                foreach(var r in refs)
                 {
-                    log += $"{r.FullName}\n";
-                    foreach(var m in r.GetMethods())
-                        log += $" {m.ReturnType.Name} {m.Name}({string.Join(",", m.GetParameters().Select(p=>p.ParameterType.Name))})\n";
+                    try {
+                        if(!loaded.Any(a=>a.GetName().Name==r.Name))
+                            loaded.Add(Assembly.Load(r));
+                        log += $"OK {r.Name}\n";
+                    } catch(Exception ex){ log += $"FAIL {r.Name} {ex.Message}\n"; }
                 }
 
-                var windows = allTypes.Where(t => t.Name.Contains("IWindow") && t.IsInterface).Take(10).ToList();
-                log += $"\n--- WINDOW ({windows.Count}) ---\n";
+                var allTypes = loaded.SelectMany(a => { try { return a.GetTypes(); } catch { return new Type[0]; }}).ToList();
+                log += $"\nTotal Types:{allTypes.Count}\n";
+
+                var renderers = allTypes.Where(t => t.FullName != null && t.FullName.Contains("Ryujinx") && t.Name.Contains("IRenderer")).ToList();
+                log += $"\n--- IRenderer ({renderers.Count}) ---\n";
+                foreach(var r in renderers)
+                {
+                    log += $"{r.FullName} Int:{r.IsInterface}\n";
+                    if(r.IsInterface)
+                        foreach(var m in r.GetMethods())
+                            log += $" {m.ReturnType.Name} {m.Name}({string.Join(",", m.GetParameters().Select(p=>p.ParameterType.Name))})\n";
+                }
+
+                var windows = allTypes.Where(t => t.FullName != null && t.FullName.Contains("Ryujinx") && t.Name.Contains("IWindow")).Take(5).ToList();
+                log += $"\n--- IWindow ({windows.Count}) ---\n";
                 foreach(var w in windows)
                 {
                     log += $"{w.FullName}\n";
-                    foreach(var m in w.GetMethods())
+                    foreach(var m in w.GetMethods().Take(10))
                         log += $" {m.ReturnType.Name} {m.Name}()\n";
-                }
-
-                var audios = allTypes.Where(t => t.Name.Contains("Audio") && t.IsInterface && t.Name.Contains("Render")).Take(10).ToList();
-                log += $"\n--- AUDIO ({audios.Count}) ---\n";
-                foreach(var a in audios) log += $"{a.FullName}\n";
-
-                if(renderers.Count==0) {
-                    log += "\n--- FALLBACK IRenderer ---\n";
-                    foreach(var t in allTypes.Where(t=>t.Name.Contains("IRenderer")).Take(20))
-                        log += $"{t.FullName} IsInterface:{t.IsInterface}\n";
                 }
 
                 Android.Util.Log.Error("RYU_HUNTER", log);
