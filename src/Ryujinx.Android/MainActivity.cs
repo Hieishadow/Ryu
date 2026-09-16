@@ -4,7 +4,6 @@ using Android.Widget;
 using System.IO;
 using Android.Content;
 using Android.Content.PM;
-using Android;
 using Env = Android.OS.Environment;
 
 namespace Ryujinx.Android
@@ -36,12 +35,19 @@ namespace Ryujinx.Android
             if (Build.VERSION.SdkInt >= BuildVersionCodes.R) {
                 if (!Env.IsExternalStorageManager) {
                     Toast.MakeText(this, "DragoNX precisa de permissão igual Strato", ToastLength.Long).Show();
-                    try { var intent = new Intent(Android.Provider.Settings.ActionManageAppAllFilesAccessPermission); intent.SetData(Android.Net.Uri.Parse("package:"+PackageName)); StartActivity(intent); }
-                    catch { var intent2 = new Intent(Android.Provider.Settings.ActionManageAllFilesAccessPermission); StartActivity(intent2); }
+                    try { 
+                        var intent = new Intent(global::Android.Provider.Settings.ActionManageAppAllFilesAccessPermission); 
+                        intent.SetData(global::Android.Net.Uri.Parse("package:"+PackageName)); 
+                        StartActivity(intent); 
+                    }
+                    catch { 
+                        var intent2 = new Intent(global::Android.Provider.Settings.ActionManageAllFilesAccessPermission); 
+                        StartActivity(intent2); 
+                    }
                 }
             } else {
-                if (CheckSelfPermission(Manifest.Permission.ReadExternalStorage) != Permission.Granted)
-                    RequestPermissions(new string[]{Manifest.Permission.ReadExternalStorage, Manifest.Permission.WriteExternalStorage}, 1);
+                if (CheckSelfPermission(global::Android.Manifest.Permission.ReadExternalStorage) != Permission.Granted)
+                    RequestPermissions(new string[]{global::Android.Manifest.Permission.ReadExternalStorage, global::Android.Manifest.Permission.WriteExternalStorage}, 1);
             }
         }
         void Listar() {
