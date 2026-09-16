@@ -12,7 +12,7 @@ using Ryujinx.HLE;
 
 namespace Ryujinx.Android
 {
-    [Activity(Label = "DragoNX Fafnir V15.1 SCROLL", MainLauncher = true, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape)]
+    [Activity(Label = "DragoNX Fafnir V15.2 SCROLL", MainLauncher = true, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape)]
     public class MainActivity : Activity
     {
         string basePath = ""; LinearLayout lista = null!;
@@ -31,7 +31,7 @@ namespace Ryujinx.Android
             var root = new LinearLayout(this){ Orientation = Orientation.Vertical };
             root.SetPadding(30,20,30,20);
             lista = new LinearLayout(this){ Orientation = Orientation.Vertical };
-            root.AddView(new TextView(this){ Text="DragoNX Fafnir V15.1 - SCROLL FIX\n", TextSize=18f });
+            root.AddView(new TextView(this){ Text="DragoNX Fafnir V15.2 - SCROLL FIX\n", TextSize=18f });
             root.AddView(lista);
             scroll.AddView(root);
             SetContentView(scroll);
@@ -43,12 +43,12 @@ namespace Ryujinx.Android
             var fw = Path.Combine(basePath, "firmware");
             var key = Path.Combine(basePath, "keys", "prod.keys");
             int fwCount = Directory.Exists(fw)? Directory.GetFiles(fw,"*",SearchOption.AllDirectories).Length : 0;
-            lista.AddView(new TextView(this){ Text=$"Keys: {(File.Exists(key)?"OK":"FALTA")} | Firmware: {(fwCount>10?$"OK {fwCount}":"FALTA")}\n" });
+            lista.AddView(new TextView(this){ Text="Keys: "+(File.Exists(key)?"OK":"FALTA")+" | Firmware: "+(fwCount>10? "OK "+fwCount:"FALTA")+"\n" });
             try {
                 var bases = Directory.GetFiles(games, "*.nsp").Where(x => x.Contains("[v0]")).ToArray();
-                lista.AddView(new TextView(this){ Text=$"JOGOS BASE ({bases.Length}) - V15.1:" });
+                lista.AddView(new TextView(this){ Text="JOGOS BASE ("+bases.Length+") - V15.2:" });
                 foreach(var f in bases) {
-                    var btn = new Button(this){ Text = "🌈 "+Path.GetFileName(f)+" [V15.1 SCROLL]" };
+                    var btn = new Button(this){ Text = " "+Path.GetFileName(f)+" [V15.2]" };
                     btn.Click += (s,e) => { var i = new global::Android.Content.Intent(this, typeof(GameActivity)); i.PutExtra("gamePath", f); i.PutExtra("basePath", basePath); StartActivity(i); };
                     lista.AddView(btn);
                 }
@@ -56,7 +56,7 @@ namespace Ryujinx.Android
         }
     }
 
-    [Activity(Label = "DragoNX Game V15.1", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape, ConfigurationChanges = global::Android.Content.PM.ConfigChanges.Orientation | global::Android.Content.PM.ConfigChanges.KeyboardHidden | global::Android.Content.PM.ConfigChanges.ScreenSize)]
+    [Activity(Label = "DragoNX Game V15.2", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape, ConfigurationChanges = global::Android.Content.PM.ConfigChanges.Orientation | global::Android.Content.PM.ConfigChanges.KeyboardHidden | global::Android.Content.PM.ConfigChanges.ScreenSize)]
     public class GameActivity : Activity, ISurfaceHolderCallback
     {
         TextView log = null!; SurfaceView surfaceView = null!;
@@ -71,21 +71,18 @@ namespace Ryujinx.Android
             basePath = Intent.GetStringExtra("basePath")!;
             logFile = Path.Combine(basePath, "log_V15.txt");
             var layout = new LinearLayout(this){ Orientation = Orientation.Vertical };
-
-            log = new TextView(this){ TextSize=7f, Text=$"Fafnir V15.1 - GPU FIX SCROLL\n{Path.GetFileName(gamePath)}\n" };
+            log = new TextView(this){ TextSize=7f, Text="Fafnir V15.2 SCROLL\n"+Path.GetFileName(gamePath)+"\n" };
             log.SetTextIsSelectable(true);
             scrollLog = new ScrollView(this);
             var lpScroll = new LinearLayout.LayoutParams(-1, 0); lpScroll.Weight = 1;
             scrollLog.LayoutParameters = lpScroll;
             scrollLog.AddView(log);
-
             surfaceView = new SurfaceView(this);
             surfaceView.Holder.AddCallback(this);
             var lp = new LinearLayout.LayoutParams(-1, 300);
             surfaceView.LayoutParameters = lp;
             surfaceView.SetBackgroundColor(global::Android.Graphics.Color.Black);
-
-            var btnLog = new Button(this){ Text="VER LOG COMPLETO (arquivo)" };
+            var btnLog = new Button(this){ Text="VER LOG COMPLETO" };
             btnLog.Click += (s,e) => {
                 try{
                     var txt = File.Exists(logFile)? File.ReadAllText(logFile) : log.Text;
@@ -94,14 +91,13 @@ namespace Ryujinx.Android
                 } catch{}
             };
             var btnSair = new Button(this){ Text="SAIR" };
-            btnSair.Click += (s,e) => { try{ device?.GetType().GetMethod("Dispose")?.Invoke(device,null); } catch{} Finish(); };
-
+            btnSair.Click += (s,ev) => { try{ device?.GetType().GetMethod("Dispose")?.Invoke(device,null); } catch{} Finish(); };
             layout.AddView(scrollLog);
             layout.AddView(surfaceView);
             layout.AddView(btnLog);
             layout.AddView(btnSair);
             SetContentView(layout);
-            try{ File.WriteAllText(logFile, $"START V15.1 {DateTime.Now}\nGame: {gamePath}\n"); } catch{}
+            try{ File.WriteAllText(logFile, "START V15.2 "+DateTime.Now+"\nGame: "+gamePath+"\n"); } catch{}
         }
 
         void AddLog(string s) {
@@ -113,17 +109,17 @@ namespace Ryujinx.Android
         }
 
         object GetDefault(Type t) {
-            if(t.IsEnum) { var vals = Enum.GetValues(t); return vals.Length>0? vals.GetValue(0): Activator.CreateInstance(t); }
+            if(t.IsEnum) { var vals = Enum.GetValues(t); if(vals.Length>0) return vals.GetValue(0); return Activator.CreateInstance(t); }
             if(t == typeof(string)) return "";
             if(t == typeof(bool)) return false;
             if(t == typeof(int)) return 0;
             if(t == typeof(long)) return (long)0;
-            if(t == typeof(short) || t == typeof(ushort)) return (ushort)0;
-            if(t == typeof(uint) || t == typeof(ulong)) return Activator.CreateInstance(t);
+            if(t == typeof(ushort)) return (ushort)0;
+            if(t == typeof(short)) return (short)0;
             if(t == typeof(float)) return 1.0f;
             if(t == typeof(double)) return 1.0;
             if(t.IsValueType) { try{ return Activator.CreateInstance(t); } catch { return null; } }
-            if(t.IsArray) return Array.CreateInstance(t.GetElementType(), 0);
+            if(t.IsArray) { try{ return Array.CreateInstance(t.GetElementType(), 0); } catch { return null; } }
             try{ return Activator.CreateInstance(t); } catch { return null; }
         }
 
@@ -132,34 +128,132 @@ namespace Ryujinx.Android
             if(!surfaceReady) return;
             Task.Run(() => {
                 try {
-                    AddLog($"[1/5] Keys: 16025 bytes OK | FW: 229 files OK");
-                    AddLog($"[2/5] Criando HleConfiguration V15.1...");
-
+                    AddLog("[1/5] Keys OK | FW OK");
+                    AddLog("[2/5] Criando HleConfiguration V15.2");
                     var switchType = typeof(Ryujinx.HLE.Switch);
                     var hleConfigType = switchType.Assembly.GetTypes().First(t=>t.Name=="HleConfiguration");
                     var ctors = hleConfigType.GetConstructors();
-                    AddLog($"> Achados {ctors.Length} ctors HleConfiguration");
-                    foreach(var c in ctors) AddLog($"> ctor {c.GetParameters().Length}: {string.Join(",", c.GetParameters().Select(p=>p.Name))}");
-
+                    AddLog("Achados "+ctors.Length+" ctors HleConfig");
+                    for(int cc=0; cc<ctors.Length; cc++) {
+                        var pp = ctors[cc].GetParameters();
+                        string names = "";
+                        for(int k=0;k<pp.Length;k++) names += pp[k].Name+",";
+                        AddLog("ctor "+pp.Length+": "+names);
+                    }
                     var ctor = ctors.OrderByDescending(c=>c.GetParameters().Length).First();
                     var pars = ctor.GetParameters();
                     object[] args = new object[pars.Length];
-
                     for(int i=0;i<pars.Length;i++) {
                         var pt = pars[i].ParameterType;
                         var pn = pars[i].Name.ToLower();
                         try {
-                            if(pn.Contains("memoryconfiguration")) args[i] = Enum.GetValues(pt).Cast<object>().FirstOrDefault(x=>x.ToString().Contains("4GiB"))?? Enum.GetValues(pt).GetValue(0);
-                            else if(pn.Contains("vsyncmode")) args[i] = Enum.GetValues(pt).Cast<object>().FirstOrDefault(x=>x.ToString().ToLower().Contains("switch"))?? Enum.GetValues(pt).GetValue(0);
-                            else if(pn.Contains("customvsync")) args[i] = pt.IsEnum? Enum.GetValues(pt).GetValue(0) : GetDefault(pt);
-                            else if(pn.Contains("gdbstubport")) args[i] = (ushort)0;
-                            else if(pn.Contains("fsglobalaccess")) args[i] = pt.IsEnum? Enum.GetValues(pt).GetValue(0) : 0;
-                            else if(pn.Contains("systemlanguage")) args[i] = Enum.GetValues(pt).Cast<object>().FirstOrDefault(x=>x.ToString().Contains("American"))?? Enum.GetValues(pt).GetValue(0);
-                            else if(pn.Contains("region")) args[i] = Enum.GetValues(pt).Cast<object>().FirstOrDefault(x=>x.ToString().Contains("Americas"))?? Enum.GetValues(pt).GetValue(0);
-                            else if(pn.Contains("memorymanagermode") || pn.Contains("aspectratio") || pn.Contains("multiplayermode") || pn.Contains("fsintegrity")) args[i] = Enum.GetValues(pt).GetValue(0);
-                            else if(pn.Contains("dock")) args[i] = true;
-                            else if(pn.Contains("ptc")) args[i] = true;
-                            else if(pn.Contains("ticks")) args[i] = (long)1;
-                            else if(pn.Contains("timezone")) args[i] = "UTC";
-                            else if(pn.Contains("audiovolume")) args[i] = 1.0f;
-                            else if
+                            if(pn.Contains("memoryconfiguration")) {
+                                var all = Enum.GetValues(pt);
+                                object sel = all.GetValue(0);
+                                foreach(var v in all) { if(v.ToString().Contains("4GiB")) { sel=v; break; } }
+                                args[i]=sel;
+                            } else if(pn.Contains("vsyncmode")) {
+                                var all = Enum.GetValues(pt);
+                                object sel = all.GetValue(0);
+                                foreach(var v in all) { if(v.ToString().ToLower().Contains("switch")) { sel=v; break; } }
+                                args[i]=sel;
+                            } else if(pn.Contains("customvsync")) {
+                                if(pt.IsEnum) args[i]=Enum.GetValues(pt).GetValue(0);
+                                else args[i]=GetDefault(pt);
+                            } else if(pn.Contains("gdbstubport")) { args[i]=(ushort)0; }
+                            else if(pn.Contains("fsglobalaccess")) {
+                                if(pt.IsEnum) args[i]=Enum.GetValues(pt).GetValue(0);
+                                else args[i]=0;
+                            } else if(pn.Contains("systemlanguage")) {
+                                var all = Enum.GetValues(pt);
+                                object sel = all.GetValue(0);
+                                foreach(var v in all) { if(v.ToString().Contains("American")) { sel=v; break; } }
+                                args[i]=sel;
+                            } else if(pn.Contains("region")) {
+                                var all = Enum.GetValues(pt);
+                                object sel = all.GetValue(0);
+                                foreach(var v in all) { if(v.ToString().Contains("Americas")) { sel=v; break; } }
+                                args[i]=sel;
+                            } else if(pn.Contains("memorymanagermode") || pn.Contains("aspectratio") || pn.Contains("multiplayermode") || pn.Contains("fsintegrity")) {
+                                args[i]=Enum.GetValues(pt).GetValue(0);
+                            } else if(pn.Contains("dock")) args[i]=true;
+                            else if(pn.Contains("ptc")) args[i]=true;
+                            else if(pn.Contains("ticks")) args[i]=(long)1;
+                            else if(pn.Contains("timezone")) args[i]="UTC";
+                            else if(pn.Contains("audiovolume")) args[i]=1.0f;
+                            else if(pn.Contains("timeoffset")) args[i]=(long)0;
+                            else if(pn.Contains("dirtyhacks")) args[i]=Array.CreateInstance(pt.GetElementType(), 0);
+                            else if(pn.Contains("hypervisor")) args[i]=false;
+                            else if(pn.Contains("gdbstub")) args[i]=false;
+                            else if(pn.Contains("suspendonstart")) args[i]=false;
+                            else if(pn.Contains("internet")) args[i]=false;
+                            else if(pn.Contains("ignore")) args[i]=true;
+                            else if(pn.Contains("disablep2p")) args[i]=false;
+                            else if(pt == typeof(bool)) args[i]=false;
+                            else if(pt == typeof(string)) args[i]="";
+                            else args[i]=GetDefault(pt);
+                            AddLog("arg["+i+"] "+pars[i].Name+"="+args[i]+" ("+pt.Name+")");
+                        } catch(Exception exA) { args[i]=GetDefault(pt); AddLog("arg["+i+"] ERRO "+pars[i].Name+":"+exA.Message); }
+                    }
+                    var hleConfig = ctor.Invoke(args);
+                    AddLog(">> HleConfiguration CRIADO com "+pars.Length+" params!");
+                    var props = hleConfigType.GetProperties();
+                    string propNames = "";
+                    for(int p=0;p<props.Length && p<20; p++) propNames+=props[p].Name+",";
+                    AddLog("Props HleConfig ("+props.Length+"): "+propNames);
+                    var gpuProp = props.FirstOrDefault(p=>p.Name.ToLower().Contains("gpu"));
+                    if(gpuProp!=null) {
+                        var cur = gpuProp.GetValue(hleConfig);
+                        string curName = cur==null? "NULL" : cur.GetType().Name;
+                        AddLog("prop "+gpuProp.Name+" = "+curName+" type="+gpuProp.PropertyType.FullName);
+                    }
+                    var switchCtors = switchType.GetConstructors();
+                    AddLog("Switch ctors ("+switchCtors.Length+"):");
+                    for(int sc=0; sc<switchCtors.Length; sc++) {
+                        var ps = switchCtors[sc].GetParameters();
+                        string ss = "";
+                        for(int j=0;j<ps.Length;j++) ss+=ps[j].ParameterType.Name+" "+ps[j].Name+",";
+                        AddLog("Switch ctor "+ps.Length+": "+ss);
+                    }
+                    AddLog("[3/5] Criando Switch(HleConfiguration)...");
+                    try {
+                        device = Activator.CreateInstance(switchType, new object[]{ hleConfig });
+                        AddLog(">> Switch OK! PASSOU DO GPU! 🔥");
+                    } catch(Exception exSw) {
+                        AddLog(">> Switch ERRO: "+(exSw.InnerException!=null? exSw.InnerException.Message : exSw.Message));
+                        AddLog(">> Tentando outros ctors do Switch...");
+                        for(int sc=0; sc<switchCtors.Length; sc++) {
+                            try {
+                                var ps = switchCtors[sc].GetParameters();
+                                object[] sArgs = new object[ps.Length];
+                                for(int j=0;j<ps.Length;j++) {
+                                    if(ps[j].ParameterType == hleConfigType) sArgs[j]=hleConfig;
+                                    else sArgs[j]=GetDefault(ps[j].ParameterType);
+                                }
+                                device = switchCtors[sc].Invoke(sArgs);
+                                AddLog(">> Switch OK com ctor "+ps.Length+" params!");
+                                break;
+                            } catch(Exception ex2) {
+                                string msg = ex2.InnerException!=null? ex2.InnerException.Message : ex2.Message;
+                                AddLog("ctor fail: "+msg);
+                            }
+                        }
+                    }
+                    if(device!=null) {
+                        AddLog("[4/5] LoadNsp: "+Path.GetFileName(gamePath));
+                        var loadNsp = switchType.GetMethod("LoadNsp");
+                        var result = loadNsp.Invoke(device, new object[]{ gamePath });
+                        AddLog(">> LoadNsp = "+result);
+                    } else AddLog(">> device NULL");
+                } catch (Exception ex) {
+                    string msg = ex.InnerException!=null? ex.InnerException.Message : ex.Message;
+                    AddLog("ERRO GERAL V15.2: "+msg);
+                }
+            });
+        }
+
+        public void SurfaceCreated(ISurfaceHolder holder) { AddLog("SurfaceCreated - Vulkan OK! Boot V15.2..."); surfaceReady = true; TryBoot(); }
+        public void SurfaceChanged(ISurfaceHolder holder, global::Android.Graphics.Format format, int w, int h) { }
+        public void SurfaceDestroyed(ISurfaceHolder holder) { surfaceReady = false; }
+    }
+}
