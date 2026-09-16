@@ -7,15 +7,33 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - uses: actions/setup-dotnet@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-      - run: dotnet workload install android
-      - uses: android-actions/setup-android@v3
+
+      - name: Install Android workload
+        run: dotnet workload install android
+
+      - name: Setup Android SDK
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
+
       - name: Build APK
         run: |
-          dotnet publish src/Ryujinx/Ryujinx.csproj -c Release -r android-arm64 -p:AndroidPackageFormat=apk -p:RunAOTCompilation=true -p:PublishTrimmed=false -f net8.0-android || dotnet build Ryujinx.sln -c Release
-      - uses: actions/upload-artifact@v4
+          dotnet publish src/Ryujinx/Ryujinx.csproj -c Release -r android-arm64 -p:AndroidPackageFormat=apk -p:RunAOTCompilation=true -p:PublishTrimmed=false -f net8.0-android || dotnet build Ryujinx.sln -c Release -v minimal
+
+      - name: Upload APK
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: Ryubing-Android-ARM64
           path: "**/*.apk"
