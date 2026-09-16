@@ -9,11 +9,10 @@ using System.Threading.Tasks;
 using System;
 using System.Reflection;
 using Ryujinx.HLE;
-using Ryujinx.HLE.FileSystem;
 
 namespace Ryujinx.Android
 {
-    [Activity(Label = "DragoNX Fafnir V10.2", MainLauncher = true, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape)]
+    [Activity(Label = "DragoNX Fafnir V11 VIDEO", MainLauncher = true, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape)]
     public class MainActivity : Activity
     {
         string basePath = ""; LinearLayout lista = null!;
@@ -32,7 +31,7 @@ namespace Ryujinx.Android
             var root = new LinearLayout(this){ Orientation = Orientation.Vertical };
             root.SetPadding(30,20,30,20);
             lista = new LinearLayout(this){ Orientation = Orientation.Vertical };
-            root.AddView(new TextView(this){ Text="DragoNX Fafnir V10.2 VIDEO\n", TextSize=18f });
+            root.AddView(new TextView(this){ Text="DragoNX Fafnir V11 - VIDEO FINAL\n", TextSize=18f });
             root.AddView(lista);
             scroll.AddView(root);
             SetContentView(scroll);
@@ -47,9 +46,9 @@ namespace Ryujinx.Android
             lista.AddView(new TextView(this){ Text=$"Keys: {(File.Exists(key)?"OK":"FALTA")} | Firmware: {(fwCount>10?$"OK {fwCount}":"FALTA")}\n" });
             try {
                 var bases = Directory.GetFiles(games, "*.nsp").Where(x => x.Contains("[v0]")).ToArray();
-                lista.AddView(new TextView(this){ Text=$"JOGOS BASE ({bases.Length}) - CLICA PRA VIDEO:" });
+                lista.AddView(new TextView(this){ Text=$"JOGOS BASE ({bases.Length}) - VIDEO FINAL:" });
                 foreach(var f in bases) {
-                    var btn = new Button(this){ Text = "▶ "+Path.GetFileName(f)+" [V10.2 VIDEO]" };
+                    var btn = new Button(this){ Text = "🌈 "+Path.GetFileName(f)+" [V11 COR]" };
                     btn.Click += (s,e) => { var i = new global::Android.Content.Intent(this, typeof(GameActivity)); i.PutExtra("gamePath", f); i.PutExtra("basePath", basePath); StartActivity(i); };
                     lista.AddView(btn);
                 }
@@ -57,7 +56,7 @@ namespace Ryujinx.Android
         }
     }
 
-    [Activity(Label = "DragoNX Game V10.2", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape, ConfigurationChanges = global::Android.Content.PM.ConfigChanges.Orientation | global::Android.Content.PM.ConfigChanges.KeyboardHidden | global::Android.Content.PM.ConfigChanges.ScreenSize)]
+    [Activity(Label = "DragoNX Game V11", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape, ConfigurationChanges = global::Android.Content.PM.ConfigChanges.Orientation | global::Android.Content.PM.ConfigChanges.KeyboardHidden | global::Android.Content.PM.ConfigChanges.ScreenSize)]
     public class GameActivity : Activity, ISurfaceHolderCallback
     {
         TextView log = null!; SurfaceView surfaceView = null!;
@@ -70,14 +69,14 @@ namespace Ryujinx.Android
             gamePath = Intent.GetStringExtra("gamePath")!;
             basePath = Intent.GetStringExtra("basePath")!;
             var layout = new LinearLayout(this){ Orientation = Orientation.Vertical };
-            log = new TextView(this){ TextSize=8f, Text=$"Fafnir V10.2 - VIDEO REFLECTION\n{Path.GetFileName(gamePath)}\nAguardando Vulkan...\n" };
+            log = new TextView(this){ TextSize=8f, Text=$"Fafnir V11 - VIDEO FINAL COR\n{Path.GetFileName(gamePath)}\nAguardando Vulkan...\n" };
             surfaceView = new SurfaceView(this);
             surfaceView.Holder.AddCallback(this);
             var lp = new LinearLayout.LayoutParams(-1, 0); lp.Weight = 1;
             surfaceView.LayoutParameters = lp;
             surfaceView.SetBackgroundColor(global::Android.Graphics.Color.Black);
             var btnVoltar = new Button(this){ Text="VOLTAR" };
-            btnVoltar.Click += (s,e) => { try{ var m=device?.GetType().GetMethod("Stop"); m?.Invoke(device,null); } catch{} Finish(); };
+            btnVoltar.Click += (s,e) => { try{ device?.GetType().GetMethod("Dispose")?.Invoke(device,null); } catch{} Finish(); };
             layout.AddView(log); layout.AddView(surfaceView); layout.AddView(btnVoltar);
             SetContentView(layout);
         }
@@ -89,67 +88,89 @@ namespace Ryujinx.Android
             if(!surfaceReady) return;
             Task.Run(() => {
                 try {
-                    AddLog($"[1/5] Keys: {new FileInfo(Path.Combine(basePath,"keys","prod.keys")).Length} bytes");
-                    AddLog($"[2/5] Firmware: {Directory.GetFiles(Path.Combine(basePath,"firmware"),"*",SearchOption.AllDirectories).Length} files");
+                    AddLog($"[1/4] Keys: {new FileInfo(Path.Combine(basePath,"keys","prod.keys")).Length} bytes");
+                    AddLog($"[2/4] Firmware: {Directory.GetFiles(Path.Combine(basePath,"firmware"),"*",SearchOption.AllDirectories).Length} files");
+                    AddLog($"[3/4] Criando HleConfiguration...");
 
-                    AddLog($"[3/5] Investigando Ryujinx.HLE.Switch...");
-                    var switchType = typeof(Ryujinx.HLE.Switch);
-                    AddLog($"> Type: {switchType.FullName}");
+                    // Descobre HleConfiguration
+                    var hleConfigType = typeof(Ryujinx.HLE.Switch).Assembly.GetTypes().FirstOrDefault(t=>t.Name=="HleConfiguration");
+                    if(hleConfigType==null) { AddLog("ERRO: HleConfiguration nao achado"); return; }
+                    AddLog($"> HleConfiguration Type: {hleConfigType.FullName}");
 
-                    var ctors = switchType.GetConstructors();
-                    AddLog($"> Construtores: {ctors.Length}");
-                    foreach(var c in ctors) {
-                        AddLog($">> ctor({string.Join(", ", c.GetParameters().Select(p=>p.ParameterType.Name+" "+p.Name))})");
+                    var hleCtors = hleConfigType.GetConstructors();
+                    foreach(var c in hleCtors) {
+                        AddLog($">> HleConfig ctor({string.Join(", ", c.GetParameters().Select(p=>p.ParameterType.Name+" "+p.Name))})");
                     }
 
-                    var methods = switchType.GetMethods(BindingFlags.Public|BindingFlags.Instance).Where(m=>!m.IsSpecialName).Select(m=>m.Name).Distinct().OrderBy(x=>x).ToArray();
-                    AddLog($"> Metodos ({methods.Length}): {string.Join(", ", methods.Take(20))}...");
-
-                    AddLog($"[4/5] Criando VFS...");
-                    var vfs = Activator.CreateInstance(typeof(VirtualFileSystem)) as VirtualFileSystem;
-                    AddLog($"> VFS: OK");
-
-                    AddLog($"[5/5] Criando Switch via reflection...");
-                    // Tenta criar com o primeiro construtor que achar
-                    var ctor = ctors.FirstOrDefault();
-                    if(ctor!= null) {
-                        var ps = ctor.GetParameters();
+                    // Tenta criar HleConfiguration - construtor mais simples
+                    object hleConfig = null!;
+                    var ctor0 = hleCtors.OrderBy(c=>c.GetParameters().Length).FirstOrDefault();
+                    if(ctor0!=null) {
+                        var ps = ctor0.GetParameters();
                         object[] args = new object[ps.Length];
                         for(int i=0;i<ps.Length;i++) {
-                            if(ps[i].ParameterType == typeof(VirtualFileSystem)) args[i]=vfs;
-                            else if(ps[i].ParameterType.IsValueType) args[i]=Activator.CreateInstance(ps[i].ParameterType);
-                            else args[i]=null;
-                        }
-                        device = ctor.Invoke(args);
-                        AddLog($">> Switch criado! Type: {device.GetType().Name}");
-
-                        // Tenta LoadApplication via reflection
-                        var loadM = switchType.GetMethod("LoadApplication")?? switchType.GetMethod("Load")?? switchType.GetMethods().FirstOrDefault(m=>m.Name.Contains("Load"));
-                        if(loadM!= null) {
-                            AddLog($">> Achou metodo: {loadM.Name}({string.Join(",", loadM.GetParameters().Select(p=>p.ParameterType.Name))})");
-                            var result = loadM.Invoke(device, new object[]{ gamePath });
-                            AddLog($">> Load result: {result}");
-
-                            var runM = switchType.GetMethod("Run")?? switchType.GetMethod("Start")?? switchType.GetMethods().FirstOrDefault(m=>m.Name.Contains("Run"));
-                            if(runM!= null) {
-                                AddLog($">> BOOTANDO VIDEO! Metodo: {runM.Name}");
-                                RunOnUiThread(() => { log.Visibility = ViewStates.Gone; });
-                                runM.Invoke(device, null);
+                            var pt = ps[i].ParameterType;
+                            if(pt.Name.Contains("VirtualFileSystem") || pt.Name=="VirtualFileSystem") {
+                                var vfsType = pt;
+                                var vfs = Activator.CreateInstance(vfsType);
+                                args[i]=vfs;
+                                AddLog($">> VFS criado pro HleConfig");
+                            } else if(pt.IsValueType) {
+                                args[i]=Activator.CreateInstance(pt);
                             } else {
-                                AddLog($">> Sem metodo Run/Start - lista metodos acima");
+                                args[i]=null;
                             }
-                        } else {
-                            AddLog($">> Nao achou LoadApplication - veja lista");
+                        }
+                        hleConfig = ctor0.Invoke(args);
+                        AddLog($">> HleConfig criado!");
+                    }
+
+                    AddLog($"[4/4] Criando Switch(HleConfiguration)...");
+                    var switchType = typeof(Ryujinx.HLE.Switch);
+                    device = Activator.CreateInstance(switchType, new object[]{ hleConfig });
+                    AddLog($">> Switch OK!");
+
+                    AddLog($"[5/5] LoadNsp: {Path.GetFileName(gamePath)}");
+                    var loadNsp = switchType.GetMethod("LoadNsp");
+                    var result = loadNsp.Invoke(device, new object[]{ gamePath });
+                    AddLog($">> LoadNsp result: {result}");
+
+                    // Se carregou, tenta loop de video
+                    AddLog($">> Iniciando LOOP VIDEO COLORIDO!");
+                    AddLog($">> PresentFrame / ProcessFrame no Surface...");
+                    RunOnUiThread(() => { log.Visibility = ViewStates.Gone; });
+
+                    // Loop basico de render
+                    var processFrame = switchType.GetMethod("ProcessFrame");
+                    var presentFrame = switchType.GetMethod("PresentFrame");
+                    var consume = switchType.GetMethod("ConsumeFrameAvailable");
+
+                    while(true) {
+                        try {
+                            bool hasFrame = false;
+                            if(consume!=null) {
+                                var r = consume.Invoke(device, null);
+                                if(r is bool b) hasFrame = b;
+                            } else hasFrame = true;
+
+                            if(hasFrame) {
+                                processFrame?.Invoke(device, null);
+                                presentFrame?.Invoke(device, null);
+                            }
+                            System.Threading.Thread.Sleep(16); // ~60fps
+                        } catch(Exception exLoop) {
+                            AddLog($"Loop erro: {exLoop.InnerException?.Message}");
+                            break;
                         }
                     }
 
                 } catch (Exception ex) {
-                    AddLog($"ERRO V10.2: {ex.InnerException?.Message?? ex.Message}\n{ex.StackTrace?.Substring(0,1000)}");
+                    AddLog($"ERRO V11: {ex.InnerException?.Message?? ex.Message}\n{ex.InnerException?.StackTrace?.Substring(0,800)}\n{ex.StackTrace?.Substring(0,800)}");
                 }
             });
         }
 
-        public void SurfaceCreated(ISurfaceHolder holder) { AddLog("SurfaceCreated - Vulkan OK! Investigando..."); surfaceReady = true; TryBoot(); }
+        public void SurfaceCreated(ISurfaceHolder holder) { AddLog("SurfaceCreated - Vulkan OK! Bootando V11..."); surfaceReady = true; TryBoot(); }
         public void SurfaceChanged(ISurfaceHolder holder, global::Android.Graphics.Format format, int w, int h) { }
         public void SurfaceDestroyed(ISurfaceHolder holder) { surfaceReady = false; }
     }
