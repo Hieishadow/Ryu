@@ -1,3 +1,4 @@
+using Android.App;
 using Android.Content.PM;
 using Android.OS;
 using Android.Views;
@@ -5,7 +6,10 @@ using Android.Widget;
 using System.IO;
 using System.Linq;
 using System;
-using Android;
+
+[assembly: UsesPermission(Android.Manifest.Permission.ReadExternalStorage)]
+[assembly: UsesPermission(Android.Manifest.Permission.WriteExternalStorage)]
+[assembly: UsesPermission(Android.Manifest.Permission.ManageExternalStorage)]
 
 namespace Ryujinx.Android
 {
@@ -29,15 +33,19 @@ namespace Ryujinx.Android
             try{ Directory.CreateDirectory(romPath1); Directory.CreateDirectory(System.IO.Path.Combine(romPath1,"keys")); }catch{}
             try{ Directory.CreateDirectory(romPath2); }catch{}
 
-            // Pede permissão de arquivos
             if(Build.VERSION.SdkInt >= BuildVersionCodes.R){
                 try{
                     if(!global::Android.OS.Environment.IsExternalStorageManager){
-                        var intent = new global::Android.Content.Intent(global::Android.Provider.Settings.ActionManageAppAllFilesAccessPermission);
-                        intent.SetData(global::Android.Net.Uri.Parse("package:"+PackageName));
+                        var intent = new global::Android.Content.Intent(global::Android.Provider.Settings.ActionManageAllFilesAccessPermission);
                         StartActivity(intent);
                     }
-                }catch{}
+                }catch{
+                    try{
+                        var intent2 = new global::Android.Content.Intent(global::Android.Provider.Settings.ActionManageAppAllFilesAccessPermission);
+                        intent2.SetData(global::Android.Net.Uri.Parse("package:"+PackageName));
+                        StartActivity(intent2);
+                    }catch{}
+                }
             }
 
             var root = new LinearLayout(this){ Orientation = Orientation.Vertical };
@@ -45,11 +53,14 @@ namespace Ryujinx.Android
             var top = new LinearLayout(this){ Orientation = Orientation.Horizontal };
             top.SetBackgroundColor(global::Android.Graphics.Color.ParseColor("#e10600"));
             top.SetPadding(40,25,40,25);
-            var t = new TextView(this){ Text="RYUBING #16 MULTI-SCAN" };
+            var t = new TextView(this){ Text="RYUBING #16.2 FIX PERM" };
             t.SetTextColor(global::Android.Graphics.Color.White); t.TextSize=11; t.SetTypeface(null, global::Android.Graphics.TypefaceStyle.Bold);
             var btn = new Button(this){ Text="ATUALIZAR" };
             btn.SetBackgroundColor(global::Android.Graphics.Color.White); btn.SetTextColor(global::Android.Graphics.Color.ParseColor("#e10600"));
+            var btnPerm = new Button(this){ Text="PERMISSÃO" };
+            btnPerm.SetBackgroundColor(global::Android.Graphics.Color.ParseColor("#ffaa00")); btnPerm.SetTextColor(global::Android.Graphics.Color.Black);
             top.AddView(t, new LinearLayout.LayoutParams(0,-2,1f));
+            top.AddView(btnPerm);
             top.AddView(btn);
             var scroll = new ScrollView(this);
             list = new LinearLayout(this){ Orientation=Orientation.Vertical };
@@ -58,7 +69,17 @@ namespace Ryujinx.Android
             root.AddView(top);
             root.AddView(scroll);
             SetContentView(root);
-            btn.Click += (s,e)=>{ Load(); Toast.MakeText(this, "Scan...", ToastLength.Short).Show(); };
+            btn.Click += (s,e)=>{ Load(); };
+            btnPerm.Click += (s,e)=>{
+                try{
+                    var intent = new global::Android.Content.Intent(global::Android.Provider.Settings.ActionManageAllFilesAccessPermission);
+                    StartActivity(intent);
+                }catch{
+                    var intent = new global::Android.Content.Intent(global::Android.Provider.Settings.ActionManageAppAllFilesAccessPermission);
+                    intent.SetData(global::Android.Net.Uri.Parse("package:"+PackageName));
+                    StartActivity(intent);
+                }
+            };
             Load();
         }
 
@@ -66,12 +87,19 @@ namespace Ryujinx.Android
         {
             list.RemoveAllViews();
             try{
+                bool isManager = false;
+                if(Build.VERSION.SdkInt >= BuildVersionCodes.R) isManager = global::Android.OS.Environment.IsExternalStorageManager;
+
+                var permTxt = new TextView(this){ Text="Permissão Todos Arquivos: "+(isManager?"✅ SIM":"❌ NÃO - Clique PERMISSÃO") };
+                permTxt.SetTextColor(global::Android.Graphics.Color.ParseColor(isManager?"#00ff88":"#ffaa00"));
+                permTxt.SetPadding(10,10,10,10);
+                list.AddView(permTxt);
+
                 bool hasKeys1 = File.Exists(keysPath1);
                 bool hasKeys2 = File.Exists(keysPath2);
                 bool hasKeys = hasKeys1 || hasKeys2;
-                var keysLoc = hasKeys1? keysPath1 : keysPath2;
 
-                var keysInfo = new TextView(this){ Text=(hasKeys?"✅ prod.keys OK em:\n"+keysLoc : "❌ prod.keys falta\n"+keysPath1+"\nOU\n"+keysPath2) };
+                var keysInfo = new TextView(this){ Text=(hasKeys?"✅ prod.keys OK":"❌ prod.keys falta")+"\n"+romPath1 };
                 keysInfo.SetTextColor(global::Android.Graphics.Color.ParseColor(hasKeys?"#00ff88":"#ff4444"));
                 keysInfo.TextSize=10; keysInfo.SetPadding(10,10,10,20);
                 keysInfo.SetBackgroundColor(global::Android.Graphics.Color.ParseColor("#222222"));
@@ -79,18 +107,12 @@ namespace Ryujinx.Android
 
                 var path1Files = Directory.Exists(romPath1)? Directory.GetFiles(romPath1) : new string[0];
                 var path2Files = Directory.Exists(romPath2)? Directory.GetFiles(romPath2) : new string[0];
-                var allFiles = path1Files.Concat(path2Files).ToArray();
-                var roms = allFiles.Where(f=> f.ToLower().EndsWith(".nsp")||f.ToLower().EndsWith(".xci")||f.ToLower().EndsWith(".nsz")||f.ToLower().EndsWith(".xcz")).ToArray();
+                var roms = path1Files.Concat(path2Files).Where(f=> f.ToLower().EndsWith(".nsp")||f.ToLower().EndsWith(".xci")||f.ToLower().EndsWith(".nsz")||f.ToLower().EndsWith(".xcz")).ToArray();
 
-                var info = new TextView(this){ Text="SCAN:\n"+romPath1+" => "+path1Files.Length+" arquivos\n"+romPath2+" => "+path2Files.Length+" arquivos\nTOTAL JOGOS: "+roms.Length+"\n\nSe Total 0, mova jogos para:\n"+romPath2 };
+                var info = new TextView(this){ Text="SCAN: "+romPath1+" => "+path1Files.Length+" files\n"+romPath2+" => "+path2Files.Length+" files\nJOGOS: "+roms.Length };
                 info.SetTextColor(global::Android.Graphics.Color.ParseColor("#aaaaaa")); info.TextSize=10; info.SetPadding(10,10,10,20);
                 list.AddView(info);
 
-                if(roms.Length==0){
-                    var empty = new TextView(this){ Text="\nNenhum jogo\n\nSOLUÇÃO RÁPIDA:\n1. Copie.nsp para:\n"+romPath2+"\n\n2. Essa pasta SEMPRE funciona\n\n3. Clique ATUALIZAR" };
-                    empty.SetTextColor(global::Android.Graphics.Color.White); empty.TextSize=12;
-                    list.AddView(empty); return;
-                }
                 foreach(var f in roms){
                     var card = new LinearLayout(this){ Orientation=Orientation.Horizontal };
                     card.SetPadding(30,30,30,30); card.SetBackgroundColor(global::Android.Graphics.Color.ParseColor("#1c1c1c"));
@@ -103,9 +125,14 @@ namespace Ryujinx.Android
                     card.AddView(play);
                     list.AddView(card);
                 }
+                if(roms.Length==0){
+                    var empty = new TextView(this){ Text="Mova.nsp para:\n"+romPath1+"\n\nE clique PERMISSÃO > ative Ryubing > voltar > ATUALIZAR" };
+                    empty.SetTextColor(global::Android.Graphics.Color.White); empty.TextSize=11;
+                    list.AddView(empty);
+                }
             }catch(Exception ex){
-                var err = new TextView(this){ Text="ERRO #16: "+ex.Message+"\n"+ex.StackTrace };
-                err.SetTextColor(global::Android.Graphics.Color.ParseColor("#ff4444")); err.TextSize=9;
+                var err = new TextView(this){ Text="ERRO: "+ex.Message };
+                err.SetTextColor(global::Android.Graphics.Color.ParseColor("#ff4444"));
                 list.AddView(err);
             }
         }
