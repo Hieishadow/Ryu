@@ -13,7 +13,7 @@ using Ryujinx.HLE;
 
 namespace Ryujinx.Android
 {
-    [Activity(Label = "DragoNX Fafnir V16.6 GPU DIRECT", MainLauncher = true, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape)]
+    [Activity(Label = "DragoNX Fafnir V16.7 SWITCH GPU", MainLauncher = true, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape)]
     public class MainActivity : Activity
     {
         string basePath = ""; LinearLayout lista = null!;
@@ -32,7 +32,7 @@ namespace Ryujinx.Android
             var root = new LinearLayout(this){ Orientation = Orientation.Vertical };
             root.SetPadding(30,20,30,20);
             lista = new LinearLayout(this){ Orientation = Orientation.Vertical };
-            root.AddView(new TextView(this){ Text="DragoNX Fafnir V16.6 GPU DIRECT\n", TextSize=18f });
+            root.AddView(new TextView(this){ Text="DragoNX Fafnir V16.7 SWITCH GPU\n", TextSize=18f });
             root.AddView(lista);
             scroll.AddView(root);
             SetContentView(scroll);
@@ -47,9 +47,9 @@ namespace Ryujinx.Android
             lista.AddView(new TextView(this){ Text="Keys: "+(File.Exists(key)?"OK":"FALTA")+" | Firmware: "+(fwCount>10? "OK "+fwCount:"FALTA")+"\n" });
             try {
                 var bases = Directory.GetFiles(games, "*.nsp").Where(x => x.Contains("[v0]")).ToArray();
-                lista.AddView(new TextView(this){ Text="JOGOS BASE ("+bases.Length+") - V16.6:" });
+                lista.AddView(new TextView(this){ Text="JOGOS BASE ("+bases.Length+") - V16.7:" });
                 foreach(var f in bases) {
-                    var btn = new Button(this){ Text = " "+Path.GetFileName(f)+" [V16.6]" };
+                    var btn = new Button(this){ Text = " "+Path.GetFileName(f)+" [V16.7]" };
                     btn.Click += (s,e) => { var i = new global::Android.Content.Intent(this, typeof(GameActivity)); i.PutExtra("gamePath", f); i.PutExtra("basePath", basePath); StartActivity(i); };
                     lista.AddView(btn);
                 }
@@ -57,7 +57,7 @@ namespace Ryujinx.Android
         }
     }
 
-    [Activity(Label = "DragoNX Game V16.6", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape, ConfigurationChanges = global::Android.Content.PM.ConfigChanges.Orientation | global::Android.Content.PM.ConfigChanges.KeyboardHidden | global::Android.Content.PM.ConfigChanges.ScreenSize)]
+    [Activity(Label = "DragoNX Game V16.7", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape, ConfigurationChanges = global::Android.Content.PM.ConfigChanges.Orientation | global::Android.Content.PM.ConfigChanges.KeyboardHidden | global::Android.Content.PM.ConfigChanges.ScreenSize)]
     public class GameActivity : Activity, ISurfaceHolderCallback
     {
         TextView log = null!; SurfaceView surfaceView = null!;
@@ -72,7 +72,7 @@ namespace Ryujinx.Android
             basePath = Intent.GetStringExtra("basePath")!;
             logFile = Path.Combine(basePath, "log_V16.txt");
             var layout = new LinearLayout(this){ Orientation = Orientation.Vertical };
-            log = new TextView(this){ TextSize=7f, Text="Fafnir V16.6 GPU DIRECT\n"+Path.GetFileName(gamePath)+"\n" };
+            log = new TextView(this){ TextSize=7f, Text="Fafnir V16.7 SWITCH GPU\n"+Path.GetFileName(gamePath)+"\n" };
             log.SetTextIsSelectable(true);
             scrollLog = new ScrollView(this);
             var lpScroll = new LinearLayout.LayoutParams(-1, 0); lpScroll.Weight = 1;
@@ -98,7 +98,7 @@ namespace Ryujinx.Android
             layout.AddView(btnLog);
             layout.AddView(btnSair);
             SetContentView(layout);
-            try{ File.WriteAllText(logFile, "START V16.6 "+DateTime.Now+"\nGame: "+gamePath+"\n"); } catch{}
+            try{ File.WriteAllText(logFile, "START V16.7 "+DateTime.Now+"\nGame: "+gamePath+"\n"); } catch{}
         }
 
         void AddLog(string s) {
@@ -110,11 +110,13 @@ namespace Ryujinx.Android
         }
         string Safe(string s, int max) { if(s==null) return ""; if(s.Length<=max) return s; return s.Substring(0,max); }
         object GetDefault(Type t) {
-            if(t.IsEnum) { var vals = Enum.GetValues(t); if(vals.Length>0) return vals.GetValue(0); return Activator.CreateInstance(t); }
+            if(t==null) return null;
+            if(t.IsEnum) { var vals = Enum.GetValues(t); if(vals.Length>0) return vals.GetValue(0); try{ return Activator.CreateInstance(t); } catch { return 0; } }
             if(t == typeof(string)) return "";
             if(t == typeof(bool)) return false;
             if(t == typeof(int)) return 0;
             if(t == typeof(long)) return (long)0;
+            if(t == typeof(ulong)) return (ulong)0;
             if(t == typeof(ushort)) return (ushort)0;
             if(t == typeof(short)) return (short)0;
             if(t == typeof(float)) return 1.0f;
@@ -127,7 +129,7 @@ namespace Ryujinx.Android
         {
             try {
                 AddLog("Criando FakeGpu: "+gpuType.FullName);
-                var abName = new AssemblyName("FakeAsm6");
+                var abName = new AssemblyName("FakeAsm7");
                 var ab = AssemblyBuilder.DefineDynamicAssembly(abName, AssemblyBuilderAccess.Run);
                 var mb = ab.DefineDynamicModule("Mod");
                 var tb = mb.DefineType("FakeGpu", TypeAttributes.Public | TypeAttributes.Class, null, new Type[]{ gpuType });
@@ -177,24 +179,44 @@ namespace Ryujinx.Android
             if(!surfaceReady) return;
             Task.Run(() => {
                 try {
-                    AddLog("[1/5] Pegando tipo IGpuRenderer da propria config...");
+                    AddLog("[1/5] Listando ctors Switch...");
                     var switchType = typeof(Ryujinx.HLE.Switch);
-                    var hleConfigType = switchType.Assembly.GetTypes().First(t=>t.Name=="HleConfiguration");
+                    var allSwitchCtors = switchType.GetConstructors();
+                    foreach(var c in allSwitchCtors) {
+                        var p = c.GetParameters();
+                        AddLog($"Switch ctor: {p.Length} -> {string.Join(", ", p.Select(x=> x.Name+":"+x.ParameterType.Name))}");
+                    }
 
-                    var prop = hleConfigType.GetProperty("GpuRenderer", BindingFlags.Public | BindingFlags.Instance);
-                    if(prop==null) prop = hleConfigType.GetProperties().FirstOrDefault(p=>p.Name.ToLower().Contains("gpu"));
-                    if(prop==null) { AddLog("ERRO: Prop GpuRenderer nao existe! Props="+string.Join(",",hleConfigType.GetProperties().Select(p=>p.Name))); return; }
+                    Type gpuInterface = null;
+                    try {
+                        var gpuAsm = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a=>a.GetName().Name.Contains("Graphics.Gpu"));
+                        if(gpuAsm==null) { try{ gpuAsm = Assembly.Load("Ryujinx.Graphics.Gpu"); } catch{} }
+                        AddLog("Assembly GPU: "+ (gpuAsm!=null? gpuAsm.GetName().Name : "null"));
+                        if(gpuAsm!=null) {
+                            gpuInterface = gpuAsm.GetTypes().FirstOrDefault(t=>t.IsInterface && t.Name=="IGpuRenderer");
+                            if(gpuInterface!=null) AddLog("Achado IGpuRenderer: "+gpuInterface.FullName);
+                        }
+                    } catch(Exception exA) { AddLog("Load GPU asm erro: "+exA.Message); }
 
-                    Type gpuInterface = prop.PropertyType;
-                    AddLog("Tipo achado pela Prop: "+gpuInterface.FullName);
-                    AddLog("Assembly: "+gpuInterface.Assembly.GetName().Name);
+                    if(gpuInterface==null) {
+                        foreach(var asm in AppDomain.CurrentDomain.GetAssemblies()) {
+                            try {
+                                foreach(var t in asm.GetTypes()) {
+                                    if(t.IsInterface && t.Name=="IGpuRenderer") { gpuInterface=t; AddLog("Achado por varredura: "+t.FullName+" em "+asm.GetName().Name); break; }
+                                }
+                                if(gpuInterface!=null) break;
+                            } catch{}
+                        }
+                    }
+                    if(gpuInterface==null) { AddLog("FALHA: IGpuRenderer nao achado"); return; }
 
                     object fakeGpu = CreateFakeFromType(gpuInterface);
-                    if(fakeGpu==null) { AddLog("Fake falhou"); return; }
+                    if(fakeGpu==null) return;
 
                     AddLog("[2/5] Criando HleConfiguration...");
-                    var ctor = hleConfigType.GetConstructors().OrderByDescending(c=>c.GetParameters().Length).First();
-                    var pars = ctor.GetParameters();
+                    var hleConfigType = switchType.Assembly.GetTypes().First(t=>t.Name=="HleConfiguration");
+                    var hleCtor = hleConfigType.GetConstructors().OrderByDescending(c=>c.GetParameters().Length).First();
+                    var pars = hleCtor.GetParameters();
                     object[] args = new object[pars.Length];
                     for(int i=0;i<pars.Length;i++) {
                         var pt = pars[i].ParameterType;
@@ -206,9 +228,8 @@ namespace Ryujinx.Android
                             else if(pn.Contains("fsglobalaccess")) { if(pt.IsEnum) args[i]=Enum.GetValues(pt).GetValue(0); else args[i]=0; }
                             else if(pn.Contains("systemlanguage")) { var all=Enum.GetValues(pt); object sel=all.GetValue(0); foreach(var v in all){ if(v.ToString().Contains("American")){ sel=v; break; } } args[i]=sel; }
                             else if(pn.Contains("region")) { var all=Enum.GetValues(pt); object sel=all.GetValue(0); foreach(var v in all){ if(v.ToString().Contains("Americas")){ sel=v; break; } } args[i]=sel; }
-                            else if(pn.Contains("memorymanagermode") || pn.Contains("aspectratio") || pn.Contains("multiplayermode") || pn.Contains("fsintegrity")) args[i]=Enum.GetValues(pt).GetValue(0);
+                            else if(pn.Contains("memorymanagermode") || pn.Contains("aspectratio") || pn.Contains("multiplayermode") || pn.Contains("fsintegrity") || pn.Contains("expandram") || pn.Contains("hid") || pn.Contains("lans") || pn.Contains("user")) args[i]=Enum.GetValues(pt).GetValue(0);
                             else if(pn.Contains("dock")) args[i]=true;
-                            else if(pn.Contains("ptc")) args[i]=true;
                             else if(pn.Contains("ticks")) args[i]=(long)1;
                             else if(pn.Contains("timezone")) args[i]="UTC";
                             else if(pn.Contains("audiovolume")) args[i]=1.0f;
@@ -219,29 +240,62 @@ namespace Ryujinx.Android
                             else args[i]=GetDefault(pt);
                         } catch { args[i]=GetDefault(pt); }
                     }
-                    var hleConfig = ctor.Invoke(args);
-                    AddLog("HleConfig OK");
+                    var hleConfig = hleCtor.Invoke(args);
+                    AddLog("HleConfig OK!");
 
-                    AddLog("Injetando GpuRenderer...");
-                    prop.SetValue(hleConfig, fakeGpu);
-                    AddLog("GpuRenderer INJETADO! "+fakeGpu.GetType().Name);
+                    AddLog("[3/5] Criando Switch com GPU...");
+                    object switchInst = null;
+                    foreach(var ctor in allSwitchCtors.OrderByDescending(c=>c.GetParameters().Length)) {
+                        var cpars = ctor.GetParameters();
+                        int gpuIdx = -1; int cfgIdx = -1;
+                        for(int i=0;i<cpars.Length;i++) {
+                            if(cpars[i].ParameterType.IsAssignableFrom(gpuInterface) || cpars[i].ParameterType.Name.Contains("GpuRenderer") || cpars[i].ParameterType.Name.Contains("IGpu")) gpuIdx=i;
+                            if(cpars[i].ParameterType.Name=="HleConfiguration") cfgIdx=i;
+                        }
+                        if(gpuIdx>=0) {
+                            AddLog($"Tentando ctor com GPU idx {gpuIdx} cfg idx {cfgIdx} total {cpars.Length}");
+                            object[] sargs = new object[cpars.Length];
+                            for(int i=0;i<cpars.Length;i++) {
+                                if(i==gpuIdx) sargs[i]=fakeGpu;
+                                else if(i==cfgIdx) sargs[i]=hleConfig;
+                                else sargs[i]=GetDefault(cpars[i].ParameterType);
+                            }
+                            try {
+                                switchInst = ctor.Invoke(sargs);
+                                AddLog($"Switch CRIADO! FOGO!!! ctor {cpars.Length}");
+                                break;
+                            } catch(Exception exS) {
+                                AddLog($"Falhou ctor {cpars.Length}: {exS.InnerException?.Message?? exS.Message}");
+                            }
+                        }
+                    }
+                    if(switchInst==null) {
+                        AddLog("Nenhum ctor com GPU, tentando Switch(hleConfig) puro...");
+                        try {
+                            switchInst = Activator.CreateInstance(switchType, new object[]{ hleConfig });
+                            AddLog("Switch(hleConfig) OK!");
+                        } catch(Exception ex2) {
+                            AddLog("Switch(hleConfig) falhou: "+(ex2.InnerException?.Message?? ex2.Message));
+                            return;
+                        }
+                    }
 
-                    AddLog("[3/5] Criando Switch...");
-                    device = Activator.CreateInstance(switchType, new object[]{ hleConfig });
-                    AddLog("Switch OK!!! PASSOU DO GPU! FOGO!!!");
+                    device = switchInst;
+                    AddLog("Switch OK!!! PASSOU DO GPU!");
 
                     AddLog("[4/5] LoadNsp...");
                     var loadNsp = switchType.GetMethod("LoadNsp");
+                    if(loadNsp==null) loadNsp = switchType.GetMethods().FirstOrDefault(m=>m.Name.ToLower().Contains("load") && m.Name.ToLower().Contains("nsp"));
+                    if(loadNsp==null) { AddLog("LoadNsp nao achado! Methods: "+string.Join(",", switchType.GetMethods().Select(m=>m.Name))); return; }
                     var result = loadNsp.Invoke(device, new object[]{ gamePath });
                     AddLog("LoadNsp = "+result+" BOOTOU!!!");
                 } catch(Exception exSw) {
-                    string inner = exSw.InnerException!=null? exSw.InnerException.Message : exSw.Message;
-                    AddLog("ERRO V16.6: "+inner);
+                    AddLog("ERRO V16.7: "+(exSw.InnerException!=null? exSw.InnerException.Message : exSw.Message));
                     AddLog(Safe(exSw.InnerException!=null? exSw.InnerException.StackTrace : exSw.StackTrace, 1000));
                 }
             });
         }
-        public void SurfaceCreated(ISurfaceHolder holder) { AddLog("SurfaceCreated V16.6"); surfaceReady = true; TryBoot(); }
+        public void SurfaceCreated(ISurfaceHolder holder) { AddLog("SurfaceCreated V16.7"); surfaceReady = true; TryBoot(); }
         public void SurfaceChanged(ISurfaceHolder holder, global::Android.Graphics.Format format, int w, int h) { }
         public void SurfaceDestroyed(ISurfaceHolder holder) { surfaceReady = false; }
     }
