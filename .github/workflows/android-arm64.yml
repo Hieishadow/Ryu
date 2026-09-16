@@ -22,21 +22,20 @@ jobs:
       - name: Install Android workload
         run: dotnet workload install android
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install SDK packages
         run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
 
       - name: Build APK
         run: |
-          dotnet publish src/Ryujinx/Ryujinx.csproj -c Release -r android-arm64 -p:AndroidPackageFormat=apk -p:RunAOTCompilation=true -p:PublishTrimmed=false -f net8.0-android || dotnet build Ryujinx.sln -c Release -v minimal
+          echo "Listing csproj"
+          find src -name "*.csproj" | head -20
+          dotnet publish src/Ryujinx/Ryujinx.csproj -c Release -r android-arm64 -p:AndroidPackageFormat=apk -p:RunAOTCompilation=false -p:PublishTrimmed=false -f net8.0-android 2>&1 || dotnet build -c Release -v minimal 2>&1 | tail -100
 
-      - name: Upload APK
+      - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Ryubing-Android-ARM64
+          name: build-logs
           path: "**/*.apk"
