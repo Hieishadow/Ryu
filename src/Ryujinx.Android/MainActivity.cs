@@ -5,7 +5,6 @@ using System.IO;
 using Android.Content;
 using Android.Content.PM;
 using Android;
-using AndroidX.Core.App;
 using Env = Android.OS.Environment;
 
 namespace Ryujinx.Android
@@ -42,7 +41,7 @@ namespace Ryujinx.Android
                 }
             } else {
                 if (CheckSelfPermission(Manifest.Permission.ReadExternalStorage) != Permission.Granted)
-                    ActivityCompat.RequestPermissions(this, new string[]{Manifest.Permission.ReadExternalStorage, Manifest.Permission.WriteExternalStorage}, 1);
+                    RequestPermissions(new string[]{Manifest.Permission.ReadExternalStorage, Manifest.Permission.WriteExternalStorage}, 1);
             }
         }
         void Listar() {
