@@ -1,0 +1,21 @@
+name: Ryubing Android ARM64
+on: [workflow_dispatch]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: dotnet workload install android
+      - uses: android-actions/setup-android@v3
+      - name: Build APK
+        run: |
+          dotnet publish src/Ryujinx/Ryujinx.csproj -c Release -r android-arm64 -p:AndroidPackageFormat=apk -p:RunAOTCompilation=true -p:PublishTrimmed=false -f net8.0-android || dotnet build Ryujinx.sln -c Release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ryubing-Android-ARM64
+          path: "**/*.apk"
