@@ -7,35 +7,20 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-
-      - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-
-      - name: Install Android workload
-        run: dotnet workload install android
-
-      - name: Install SDK packages
-        run: |
-          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+      - run: dotnet workload install android
+      - run: |
+          echo y | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
-
       - name: Build APK
-        run: |
-          echo "Listing csproj"
-          find src -name "*.csproj" | head -20
-          dotnet publish src/Ryujinx/Ryujinx.csproj -c Release -r android-arm64 -p:AndroidPackageFormat=apk -p:RunAOTCompilation=false -p:PublishTrimmed=false -f net8.0-android 2>&1 || dotnet build -c Release -v minimal 2>&1 | tail -100
-
-      - name: Upload logs
-        if: always()
-        uses: actions/upload-artifact@v4
+        run: dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -r android-arm64 -p:AndroidPackageFormat=apk -f net8.0-android
+      - uses: actions/upload-artifact@v4
         with:
-          name: build-logs
+          name: Ryubing-APK-865
           path: "**/*.apk"
