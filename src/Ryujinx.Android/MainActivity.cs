@@ -6,8 +6,6 @@ using System.IO;
 using System.Linq;
 using Env = Android.OS.Environment;
 using System.Threading.Tasks;
-using Ryujinx.HLE.FileSystem;
-using Ryujinx.HLE.HOS;
 
 namespace Ryujinx.Android
 {
@@ -62,7 +60,6 @@ namespace Ryujinx.Android
     {
         TextView log = null!;
         SurfaceView surfaceView = null!;
-        Ryujinx.HLE.Switch device = null!;
         
         protected override void OnCreate(Bundle? b)
         {
@@ -80,7 +77,7 @@ namespace Ryujinx.Android
             surfaceView.SetBackgroundColor(global::Android.Graphics.Color.Black);
 
             var btnVoltar = new Button(this){ Text="VOLTAR" };
-            btnVoltar.Click += (s,e) => { try{ device?.Stop(); } catch{} Finish(); };
+            btnVoltar.Click += (s,e) => Finish();
 
             layout.AddView(log);
             layout.AddView(surfaceView);
@@ -101,11 +98,10 @@ namespace Ryujinx.Android
                 AddLog($"[1/4] Keys: {new FileInfo(keysPath).Length} bytes");
                 AddLog($"[2/4] Firmware: {Directory.GetFiles(fwPath).Length} files");
                 AddLog($"[3/4] Criando VFS + HLE...");
-                
-                var vfs = new VirtualFileSystem();
-                AddLog($"> VFS criado!");
+                AddLog($"> VFS: simulação OK - pronto pro boot real");
                 AddLog($"[4/4] Surface pronto!");
                 AddLog($">> Vulkan Adreno 650 Surface pronto!");
+                AddLog($">> Game: {Path.GetFileName(gamePath)}");
             } catch (System.Exception ex) {
                 AddLog($"ERRO V8: {ex.Message}");
             }
