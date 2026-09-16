@@ -13,13 +13,13 @@ jobs:
           java-version: '17'
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
       - run: dotnet workload install android
       - run: |
           echo y | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
       - name: Build APK
-        run: dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -r android-arm64 -p:AndroidPackageFormat=apk -f net8.0-android
+        run: dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -r android-arm64 -p:AndroidPackageFormat=apk -f net10.0-android
       - uses: actions/upload-artifact@v4
         with:
           name: Ryubing-APK-865
