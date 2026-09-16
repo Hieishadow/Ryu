@@ -11,13 +11,13 @@ namespace Ryujinx.Android
     public class MainActivity : Activity
     {
         string romPath = "/sdcard/Ryubing/roms";
-        LinearLayout list;
+        LinearLayout list = null!;
 
         protected override void OnCreate(Bundle? b)
         {
             base.OnCreate(b);
             if (Build.VERSION.SdkInt >= BuildVersionCodes.M)
-                RequestPermissions(new[] { Android.Manifest.Permission.ReadExternalStorage, Android.Manifest.Permission.WriteExternalStorage }, 0);
+                RequestPermissions(new[] { global::Android.Manifest.Permission.ReadExternalStorage, global::Android.Manifest.Permission.WriteExternalStorage }, 0);
 
             var root = new LinearLayout(this){ Orientation = Orientation.Vertical };
             root.SetBackgroundColor(Color.ParseColor("#0e0e0e"));
@@ -63,14 +63,14 @@ namespace Ryujinx.Android
                     card.SetBackgroundColor(Color.ParseColor("#1c1c1c"));
                     var lp = new LinearLayout.LayoutParams(-1,-2); lp.SetMargins(0,0,0,18); card.LayoutParameters=lp;
 
-                    var name = new TextView(this){ Text=Path.GetFileName(f) };
+                    var name = new TextView(this){ Text=System.IO.Path.GetFileName(f) };
                     name.SetTextColor(Color.White); name.TextSize=15;
                     var play = new Button(this){ Text="JOGAR" };
                     play.SetBackgroundColor(Color.ParseColor("#00c853")); play.SetTextColor(Color.White);
 
                     card.AddView(name, new LinearLayout.LayoutParams(0,-2,1f));
                     card.AddView(play);
-                    play.Click+= (s,e)=> Toast.MakeText(this, $"Carregando {Path.GetFileName(f)} - Core vindo no #9", ToastLength.Short).Show();
+                    play.Click+= (s,e)=> Toast.MakeText(this, $"Carregando {System.IO.Path.GetFileName(f)} - Core vindo no #9", ToastLength.Short).Show();
                     list.AddView(card);
                 }
             }catch(System.Exception ex){
