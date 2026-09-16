@@ -14,7 +14,6 @@ namespace Ryujinx.Android
     [Activity(Label = "Ryu MASTER REAL", MainLauncher = true, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen")]
     public class MainActivity : Activity
     {
-        Switch _device;
         protected override void OnCreate(Bundle savedInstanceState)
         {
             base.OnCreate(savedInstanceState);
