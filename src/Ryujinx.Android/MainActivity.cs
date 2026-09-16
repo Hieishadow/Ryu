@@ -60,7 +60,7 @@ namespace Ryujinx.Android
     public class GameActivity : Activity, ISurfaceHolderCallback
     {
         TextView log = null!; SurfaceView surfaceView = null!;
-        Switch device = null!; bool surfaceReady = false;
+        Ryujinx.HLE.Switch device = null!; bool surfaceReady = false;
         string gamePath = "", basePath = "";
 
         protected override void OnCreate(Bundle? b)
@@ -90,41 +90,38 @@ namespace Ryujinx.Android
                 try {
                     AddLog($"[1/5] Keys: {new FileInfo(Path.Combine(basePath,"keys","prod.keys")).Length} bytes");
                     AddLog($"[2/5] Firmware: {Directory.GetFiles(Path.Combine(basePath,"firmware"),"*",SearchOption.AllDirectories).Length} files");
-                    AddLog($"[3/5] Criando VFS (reflection pra nao quebrar build)...");
+                    AddLog($"[3/5] Criando VFS...");
 
-                    // Usa Activator pra nao quebrar compilacao
                     var vfsType = typeof(VirtualFileSystem);
                     var vfs = Activator.CreateInstance(vfsType) as VirtualFileSystem;
                     if(vfs == null) { AddLog("ERRO: VFS null"); return; }
-                    AddLog($"> VFS criado: {vfs.GetType().Name}");
+                    AddLog($"> VFS: {vfs.GetType().Name}");
 
                     AddLog($"[4/5] Criando Switch HOS...");
-                    // Tenta criar Switch com o construtor que existe no Ryubing
-                    device = new Switch(vfs, null, null, null, null, null, null, null);
-                    AddLog($"> Switch criado!");
+                    device = new Ryujinx.HLE.Switch(vfs, null, null, null, null, null, null, null);
+                    AddLog($"> Switch OK!");
 
-                    AddLog($"[5/5] LoadApplication: {Path.GetFileName(gamePath)}");
+                    AddLog($"[5/5] LoadApplication...");
                     bool loaded = device.LoadApplication(gamePath);
-                    AddLog($">> Load result: {loaded}");
+                    AddLog($">> Load: {loaded}");
 
                     if(loaded)
                     {
-                        AddLog($">> SUCESSO! INICIANDO VIDEO COM CORES!");
-                        AddLog($">> Adreno 650 Vulkan RUN...");
+                        AddLog($">> BOOTANDO VIDEO COM CORES!");
                         RunOnUiThread(() => { log.Visibility = ViewStates.Gone; });
                         device.Run();
                     }
                     else
                     {
-                        AddLog($"FALHA LOAD - keys/firmware invalidos?");
+                        AddLog($"FALHA LOAD");
                     }
                 } catch (Exception ex) {
-                    AddLog($"ERRO VIDEO V10: {ex.Message}\n{ex.StackTrace?.Substring(0,1200)}");
+                    AddLog($"ERRO V10: {ex.Message}\n{ex.StackTrace?.Substring(0,1200)}");
                 }
             });
         }
 
-        public void SurfaceCreated(ISurfaceHolder holder) { AddLog("SurfaceCreated - Vulkan OK! Iniciando boot..."); surfaceReady = true; TryBoot(); }
+        public void SurfaceCreated(ISurfaceHolder holder) { AddLog("SurfaceCreated - Vulkan OK!"); surfaceReady = true; TryBoot(); }
         public void SurfaceChanged(ISurfaceHolder holder, global::Android.Graphics.Format format, int w, int h) { AddLog($"SurfaceChanged {w}x{h}"); }
         public void SurfaceDestroyed(ISurfaceHolder holder) { surfaceReady = false; try{ device?.Stop(); } catch{} }
     }
