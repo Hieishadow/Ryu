@@ -6,7 +6,10 @@ using Android.Views;
 using Android.Content.PM;
 using Android.Widget;
 using Ryujinx.HLE.FileSystem;
+using Ryujinx.HLE;
+using Ryujinx.HLE.HOS.Services.Account.Acc;
 using Ryujinx.Graphics.Vulkan;
+using Ryujinx.Audio.OpenAL;
 
 // FIX do Switch ambíguo
 using RyujinxSwitch = Ryujinx.HLE.Switch;
@@ -48,19 +51,29 @@ namespace RyujinxAndroid
             }
             try
             {
-                var vfs = new VirtualFileSystem();
+                // FIX 1: VirtualFileSystem não tem new(), é Create()
+                var vfs = VirtualFileSystem.Create();
                 var keyPath = "/storage/emulated/0/Download/DragoNX/prod.keys";
-                if (File.Exists(keyPath)) vfs.ImportKeys(File.ReadAllBytes(keyPath));
+                if (File.Exists(keyPath)) 
+                    vfs.ImportKeys(File.ReadAllBytes(keyPath));
 
-                var renderer = new VulkanRenderer(h.Surface);
-                var fsClient = new FileSystemClient(vfs);
-                emu = new RyujinxSwitch(renderer, fsClient, fsClient);
+                // FIX 2: ContentManager + UserChannel são obrigatórios agora
+                var contentManager = new ContentManager(vfs);
+                var userChannel = new UserChannelPersistence();
+
+                // FIX 3: VulkanRenderer não recebe Surface no construtor no Ryujinx novo
+                var renderer = new VulkanRenderer();
+                var audio = new OpenALHardwareDeviceDriver();
+
+                // FIX 4: Switch agora tem 5 parâmetros, não 3
+                emu = new RyujinxSwitch(vfs, contentManager, userChannel, renderer, audio.GetHardwareDeviceDriver());
+
                 emu.LoadApplication(game);
                 new System.Threading.Thread(() => emu.Run()).Start();
             }
             catch(Exception e)
             {
-                Toast.MakeText(this, "ERRO: " + e.Message, ToastLength.Long).Show();
+                Toast.MakeText(this, "ERRO: " + e.ToString(), ToastLength.Long).Show();
             }
         }
         public void SurfaceChanged(ISurfaceHolder h, Android.Graphics.Format f, int w, int ht) {}
