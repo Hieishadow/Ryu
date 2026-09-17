@@ -1,80 +1,95 @@
-using System;
-using System.IO;
 using Android.App;
 using Android.OS;
 using Android.Views;
-using Android.Content.PM;
 using Android.Widget;
-using Ryujinx.HLE.FileSystem;
+using System.IO;
 using Ryujinx.HLE;
+using Ryujinx.HLE.FileSystem;
 using Ryujinx.HLE.HOS.Services.Account.Acc;
 using Ryujinx.Graphics.Vulkan;
+using Ryujinx.Audio.Backends.Dummy;
+using Ryujinx.Common.Configuration;
 using Ryujinx.Memory;
-using RyujinxSwitch = Ryujinx.HLE.Switch;
+using Ryujinx.HLE.UI;
 
 namespace RyujinxAndroid
 {
-    [Activity(Label = "DragoNX JIT", MainLauncher = true, ScreenOrientation = ScreenOrientation.Landscape, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.KeyboardHidden | ConfigChanges.ScreenSize)]
-    public class MainActivity : Activity, ISurfaceHolderCallback
+    [Activity(Label = "DragoNX JIT", MainLauncher = true, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation = Android.Content.PM.ScreenOrientation.Landscape)]
+    public class MainActivity : Activity
     {
-        SurfaceView view;
-        RyujinxSwitch emu;
-        string game;
-
+        Switch emu;
         protected override void OnCreate(Bundle? b)
         {
             base.OnCreate(b);
             Window.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
-            view = new SurfaceView(this);
-            view.Holder.AddCallback(this);
+            var view = new SurfaceView(this);
             SetContentView(view);
 
             var dir = "/storage/emulated/0/Download/DragoNX/";
-            if (Directory.Exists(dir))
-            {
+            string game = null;
+            if(Directory.Exists(dir))
                 foreach(var f in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
-                {
-                    if(f.EndsWith(".nsp") || f.EndsWith(".xci") || f.EndsWith(".nca"))
+                    if(f.EndsWith(".nsp") || f.EndsWith(".xci") || f.EndsWith(".nca") || f.EndsWith(".nro"))
                     { game = f; break; }
-                }
-            }
-        }
 
-        public void SurfaceCreated(ISurfaceHolder h)
-        {
-            if (game == null) 
-            {
-                Toast.MakeText(this, "Coloca jogo em /Download/DragoNX/", ToastLength.Long).Show();
-                return;
-            }
+            if(game == null){ Toast.MakeText(this,"Jogo não achado em /Download/DragoNX/",ToastLength.Long).Show(); return; }
+
             try
             {
-                // Libera JIT no Android
+                // 1. Libera JIT no Android (RWX)
                 MemoryBlock.EnableForcedRwx = true;
 
-                var vfs = VirtualFileSystem.Create();
-                var keyPath = "/storage/emulated/0/Download/DragoNX/prod.keys";
-                if (File.Exists(keyPath)) vfs.ImportKeys(File.ReadAllBytes(keyPath));
+                // 2. FileSystem novo
+                var vfs = new VirtualFileSystem();
+                var keyPath = Path.Combine(dir, "prod.keys");
+                if(File.Exists(keyPath))
+                    vfs.ImportKeys(File.ReadAllBytes(keyPath), "prod.keys");
 
-                var contentManager = new ContentManager(vfs);
+                // 3. Drivers
+                var gpuRenderer = new VulkanRenderer();
+                var audioDriver = new DummyHardwareDeviceDriver();
                 var userChannel = new UserChannelPersistence();
-                var gpu = new VulkanRenderer();
-                Ryujinx.Audio.IAalOutput audio = null;
-
-                emu = new RyujinxSwitch(vfs, contentManager, userChannel, gpu, audio);
-                emu.LoadApplication(game);
                 
-                new System.Threading.Thread(() => emu.Run())
-                { IsBackground = true, Priority = System.Threading.ThreadPriority.Highest }.Start();
+                // 4. Config com JIT ON
+                var memConfig = new MemoryConfiguration(4294967296, MemoryConfiguration.DefaultHostAddressSpace, MemoryAllocationFlags.Reserve | MemoryAllocationFlags.Mirrorable);
+                
+                var config = new HleConfiguration(
+                    vfs,
+                    gpuRenderer,
+                    audioDriver,
+                    userChannel,
+                    memConfig,
+                    new Ryujinx.Common.Logging.LogProvider(),
+                    new NullHostUIHandler(),
+                    new List<LibHac.FsSystem.IAccessor>(),
+                    MemoryManagerMode.HostMapped, // <- JIT rápido
+                    true, // EnablePtc
+                    Ryujinx.HLE.FileSystem.FsGlobalAccessLogMode.None,
+                    0,
+                    Ryujinx.Common.Configuration.System.Language.AmericanEnglish,
+                    Ryujinx.Common.Configuration.System.Region.USA,
+                    Ryujinx.Common.Configuration.System.VSyncMode.Switch,
+                    false, false, 0, 1.0f, false, false, false, false, false, false, false, new DirtyHacks(), 0, false, System.TimeZoneInfo.Local
+                );
+
+                // 5. Cria Switch novo
+                emu = new Switch(config);
+                emu.LoadNsp(game); // ou LoadXci se for .xci
+
+                new System.Threading.Thread(() => {
+                    // Loop principal
+                    while(true){
+                        emu.ProcessFrame();
+                    }
+                }){ IsBackground = true }.Start();
 
                 Toast.MakeText(this, "JIT ON - " + Path.GetFileName(game), ToastLength.Short).Show();
             }
-            catch(Exception e)
+            catch(System.Exception e)
             {
-                Toast.MakeText(this, "ERRO: " + e.Message, ToastLength.Long).Show();
+                Toast.MakeText(this, "JIT ERRO: " + e.ToString(), ToastLength.Long).Show();
             }
         }
-        public void SurfaceChanged(ISurfaceHolder h, Android.Graphics.Format f, int w, int ht) {}
-        public void SurfaceDestroyed(ISurfaceHolder h) { emu?.Stop(); }
     }
+    class NullHostUIHandler : IHostUIHandler { public void DisplayMessage(string t, string m){} public bool DisplayMessageDialog(string t, string m){return true;} public void DisplayErrorMessage(string m){} }
 }
