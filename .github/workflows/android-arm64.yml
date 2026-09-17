@@ -19,7 +19,7 @@ jobs:
           echo y | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
       - name: Build APK
-        run: dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -r android-arm64 -p:AndroidPackageFormat=apk -f net10.0-android
+        run: dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -r android-arm64 -p:AndroidPackageFormat=apk -f net10.0-android /p:PublishTrimmed=false /p:AndroidLinkMode=None /p:PublishAot=false /p:RunAOTCompilation=false /p:TrimMode=copyused /p:DebugType=None
       - uses: actions/upload-artifact@v4
         with:
           name: Ryubing-APK-MASTER
