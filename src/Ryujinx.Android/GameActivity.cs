@@ -6,11 +6,14 @@ using System.IO;
 using System.Threading.Tasks;
 using Ryujinx.HLE;
 using Ryujinx.HLE.FileSystem;
+using Ryujinx.HLE.HOS;
 using Ryujinx.Common.Configuration;
+using Ryujinx.Common.Configuration.Multiplayer;
 using Ryujinx.Graphics.Vulkan;
 using Ryujinx.Audio.Backends.Dummy;
 using Ryujinx.HLE.UI;
-using Ryujinx.Memory;
+using LibHac.Common;
+using LibHac.Tools.FsSystem;
 
 namespace DragoNX;
 
@@ -28,8 +31,10 @@ public class GameActivity : Activity
         var romPath = Intent?.GetStringExtra("rom_path");
         if (string.IsNullOrEmpty(romPath))
         {
-            var files = Directory.GetFiles("/storage/emulated/0/Download/DragoNX/games");
-            if (files.Length > 0) romPath = files[0];
+            try {
+                var games = Directory.GetFiles("/storage/emulated/0/Download/DragoNX/games");
+                if (games.Length > 0) romPath = games[0];
+            } catch {}
         }
 
         if (string.IsNullOrEmpty(romPath))
@@ -40,49 +45,64 @@ public class GameActivity : Activity
 
         var surfaceView = new SurfaceView(this);
         SetContentView(surfaceView);
-
         var finalPath = romPath;
 
         Task.Run(() => {
             try {
-                // 1. VFS e FileSystem do seu Ryubing novo
                 var vfs = new VirtualFileSystem();
-
-                // 2. Renderer Vulkan nativo
+                var libHacManager = new LibHacHorizonManager();
+                var contentManager = new ContentManager(vfs);
+                var accountManager = new AccountManager();
+                var userChannel = new UserChannelPersistence();
                 var gpuRenderer = new VulkanRenderer();
-
-                // 3. Audio dummy pra não crashar no Android
                 var audioDriver = new DummyHardwareDeviceDriver();
+                var uiHandler = new DummyHostUIHandler();
 
-                // 4. Config nova que seu Switch pede
                 var config = new HleConfiguration(
+                    memoryConfiguration: new MemoryConfiguration(0x100000000, MemoryConfiguration.MemorySize4GiB),
+                    systemLanguage: SystemLanguage.AmericanEnglish,
+                    region: RegionCode.Americas,
+                    vSyncMode: VSyncMode.Switch,
+                    enableDockedMode: true,
+                    enablePtc: false,
+                    tickScalar: 1,
+                    enableInternetAccess: false,
+                    fsIntegrityCheckLevel: IntegrityCheckLevel.None,
+                    fsGlobalAccessLogMode: 0,
+                    systemTimeOffset: 0,
+                    timeZone: "UTC",
+                    memoryManagerMode: MemoryManagerMode.SoftwarePageTable,
+                    ignoreMissingServices: true,
+                    aspectRatio: AspectRatio.Fixed16x9,
+                    audioVolume: 1.0f,
+                    useHypervisor: false,
+                    multiplayerLanInterfaceId: "",
+                    multiplayerMode: MultiplayerMode.Disabled,
+                    multiplayerDisableP2p: false,
+                    multiplayerLdnPassphrase: "",
+                    multiplayerLdnServer: "",
+                    enableGdbStub: false,
+                    gdbStubPort: 0,
+                    debuggerSuspendOnStart: false,
+                    customVSyncInterval: 60
+                ).Configure(
                     vfs,
-                    new ContentManager(vfs),
-                    new AccountManager(),
-                    new LibHacHorizonManager(),
-                    new UserChannelPersistence(),
-                    new MemoryConfiguration(0x100000000, MemoryConfiguration.MemorySize4GiB),
-                    audioDriver,
+                    libHacManager,
+                    contentManager,
+                    accountManager,
+                    userChannel,
                     gpuRenderer,
-                    new DummyHostUIHandler(),
-                    SystemLanguage.AmericanEnglish,
-                    Region.Americas,
-                    VSyncMode.Switch,
-                    60,
-                    false, false, false, false,
-                    MemoryManagerMode.SoftwarePageTable,
-                    true, true, true, true
+                    audioDriver,
+                    uiHandler
                 );
 
                 device = new Switch(config);
-
-                // 5. Carrega e roda o NSP - API nova
                 device.LoadNsp(finalPath);
 
-                // Loop de frames
-                while (true) {
+                while (true)
+                {
                     device.ProcessFrame();
-                    device.PresentFrame(() => {});
+                    device.PresentFrame(() => { });
                 }
 
             } catch (System.Exception ex) {
@@ -91,8 +111,8 @@ public class GameActivity : Activity
         });
     }
 
-    // Host vazio pra compilar no Android
-    class DummyHostUIHandler : IHostUIHandler {
+    class DummyHostUIHandler : IHostUIHandler
+    {
         public bool HasFileExtensionChanged(string e) => false;
         public void HandleErrorMessage(string m) {}
         public void HandleInfoMessage(string m) {}
