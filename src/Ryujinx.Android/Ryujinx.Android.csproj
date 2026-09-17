@@ -22,15 +22,12 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
-
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
     <AndroidIncludeDebugSymbols>false</AndroidIncludeDebugSymbols>
     <DebugType>None</DebugType>
     <DebugSymbols>false</DebugSymbols>
     <AndroidPackageFormat>apk</AndroidPackageFormat>
-    <AndroidSupportedAbis>arm64-v8a</AndroidSupportedAbis>
   </PropertyGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\Ryujinx.Common\Ryujinx.Common.csproj" />
     <ProjectReference Include="..\Ryujinx.Cpu\Ryujinx.Cpu.csproj" />
@@ -41,8 +38,5 @@
     <ProjectReference Include="..\Ryujinx.Graphics.Gpu\Ryujinx.Graphics.Gpu.csproj" />
     <ProjectReference Include="..\ARMeilleure\ARMeilleure.csproj" />
     <ProjectReference Include="..\Ryujinx.Memory\Ryujinx.Memory.csproj" />
-    <!-- ESSAS 2 LINHAS CONSERTAM O ERRO DO SEU PRINT -->
-    <ProjectReference Include="..\Ryujinx.Ava\Ryujinx.Ava.csproj" />
-    <ProjectReference Include="..\Ryujinx.Ava.Common\Ryujinx.Ava.Common.csproj" />
   </ItemGroup>
 </Project>
