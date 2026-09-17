@@ -9,14 +9,12 @@ using Ryujinx.HLE.FileSystem;
 using Ryujinx.HLE;
 using Ryujinx.HLE.HOS.Services.Account.Acc;
 using Ryujinx.Graphics.Vulkan;
-using Ryujinx.Audio.OpenAL;
-
-// FIX do Switch ambíguo
+using Ryujinx.Memory;
 using RyujinxSwitch = Ryujinx.HLE.Switch;
 
 namespace RyujinxAndroid
 {
-    [Activity(Label = "DragoNX", MainLauncher = true, ScreenOrientation = ScreenOrientation.Landscape, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.KeyboardHidden | ConfigChanges.ScreenSize)]
+    [Activity(Label = "DragoNX JIT", MainLauncher = true, ScreenOrientation = ScreenOrientation.Landscape, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.KeyboardHidden | ConfigChanges.ScreenSize)]
     public class MainActivity : Activity, ISurfaceHolderCallback
     {
         SurfaceView view;
@@ -36,7 +34,7 @@ namespace RyujinxAndroid
             {
                 foreach(var f in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
                 {
-                    if(f.EndsWith(".nsp") || f.EndsWith(".xci") || f.EndsWith(".nca") || f.EndsWith(".nro"))
+                    if(f.EndsWith(".nsp") || f.EndsWith(".xci") || f.EndsWith(".nca"))
                     { game = f; break; }
                 }
             }
@@ -51,29 +49,29 @@ namespace RyujinxAndroid
             }
             try
             {
-                // FIX 1: VirtualFileSystem não tem new(), é Create()
+                // Libera JIT no Android
+                MemoryBlock.EnableForcedRwx = true;
+
                 var vfs = VirtualFileSystem.Create();
                 var keyPath = "/storage/emulated/0/Download/DragoNX/prod.keys";
-                if (File.Exists(keyPath)) 
-                    vfs.ImportKeys(File.ReadAllBytes(keyPath));
+                if (File.Exists(keyPath)) vfs.ImportKeys(File.ReadAllBytes(keyPath));
 
-                // FIX 2: ContentManager + UserChannel são obrigatórios agora
                 var contentManager = new ContentManager(vfs);
                 var userChannel = new UserChannelPersistence();
+                var gpu = new VulkanRenderer();
+                Ryujinx.Audio.IAalOutput audio = null;
 
-                // FIX 3: VulkanRenderer não recebe Surface no construtor no Ryujinx novo
-                var renderer = new VulkanRenderer();
-                var audio = new OpenALHardwareDeviceDriver();
-
-                // FIX 4: Switch agora tem 5 parâmetros, não 3
-                emu = new RyujinxSwitch(vfs, contentManager, userChannel, renderer, audio.GetHardwareDeviceDriver());
-
+                emu = new RyujinxSwitch(vfs, contentManager, userChannel, gpu, audio);
                 emu.LoadApplication(game);
-                new System.Threading.Thread(() => emu.Run()).Start();
+                
+                new System.Threading.Thread(() => emu.Run())
+                { IsBackground = true, Priority = System.Threading.ThreadPriority.Highest }.Start();
+
+                Toast.MakeText(this, "JIT ON - " + Path.GetFileName(game), ToastLength.Short).Show();
             }
             catch(Exception e)
             {
-                Toast.MakeText(this, "ERRO: " + e.ToString(), ToastLength.Long).Show();
+                Toast.MakeText(this, "ERRO: " + e.Message, ToastLength.Long).Show();
             }
         }
         public void SurfaceChanged(ISurfaceHolder h, Android.Graphics.Format f, int w, int ht) {}
