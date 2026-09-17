@@ -372,9 +372,9 @@ namespace Ryujinx.Graphics.Shader.Translation
             return Options.TargetLanguage switch
             {
                 TargetLanguage.Glsl => new ShaderProgram(info, TargetLanguage.Glsl, GlslGenerator.Generate(sInfo, parameters)),
-                TargetLanguage.Spirv => new ShaderProgram(info, TargetLanguage.Spirv, SpirvGenerator.Generate(sInfo, parameters)),
-                _ => throw new NotImplementedException(Options.TargetLanguage.ToString()),
-            };
+TargetLanguage.Spirv => throw new NotSupportedException("Spirv removed"),
+_ => throw new NotImplementedException(Options.TargetLanguage.ToString())
+};
         }
 
         private ResourceManager CreateResourceManager(bool vertexAsCompute)
