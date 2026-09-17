@@ -32,20 +32,7 @@ namespace Ryujinx.Android
 
             SetContentView(root);
 
-            // AQUI ENTRA O BOOT REAL DO RYUJINX
-            // Se seu projeto já tem Ryujinx.Core, troque esse Toast pelo start do emulador
             Toast.MakeText(this, "Boot: " + Path.GetFileName(gamePath), ToastLength.Long).Show();
-            
-            try
-            {
-                // Exemplo de como seria o boot real - descomente quando quiser
-                // var appHost = new Ryujinx.Host();
-                // appHost.StartGame(gamePath, baseDir);
-            }
-            catch(System.Exception ex)
-            {
-                Toast.MakeText(this, "Erro no boot: " + ex.Message, ToastLength.Long).Show();
-            }
         }
     }
 }
