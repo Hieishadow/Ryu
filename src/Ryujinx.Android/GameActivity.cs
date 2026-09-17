@@ -1,38 +1,32 @@
 using Android.App;
 using Android.OS;
-using Android.Widget;
 using Android.Views;
-using System.IO;
+using Ryujinx.Ava;
+using Ryujinx.Graphics.Vulkan;
 
-namespace Ryujinx.Android
+namespace DragoNX;
+
+[Activity(Label = "DragoNX", Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ConfigurationChanges = Android.Content.PM.ConfigChanges.Orientation | Android.Content.PM.ConfigChanges.ScreenSize | Android.Content.PM.ConfigChanges.KeyboardHidden)]
+public class GameActivity : Activity
 {
-    [Activity(Label = "DragoNX Game", Exported = false, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape)]
-    public class GameActivity : Activity
+    private GameHost _host;
+
+    protected override void OnCreate(Bundle savedInstanceState)
     {
-        protected override void OnCreate(Bundle? savedInstanceState)
-        {
-            base.OnCreate(savedInstanceState);
-            
-            string gamePath = Intent?.GetStringExtra("gamePath") ?? "N/A";
-            string baseDir = Intent?.GetStringExtra("baseDir") ?? "/storage/emulated/0/Download/DragoNX";
+        base.OnCreate(savedInstanceState);
+        Window.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn | WindowManagerFlags.HardwareAccelerated);
 
-            var root = new LinearLayout(this){Orientation=Orientation.Vertical};
-            root.SetBackgroundColor(global::Android.Graphics.Color.Black);
-            root.SetPadding(20,20,20,20);
+        var romPath = Intent.GetStringExtra("rom_path");
 
-            var txt = new TextView(this);
-            txt.Text = $"Tentando dar boot em:\n{gamePath}\n\nBase: {baseDir}\n\n[EMULADOR INICIANDO...]\nJIT: ON\nVulkan: ON";
-            txt.SetTextColor(global::Android.Graphics.Color.White);
-            txt.TextSize = 16f;
-            root.AddView(txt);
+        // Inicializa Ryujinx com Vulkan + Turnip
+        _host = new GameHost(this, romPath, "/storage/emulated/0/Download/DragoNX/system/");
+        SetContentView(_host.View);
+        _host.Start();
+    }
 
-            var surface = new View(this);
-            surface.SetBackgroundColor(global::Android.Graphics.Color.ParseColor("#111111"));
-            root.AddView(surface, new LinearLayout.LayoutParams(-1, -1));
-
-            SetContentView(root);
-
-            Toast.MakeText(this, "Boot: " + Path.GetFileName(gamePath), ToastLength.Long).Show();
-        }
+    protected override void OnDestroy()
+    {
+        _host?.Stop();
+        base.OnDestroy();
     }
 }
