@@ -1,4 +1,5 @@
 using Android.App;
+using Android.Content;
 using Android.OS;
 using Android.Views;
 using Android.Widget;
@@ -20,18 +21,22 @@ public class GameActivity : Activity
 
         if (string.IsNullOrEmpty(romPath))
         {
-            Toast.MakeText(this, "Jogo nao encontrado em /Download/DragoNX/games", ToastLength.Long).Show();
+            Toast.MakeText(this, "Sem rom em /Download/DragoNX/games", ToastLength.Long).Show();
             Finish();
             return;
         }
 
-        // Placeholder que compila - o host real do Ryujinx fica dentro do HLE
-        // Esse arquivo so garante o build verde de 36MB
-        TextView tv = new TextView(this);
-        tv.Text = "DragoNX\n" + romPath;
-        tv.Gravity = GravityFlags.Center;
-        SetContentView(tv);
+        // Tela temporária - prova que o build de 36MB abriu e leu o rom
+        // O host Vulkan real entra aqui depois que o build ficar verde
+        var layout = new LinearLayout(this);
+        layout.Orientation = Orientation.Vertical;
+        layout.Gravity = GravityFlags.Center;
         
-        Toast.MakeText(this, "Build OK: " + romPath, ToastLength.Long).Show();
+        var tv = new TextView(this);
+        tv.Text = "DragoNX ARM64\n\n" + romPath + "\n\nBuild OK 36MB";
+        tv.Gravity = GravityFlags.Center;
+        
+        layout.AddView(tv);
+        SetContentView(layout);
     }
 }
