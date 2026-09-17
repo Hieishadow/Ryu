@@ -1,48 +1,16 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net10.0-android</TargetFramework>
-    <OutputType>Exe</OutputType>
-    <ApplicationId>com.ryubing.android</ApplicationId>
-    <ApplicationVersion>1</ApplicationVersion>
-    <ApplicationDisplayVersion>1.0-MASTER-36MB-STABLE</ApplicationDisplayVersion>
-    <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
-    <RuntimeIdentifiers>android-arm64</RuntimeIdentifiers>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(Configuration)'=='Debug'">
-    <PublishTrimmed>false</PublishTrimmed>
-    <AndroidLinkMode>None</AndroidLinkMode>
-    <DebugSymbols>true</DebugSymbols>
-  </PropertyGroup>
-
-  <!-- ESSA É A RELEASE QUE NÃO CRASHA -->
+  <!-- RELEASE GORDA = NÃO CRASHA -->
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
-    <PublishTrimmed>true</PublishTrimmed>
+    <PublishTrimmed>false</PublishTrimmed>
     <TrimMode>copyused</TrimMode>
     <PublishAot>false</PublishAot>
     <RunAOTCompilation>false</RunAOTCompilation>
-    <AndroidLinkMode>SdkOnly</AndroidLinkMode>
-    <InvariantGlobalization>true</InvariantGlobalization>
-    <AndroidEnableAssemblyCompression>true</AndroidEnableAssemblyCompression>
-    <AndroidUseAssemblyStore>true</AndroidUseAssemblyStore>
-    <EmbedAssembliesIntoApk>false</EmbedAssembliesIntoApk>
+    <AndroidLinkMode>None</AndroidLinkMode>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <AndroidEnableAssemblyCompression>false</AndroidEnableAssemblyCompression>
+    <AndroidUseAssemblyStore>false</AndroidUseAssemblyStore>
+    <IsTrimmable>false</IsTrimmable>
+    <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
     <AndroidIncludeDebugSymbols>false</AndroidIncludeDebugSymbols>
     <DebugSymbols>false</DebugSymbols>
-    <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+    <DebugType>none</DebugType>
   </PropertyGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\Ryujinx.Common\Ryujinx.Common.csproj" />
-    <ProjectReference Include="..\Ryujinx.Cpu\Ryujinx.Cpu.csproj" />
-    <ProjectReference Include="..\Ryujinx.HLE\Ryujinx.HLE.csproj" />
-    <ProjectReference Include="..\Ryujinx.Graphics.GAL\Ryujinx.Graphics.GAL.csproj" />
-    <ProjectReference Include="..\Ryujinx.Graphics.Shader\Ryujinx.Graphics.Shader.csproj" />
-    <ProjectReference Include="..\Ryujinx.Graphics.Vulkan\Ryujinx.Graphics.Vulkan.csproj" />
-    <ProjectReference Include="..\Ryujinx.Graphics.Gpu\Ryujinx.Graphics.Gpu.csproj" />
-    <ProjectReference Include="..\ARMeilleure\ARMeilleure.csproj" />
-    <ProjectReference Include="..\Ryujinx.Memory\Ryujinx.Memory.csproj" />
-  </ItemGroup>
-</Project>
