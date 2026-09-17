@@ -22,62 +22,87 @@ public class MainActivity : Activity
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
-        // >>> COLOCA AQUI, LOGO NO COMEÇO <<<
+        // CRASH APARECE NA TELA
         AppDomain.CurrentDomain.UnhandledException += (s, e) => {
-            try {
-                var msg = e.ExceptionObject.ToString();
-                File.WriteAllText("/storage/emulated/0/Download/crash_ryujinx.txt", msg);
-            } catch {}
+            RunOnUiThread(() => {
+                var tv = new TextView(this);
+                tv.Text = "CRASH:\n" + e.ExceptionObject.ToString();
+                tv.SetTextColor(Color.Yellow);
+                tv.TextSize = 10;
+                tv.SetPadding(20,20,20,20);
+                tv.SetBackgroundColor(Color.Black);
+                SetContentView(tv);
+            });
         };
+
         TaskScheduler.UnobservedTaskException += (s, e) => {
-            try {
-                File.WriteAllText("/storage/emulated/0/Download/crash_ryujinx_task.txt", e.Exception.ToString());
-            } catch {}
+            RunOnUiThread(() => {
+                var tv = new TextView(this);
+                tv.Text = "CRASH TASK:\n" + e.Exception.ToString();
+                tv.SetTextColor(Color.Red);
+                tv.TextSize = 10;
+                tv.SetPadding(20,20,20,20);
+                tv.SetBackgroundColor(Color.Black);
+                SetContentView(tv);
+            });
             e.SetObserved();
         };
 
-        base.OnCreate(savedInstanceState);
-        Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
-
-        Directory.CreateDirectory(GamesPath);
-        Directory.CreateDirectory(SystemPath);
-        Directory.CreateDirectory(JitPath);
-
-        layout = new LinearLayout(this);
-        layout.Orientation = Orientation.Vertical;
-        layout.SetGravity(GravityFlags.Center);
-        layout.SetBackgroundColor(Color.Black);
-        layout.SetPadding(40, 40, 40, 40);
-
-        var title = new TextView(this);
-        title.Text = "DragoNX - Teste Debug";
-        title.SetTextColor(Color.White);
-        title.TextSize = 22;
-        title.Gravity = GravityFlags.Center;
-        layout.AddView(title);
-
-        status = new TextView(this);
-        status.SetTextColor(Color.Gray);
-        status.TextSize = 14;
-        status.Gravity = GravityFlags.Center;
-        status.Text = $"Games: {GamesPath}\nJIT: {JitPath}";
-        layout.AddView(status);
-
-        var btnPerm = new Button(this);
-        btnPerm.Text = "1 - Dar Permissão de Arquivos";
-        btnPerm.Click += (s, e) => RequestAllFilesPermission();
-        layout.AddView(btnPerm);
-
-        var btnScan = new Button(this);
-        btnScan.Text = "2 - Procurar Zelda Links Awakening";
-        btnScan.Click += (s, e) => ScanGames();
-        layout.AddView(btnScan);
-
-        SetContentView(layout);
-
-        if (!HasAllFilesPermission())
+        try
         {
-            RequestAllFilesPermission();
+            base.OnCreate(savedInstanceState);
+            Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
+
+            Directory.CreateDirectory(GamesPath);
+            Directory.CreateDirectory(SystemPath);
+            Directory.CreateDirectory(JitPath);
+
+            layout = new LinearLayout(this);
+            layout.Orientation = Orientation.Vertical;
+            layout.SetGravity(GravityFlags.Center);
+            layout.SetBackgroundColor(Color.Black);
+            layout.SetPadding(40, 40, 40, 40);
+
+            var title = new TextView(this);
+            title.Text = "DragoNX - Teste Debug";
+            title.SetTextColor(Color.White);
+            title.TextSize = 22;
+            title.Gravity = GravityFlags.Center;
+            layout.AddView(title);
+
+            status = new TextView(this);
+            status.SetTextColor(Color.Gray);
+            status.TextSize = 14;
+            status.Gravity = GravityFlags.Center;
+            status.Text = $"Games: {GamesPath}\nJIT: {JitPath}";
+            layout.AddView(status);
+
+            var btnPerm = new Button(this);
+            btnPerm.Text = "1 - Dar Permissão de Arquivos";
+            btnPerm.Click += (s, e) => RequestAllFilesPermission();
+            layout.AddView(btnPerm);
+
+            var btnScan = new Button(this);
+            btnScan.Text = "2 - Procurar Zelda Links Awakening";
+            btnScan.Click += (s, e) => ScanGames();
+            layout.AddView(btnScan);
+
+            SetContentView(layout);
+
+            if (!HasAllFilesPermission())
+            {
+                RequestAllFilesPermission();
+            }
+        }
+        catch (System.Exception ex)
+        {
+            var tv = new TextView(this);
+            tv.Text = "CRASH NO ONCREATE:\n" + ex.ToString();
+            tv.SetTextColor(Color.Red);
+            tv.TextSize = 11;
+            tv.SetPadding(20,20,20,20);
+            tv.SetBackgroundColor(Color.Black);
+            SetContentView(tv);
         }
     }
 
@@ -111,46 +136,57 @@ public class MainActivity : Activity
 
     void ScanGames()
     {
-        layout.RemoveAllViews();
-        
-        var title = new TextView(this);
-        title.Text = "Jogos encontrados:";
-        title.SetTextColor(Color.White);
-        title.TextSize = 20;
-        title.Gravity = GravityFlags.Center;
-        layout.AddView(title);
-
-        var dir = new Java.IO.File(GamesPath);
-        var files = dir.ListFiles();
-
-        if (files == null || files.Length == 0)
+        try
         {
-            var empty = new TextView(this);
-            empty.SetTextColor(Color.Red);
-            empty.Text = $"\nNenhum jogo em:\n{GamesPath}\n\nColoque o Links Awakening.nsp lá e clica de novo.";
-            empty.Gravity = GravityFlags.Center;
-            layout.AddView(empty);
+            layout.RemoveAllViews();
+            
+            var title = new TextView(this);
+            title.Text = "Jogos encontrados:";
+            title.SetTextColor(Color.White);
+            title.TextSize = 20;
+            title.Gravity = GravityFlags.Center;
+            layout.AddView(title);
 
-            var back = new Button(this);
-            back.Text = "Voltar";
-            back.Click += (s,e) => Recreate();
-            layout.AddView(back);
-            return;
-        }
+            var dir = new Java.IO.File(GamesPath);
+            var files = dir.ListFiles();
 
-        foreach (var file in files.Where(f =>!f.IsDirectory))
-        {
-            var btn = new Button(this);
-            btn.Text = file.Name;
-            btn.SetBackgroundColor(Color.DarkGray);
-            var path = file.AbsolutePath;
-            btn.Click += (s, e) =>
+            if (files == null || files.Length == 0)
             {
-                var intent = new Intent(this, typeof(GameActivity));
-                intent.PutExtra("rom_path", path);
-                StartActivity(intent);
-            };
-            layout.AddView(btn);
+                var empty = new TextView(this);
+                empty.SetTextColor(Color.Red);
+                empty.Text = $"\nNenhum jogo em:\n{GamesPath}\n\nColoque o Links Awakening.nsp lá e clica de novo.";
+                empty.Gravity = GravityFlags.Center;
+                layout.AddView(empty);
+
+                var back = new Button(this);
+                back.Text = "Voltar";
+                back.Click += (s,e) => Recreate();
+                layout.AddView(back);
+                return;
+            }
+
+            foreach (var file in files.Where(f =>!f.IsDirectory))
+            {
+                var btn = new Button(this);
+                btn.Text = file.Name;
+                btn.SetBackgroundColor(Color.DarkGray);
+                var path = file.AbsolutePath;
+                btn.Click += (s, e) =>
+                {
+                    var intent = new Intent(this, typeof(GameActivity));
+                    intent.PutExtra("rom_path", path);
+                    StartActivity(intent);
+                };
+                layout.AddView(btn);
+            }
+        }
+        catch (System.Exception ex)
+        {
+            var tv = new TextView(this);
+            tv.Text = "CRASH SCAN:\n" + ex.ToString();
+            tv.SetTextColor(Color.Red);
+            tv.SetBackgroundColor(Color.Black);
+            SetContentView(tv);
         }
     }
 }
