@@ -1,9 +1,9 @@
 using Android.App;
 using Android.OS;
 using Android.Views;
-using Android.Graphics;
 using Android.Widget;
-using System.IO;
+using Android.Graphics;
+using System.Linq;
 
 namespace DragoNX;
 
@@ -17,51 +17,49 @@ public class GameActivity : Activity
         Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn | WindowManagerFlags.HardwareAccelerated);
 
         var romPath = Intent?.GetStringExtra("rom_path");
+
+        // CORRIGIDO: System.IO.Path e System.IO.Directory e System.IO.File com nome completo
         if (string.IsNullOrEmpty(romPath))
         {
-            // tenta achar manualmente
-            var games = Directory.GetFiles("/storage/emulated/0/Download/DragoNX/games");
-            if (games.Length > 0) romPath = games[0];
+            try {
+                var games = System.IO.Directory.GetFiles("/storage/emulated/0/Download/DragoNX/games");
+                if (games.Length > 0) romPath = games[0];
+            } catch {}
         }
 
         var layout = new LinearLayout(this);
-        layout.SetBackgroundColor(Color.Black);
+        layout.Orientation = Orientation.Vertical;
         layout.SetGravity(GravityFlags.Center);
+        layout.SetBackgroundColor(Color.Black);
+        layout.SetPadding(40,40,40,40);
 
         var tv = new TextView(this);
         tv.SetTextColor(Color.White);
-        tv.TextSize = 16;
+        tv.TextSize = 18;
         tv.Gravity = GravityFlags.Center;
 
-        if (string.IsNullOrEmpty(romPath) ||!File.Exists(romPath))
+        if (string.IsNullOrEmpty(romPath) ||!System.IO.File.Exists(romPath))
         {
-            tv.Text = "DragoNX Debug - SEM JOGO\n\nColoque Links Awakening em:\n/Download/DragoNX/games/";
+            tv.Text = "DragoNX Teste\n\nColoque Zelda em:\n/Download/DragoNX/games/";
             layout.AddView(tv);
             SetContentView(layout);
             return;
         }
 
-        // TENTA BOOTAR
         try
         {
-            tv.Text = $"Tentando bootar:\n{Path.GetFileName(romPath)}\n\nJIT ON - Aguarde...";
+            // CORRIGIDO L47 e L57: usar System.IO.Path
+            var fileName = System.IO.Path.GetFileName(romPath);
+            tv.Text = $"Tentando bootar:\n{fileName}\n\nJIT ON - Aguarde...";
             layout.AddView(tv);
             SetContentView(layout);
 
-            // TODO: Aqui entra o Ryujinx
-            // Se você já tem o Ryujinx.HLE referenciado:
-            // var device = new Ryujinx.HLE.HOS.Horizon(...);
-            // device.LoadApplication(romPath);
-
-            // Por enquanto prova que achou o ROM
-            Toast.MakeText(this, $"ROM encontrado: {Path.GetFileName(romPath)}", ToastLength.Long)?.Show();
-
-            // Simula que ia iniciar Vulkan
-            tv.Text += "\n\nSe chegou até aqui, o APK leu o jogo!\nAgora precisa do host Ryujinx.";
+            Toast.MakeText(this, $"ROM: {fileName}", ToastLength.Long)?.Show();
+            tv.Text += "\n\nLeu o jogo! Pronto pro host Vulkan.";
         }
         catch (System.Exception ex)
         {
-            tv.Text = $"Erro ao bootar:\n{ex.Message}";
+            tv.Text = $"Erro: {ex.Message}";
             layout.AddView(tv);
             SetContentView(layout);
         }
