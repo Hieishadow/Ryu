@@ -1,6 +1,5 @@
 using Ryujinx.Graphics.Shader.CodeGen;
 using Ryujinx.Graphics.Shader.CodeGen.Glsl;
-using Ryujinx.Graphics.Shader.CodeGen.Spirv;
 using Ryujinx.Graphics.Shader.Decoders;
 using Ryujinx.Graphics.Shader.IntermediateRepresentation;
 using Ryujinx.Graphics.Shader.StructuredIr;
