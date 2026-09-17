@@ -6,108 +6,80 @@ using Android.Views;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
-using Android.Content.PM;
-using Android;
-using AndroidX.Core.App;
-using AndroidX.Core.Content;
-
-[assembly: UsesPermission(Manifest.Permission.ReadExternalStorage)]
-[assembly: UsesPermission(Manifest.Permission.WriteExternalStorage)]
-[assembly: UsesPermission("android.permission.MANAGE_EXTERNAL_STORAGE")]
 
 namespace Ryujinx.Android
 {
-    [Activity(Label = "DragoNX", MainLauncher = true, Exported = true, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.ScreenLayout)]
+    [Activity(Label = "DragoNX", MainLauncher = true, Exported = true, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen")]
     public class MainActivity : Activity
     {
-        ListView _list = null!;
         List<string> _games = new();
+        ListView _list = null!;
         TextView _status = null!;
-        string _baseDir="/storage/emulated/0/Download/DragoNX", _gamesDir="", _keysDir="", _firmwareDir="";
+        string _baseDir = "/storage/emulated/0/Download/DragoNX";
 
         protected override void OnCreate(Bundle? savedInstanceState)
         {
             base.OnCreate(savedInstanceState);
-            RequestPerms();
 
-            _gamesDir = Path.Combine(_baseDir, "games");
-            _keysDir = Path.Combine(_baseDir, "system");
-            _firmwareDir = Path.Combine(_baseDir, "bis");
-            try{
-                Directory.CreateDirectory(_baseDir);
-                Directory.CreateDirectory(_gamesDir);
-                Directory.CreateDirectory(_keysDir);
-                Directory.CreateDirectory(_firmwareDir);
-            }catch{}
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.R)
+            {
+                if (!global::Android.OS.Environment.IsExternalStorageManager)
+                {
+                    try{
+                        var i = new Intent(global::Android.Provider.Settings.ActionManageAppAllFilesAccessPermission);
+                        i.SetData(global::Android.Net.Uri.Parse("package:" + PackageName));
+                        StartActivity(i);
+                    }catch{
+                        StartActivity(new Intent(global::Android.Provider.Settings.ActionManageAllFilesAccessPermission));
+                    }
+                }
+            }
+            else if (Build.VERSION.SdkInt >= BuildVersionCodes.M)
+            {
+                if (CheckSelfPermission(global::Android.Manifest.Permission.ReadExternalStorage) != global::Android.Content.PM.Permission.Granted)
+                    RequestPermissions(new string[] { global::Android.Manifest.Permission.ReadExternalStorage, global::Android.Manifest.Permission.WriteExternalStorage }, 1);
+            }
+
+            try{ Directory.CreateDirectory(_baseDir); Directory.CreateDirectory(Path.Combine(_baseDir,"games")); Directory.CreateDirectory(Path.Combine(_baseDir,"system")); Directory.CreateDirectory(Path.Combine(_baseDir,"bis")); }catch{}
 
             var root = new LinearLayout(this){Orientation=Orientation.Vertical};
-            root.SetBackgroundColor(global::Android.Graphics.Color.ParseColor("#0F0F0F"));
+            root.SetBackgroundColor(global::Android.Graphics.Color.Black);
 
             _status = new TextView(this);
             _status.SetPadding(20,20,20,20);
             _status.SetTextColor(global::Android.Graphics.Color.White);
             root.AddView(_status);
 
-            var row = new LinearLayout(this){Orientation=Orientation.Horizontal};
-            var b1 = new Button(this){Text="JOGOS"};
-            var b2 = new Button(this){Text="KEYS"};
-            var b3 = new Button(this){Text="FIRMWARE"};
-            b2.Click += (s,e)=>{ var it=new Intent(Intent.ActionOpenDocument); it.SetType("*/*"); StartActivityForResult(it,1002); };
-            b3.Click += (s,e)=>{ var it=new Intent(Intent.ActionOpenDocument); it.SetType("*/*"); StartActivityForResult(it,1003); };
-            row.AddView(b1); row.AddView(b2); row.AddView(b3);
-            root.AddView(row);
+            var btnRefresh = new Button(this){Text="ATUALIZAR JOGOS"};
+            btnRefresh.Click += (s,e)=> RefreshList();
+            root.AddView(btnRefresh);
 
             _list = new ListView(this);
             _list.ItemClick += (s,e)=>{
-                var intent2 = new Intent(this, typeof(GameActivity));
-                intent2.PutExtra("gamePath", _games[e.Position]);
-                intent2.PutExtra("baseDir", _baseDir);
-                StartActivity(intent2);
+                if(e.Position < 0 || e.Position >= _games.Count) return;
+                var it = new Intent(this, typeof(GameActivity));
+                it.PutExtra("gamePath", _games[e.Position]);
+                it.PutExtra("baseDir", _baseDir);
+                StartActivity(it);
             };
             root.AddView(_list, new LinearLayout.LayoutParams(-1,-1));
+
             SetContentView(root);
-            Refresh();
+            RefreshList();
         }
 
-        void RequestPerms(){
-            if (Build.VERSION.SdkInt >= BuildVersionCodes.R){
-                if (!global::Android.OS.Environment.IsExternalStorageManager){
-                    try{
-                        var it = new Intent(global::Android.Provider.Settings.ActionManageAppAllFilesAccessPermission);
-                        it.SetData(global::Android.Net.Uri.Parse("package:" + PackageName));
-                        StartActivity(it);
-                    }catch{
-                        var it = new Intent(global::Android.Provider.Settings.ActionManageAllFilesAccessPermission);
-                        StartActivity(it);
-                    }
-                }
-            } else {
-                if (ContextCompat.CheckSelfPermission(this, Manifest.Permission.ReadExternalStorage) != Permission.Granted){
-                    ActivityCompat.RequestPermissions(this, new string[]{ Manifest.Permission.ReadExternalStorage, Manifest.Permission.WriteExternalStorage }, 1);
-                }
-            }
-        }
-
-        void Refresh(){
-            try{
-                bool hasProd = File.Exists(Path.Combine(_keysDir,"prod.keys"));
-                bool hasAccess = true;
-                try{ Directory.CreateDirectory(_baseDir); }catch{ hasAccess=false; }
-                _status.Text = $"DragoNX | Base: {_baseDir}\nprod.keys: {(hasProd?"OK":"FALTA")} | Jogos: {_games.Count}\nAcesso: {(hasAccess?"OK":"SEM PERMISSÃO - clique em JOGOS")}\nJIT: ON | Vulkan: ON | Publico";
-                _games = Directory.GetFiles(_gamesDir,"*.*",SearchOption.AllDirectories).Where(f=>f.EndsWith(".nsp")||f.EndsWith(".xci")||f.EndsWith(".nsz")||f.EndsWith(".xcz")).ToList();
+        void RefreshList()
+        {
+            try
+            {
+                string gamesDir = Path.Combine(_baseDir, "games");
+                Directory.CreateDirectory(gamesDir);
+                bool hasKeys = File.Exists(Path.Combine(_baseDir,"system","prod.keys"));
+                _games = Directory.GetFiles(gamesDir, "*.*", SearchOption.AllDirectories).Where(f=>f.EndsWith(".nsp")||f.EndsWith(".xci")||f.EndsWith(".nsz")||f.EndsWith(".xcz")).ToList();
+                _status.Text = $"DragoNX | Base: {_baseDir}\nprod.keys: {(hasKeys?"OK":"FALTA - coloca em system/")}\nJogos encontrados: {_games.Count}\n\nSe seu Zelda estiver em /Download/DragoNX/games/ vai aparecer abaixo:";
                 _list.Adapter = new ArrayAdapter<string>(this, global::Android.Resource.Layout.SimpleListItem1, _games.Select(Path.GetFileName).ToList()!);
-            }catch(System.Exception ex){
-                _status.Text = "Erro: " + ex.Message + "\nVá em Config > Apps > DragoNX > Permitir acesso a todos os arquivos";
             }
-        }
-        protected override void OnActivityResult(int rc, Result res, Intent? data){
-            base.OnActivityResult(rc,res,data);
-            if(res!=Result.Ok || data?.Data==null) return;
-            try{
-                if(rc==1002){ using var inp=ContentResolver.OpenInputStream(data.Data); using var outF=File.Create(Path.Combine(_keysDir,"prod.keys")); inp!.CopyTo(outF); }
-                if(rc==1003){ using var inp=ContentResolver.OpenInputStream(data.Data); var zp=Path.Combine(_baseDir,"firmware.zip"); using var outF=File.Create(zp); inp!.CopyTo(outF); System.IO.Compression.ZipFile.ExtractToDirectory(zp,_firmwareDir,true); }
-            }catch{}
-            Refresh();
+            catch(System.Exception ex){ _status.Text = "Erro: " + ex.Message; }
         }
     }
 }
