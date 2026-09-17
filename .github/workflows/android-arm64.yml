@@ -1,26 +1,44 @@
-name: Ryubing Android ARM64
-on: [push, workflow_dispatch]
+name: Ryujinx Android ARM64
+
+on:
+  push:
+    branches: [ master ]
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
         with:
-          submodules: recursive
-      - uses: actions/setup-java@v4
+          dotnet-version: 8.0.x
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-      - uses: actions/setup-dotnet@v4
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Restore
+        run: dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj -r android-arm64
+      - name: Build APK 280MB
+        run: |
+          dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj \
+          -c Release \
+          -r android-arm64 \
+          -f net8.0-android \
+          /p:PublishTrimmed=false \
+          /p:TrimMode=copyused \
+          /p:AndroidLinkMode=None \
+          /p:RunAOTCompilation=false \
+          /p:PublishAot=false \
+          /p:EnableTrimAnalyzer=false \
+          /p:SuppressTrimAnalysisWarnings=true \
+          /p:DebugType=None \
+          /p:DebugSymbols=false
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
-          dotnet-version: 10.0.x
-      - run: dotnet workload install android
-      - run: |
-          echo y | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
-      - name: Build APK
-        run: dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -r android-arm64 -p:AndroidPackageFormat=apk -f net10.0-android /p:PublishTrimmed=false /p:AndroidLinkMode=None /p:PublishAot=false /p:RunAOTCompilation=false /p:TrimMode=copyused /p:DebugType=None
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Ryubing-APK-MASTER
-          path: "**/*.apk"
+          name: Ryujinx-APK-MASTER
+          path: src/Ryujinx.Android/bin/Release/net8.0-android/android-arm64/publish/*.apk
