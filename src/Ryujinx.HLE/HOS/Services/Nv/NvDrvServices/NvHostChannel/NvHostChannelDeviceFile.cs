@@ -8,8 +8,9 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel
     }
     class NvHostChannelDeviceFile
     {
-        public static dynamic Channel { get; } = new FakeChannel();
-        public static void Destroy() { }
+        public dynamic Channel { get; } = new FakeChannel();
+        public void Destroy() { }
+        public static void Destroy(object dummy = null) { }
         public void Close() { }
         public NvHostChannelDeviceFile() { }
     }
