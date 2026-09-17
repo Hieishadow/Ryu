@@ -61,14 +61,14 @@ namespace Ryujinx.Android
             }
             catch (System.Exception ex)
             {
-                Android.Util.Log.Error("DragoNX", ex.ToString());
+                global::Android.Util.Log.Error("DragoNX", ex.ToString());
                 Toast.MakeText(this, "Erro: " + ex.Message, ToastLength.Long)?.Show();
             }
         }
         void Refresh(){
             try{
                 bool hasProd = File.Exists(Path.Combine(_keysDir,"prod.keys"));
-                _status.Text = $"DragoNX | Base: {_baseDir}\nprod.keys: {(hasProd?"OK":"FALTA")} | Jogos: {_games.Count}\nJIT: ON | Vulkan: ON | Build 172 - 150MB";
+                _status.Text = $"DragoNX | Base: {_baseDir}\nprod.keys: {(hasProd?"OK":"FALTA")} | Jogos: {_games.Count}\nJIT: ON | Vulkan: ON | Build 174 FIX";
                 _games = Directory.GetFiles(_gamesDir,"*.*",SearchOption.AllDirectories).Where(f=>f.EndsWith(".nsp")||f.EndsWith(".xci")||f.EndsWith(".nsz")||f.EndsWith(".xcz")).ToList();
                 _list.Adapter = new ArrayAdapter<string>(this, global::Android.Resource.Layout.SimpleListItem1, _games.Select(Path.GetFileName).ToList()!);
             }catch{}
