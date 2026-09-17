@@ -1,8 +1,9 @@
 <Project>
   <PropertyGroup>
-    <TargetFramework>net10.0-android</TargetFramework>
+    <TargetFramework Condition="$([System.String]::new('$(MSBuildProjectName)').Contains('Android'))">net10.0-android</TargetFramework>
+    <TargetFramework Condition="!$([System.String]::new('$(MSBuildProjectName)').Contains('Android'))">net10.0</TargetFramework>
     <LangVersion>preview</LangVersion>
-    <DebugType Condition="'$(Configuration)'=='Release'">none</DebugType>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnablePreviewFeatures>true</EnablePreviewFeatures>
   </PropertyGroup>
 </Project>
