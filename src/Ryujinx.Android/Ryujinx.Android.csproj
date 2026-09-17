@@ -4,38 +4,27 @@
     <OutputType>Exe</OutputType>
     <ApplicationId>com.ryubing.android</ApplicationId>
     <ApplicationVersion>1</ApplicationVersion>
-    <ApplicationDisplayVersion>1.0-MASTER-GORDA</ApplicationDisplayVersion>
+    <ApplicationDisplayVersion>1.0-MASTER-REAL</ApplicationDisplayVersion>
     <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
     <RuntimeIdentifiers>android-arm64</RuntimeIdentifiers>
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishAot>false</PublishAot>
+    <RunAOTCompilation>false</RunAOTCompilation>
+    <AndroidLinkMode>None</AndroidLinkMode>
+    <TrimMode>copyused</TrimMode>
+    <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <AndroidEnableAssemblyCompression>false</AndroidEnableAssemblyCompression>
+    <AndroidUseAssemblyStore>false</AndroidUseAssemblyStore>
+    <IsTrimmable>false</IsTrimmable>
+    <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
+    <AndroidIncludeDebugSymbols>true</AndroidIncludeDebugSymbols>
+    <DebugType>portable</DebugType>
+    <DebugSymbols>true</DebugSymbols>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
-
-  <PropertyGroup Condition="'$(Configuration)'=='Debug'">
-    <PublishTrimmed>false</PublishTrimmed>
-    <AndroidLinkMode>None</AndroidLinkMode>
-    <DebugSymbols>true</DebugSymbols>
-  </PropertyGroup>
-
-  <!-- RELEASE GORDA FIX ANDROID 13 - 5 LIBS IGUAL DEBUG -->
-  <PropertyGroup Condition="'$(Configuration)'=='Release'">
-    <PublishTrimmed>false</PublishTrimmed>
-    <IsTrimmable>false</IsTrimmable>
-    <TrimMode>copy</TrimMode>
-    <PublishAot>false</PublishAot>
-    <RunAOTCompilation>false</RunAOTCompilation>
-    <AndroidLinkMode>None</AndroidLinkMode>
-    <AndroidUseAssemblyStore>true</AndroidUseAssemblyStore>
-    <AndroidEnableAssemblyCompression>false</AndroidEnableAssemblyCompression>
-    <AndroidEnableMarshalMethods>false</AndroidEnableMarshalMethods>
-    <AndroidEnableProguard>false</AndroidEnableProguard>
-    <InvariantGlobalization>false</InvariantGlobalization>
-    <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
-    <AndroidDebuggable>false</AndroidDebuggable>
-    <SatelliteResourceLanguages>en;pt-BR</SatelliteResourceLanguages>
-  </PropertyGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\Ryujinx.Common\Ryujinx.Common.csproj" />
     <ProjectReference Include="..\Ryujinx.Cpu\Ryujinx.Cpu.csproj" />
