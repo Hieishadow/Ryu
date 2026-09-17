@@ -34,7 +34,6 @@
     <ProjectReference Include="..\Ryujinx.Memory\Ryujinx.Memory.csproj" />
   </ItemGroup>
 
-  <!-- FORÇA MANTER AS DLLS -->
   <ItemGroup>
     <TrimmerRootAssembly Include="Ryujinx.Common" />
     <TrimmerRootAssembly Include="Ryujinx.Cpu" />
