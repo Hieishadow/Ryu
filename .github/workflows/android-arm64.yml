@@ -1,4 +1,4 @@
-name: DragoNX Android ARM64
+name: Ryujinx Android ARM64
 on:
   push:
     branches: [master]
@@ -7,25 +7,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup.NET 10
+      - name: Setup.NET 9
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
-          dotnet-quality: 'preview'
-      - name: Setup Java 17
+          dotnet-version: 9.0.x
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
       - name: Workload
-        run: dotnet workload install android --skip-manifest-update
+        run: dotnet workload install android
       - name: Restore
         run: dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj -r android-arm64
-      - name: Build
-        run: dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -r android-arm64 --no-restore -p:ApplicationVersion=97 -p:ApplicationDisplayVersion=1.0-S20FE-JIT-FIX
-      - name: Upload APK
+      - name: Build 280MB
+        run: dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj -c Debug -r android-arm64 --no-restore
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: DragoNX-APK-FIX
+          name: Ryujinx-APK-MASTER
           path: "**/*.apk"
-          if-no-files-found: error
