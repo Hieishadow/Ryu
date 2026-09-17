@@ -2,7 +2,6 @@ using Android.App;
 using Android.Content;
 using Android.OS;
 using Android.Widget;
-using Android.Views;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
@@ -34,13 +33,8 @@ namespace Ryujinx.Android
                     }
                 }
             }
-            else if (Build.VERSION.SdkInt >= BuildVersionCodes.M)
-            {
-                if (CheckSelfPermission(global::Android.Manifest.Permission.ReadExternalStorage) != global::Android.Content.PM.Permission.Granted)
-                    RequestPermissions(new string[] { global::Android.Manifest.Permission.ReadExternalStorage, global::Android.Manifest.Permission.WriteExternalStorage }, 1);
-            }
 
-            try{ Directory.CreateDirectory(_baseDir); Directory.CreateDirectory(Path.Combine(_baseDir,"games")); Directory.CreateDirectory(Path.Combine(_baseDir,"system")); Directory.CreateDirectory(Path.Combine(_baseDir,"bis")); }catch{}
+            try{ Directory.CreateDirectory(_baseDir); Directory.CreateDirectory(Path.Combine(_baseDir,"games")); Directory.CreateDirectory(Path.Combine(_baseDir,"system")); }catch{}
 
             var root = new LinearLayout(this){Orientation=Orientation.Vertical};
             root.SetBackgroundColor(global::Android.Graphics.Color.Black);
@@ -76,10 +70,5 @@ namespace Ryujinx.Android
                 Directory.CreateDirectory(gamesDir);
                 bool hasKeys = File.Exists(Path.Combine(_baseDir,"system","prod.keys"));
                 _games = Directory.GetFiles(gamesDir, "*.*", SearchOption.AllDirectories).Where(f=>f.EndsWith(".nsp")||f.EndsWith(".xci")||f.EndsWith(".nsz")||f.EndsWith(".xcz")).ToList();
-                _status.Text = $"DragoNX | Base: {_baseDir}\nprod.keys: {(hasKeys?"OK":"FALTA - coloca em system/")}\nJogos encontrados: {_games.Count}\n\nSe seu Zelda estiver em /Download/DragoNX/games/ vai aparecer abaixo:";
-                _list.Adapter = new ArrayAdapter<string>(this, global::Android.Resource.Layout.SimpleListItem1, _games.Select(Path.GetFileName).ToList()!);
-            }
-            catch(System.Exception ex){ _status.Text = "Erro: " + ex.Message; }
-        }
-    }
-}
+                _status.Text = $"DragoNX | Base: {_baseDir}\nprod.keys: {(hasKeys?"OK":"FALTA")}\nJogos: {_games.Count}";
+                _list.Adapter
