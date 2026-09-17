@@ -20,8 +20,20 @@ jobs:
         run: dotnet workload install android
       - name: Restore
         run: dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj -r android-arm64
-      - name: Build 280MB
-        run: dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -r android-arm64 --no-restore
+      - name: Build 280MB REAL
+        run: |
+          dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -r android-arm64 --no-restore \
+          -p:PublishTrimmed=false \
+          -p:TrimMode=copyused \
+          -p:PublishAot=false \
+          -p:RunAOTCompilation=false \
+          -p:AndroidLinkMode=None \
+          -p:AndroidEnableAssemblyCompression=false \
+          -p:AndroidUseAssemblyStore=false \
+          -p:EnableTrimAnalyzer=false \
+          -p:InvariantGlobalization=false \
+          -p:DebugType=None \
+          -p:DebugSymbols=false
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
