@@ -18,8 +18,8 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-      - name: Install Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Install Android Workload
+        run: dotnet workload install android
       - name: Restore
         run: dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj -r android-arm64
       - name: Build APK 280MB
