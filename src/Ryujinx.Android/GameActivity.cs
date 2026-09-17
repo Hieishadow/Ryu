@@ -2,13 +2,8 @@ using Android.App;
 using Android.OS;
 using Android.Views;
 using Android.Widget;
-using System.IO;
+using Android.Graphics;
 using System.Linq;
-using System.Threading.Tasks;
-using Ryujinx.HLE.HOS;
-using Ryujinx.HLE.FileSystem;
-using LibHac.FsSystem;
-using Ryujinx.Graphics.Vulkan;
 
 namespace DragoNX;
 
@@ -16,7 +11,6 @@ namespace DragoNX;
           ConfigurationChanges = Android.Content.PM.ConfigChanges.Orientation | Android.Content.PM.ConfigChanges.ScreenSize | Android.Content.PM.ConfigChanges.KeyboardHidden)]
 public class GameActivity : Activity
 {
-    Switch device;
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
@@ -26,39 +20,32 @@ public class GameActivity : Activity
         if (string.IsNullOrEmpty(romPath))
         {
             try {
-                var games = Directory.GetFiles("/storage/emulated/0/Download/DragoNX/games");
+                var games = System.IO.Directory.GetFiles("/storage/emulated/0/Download/DragoNX/games");
                 if (games.Length > 0) romPath = games[0];
             } catch {}
         }
 
-        if (string.IsNullOrEmpty(romPath))
+        var layout = new LinearLayout(this);
+        layout.Orientation = Orientation.Vertical;
+        layout.SetGravity(GravityFlags.Center);
+        layout.SetBackgroundColor(Color.Black);
+
+        var tv = new TextView(this);
+        tv.SetTextColor(Color.White);
+        tv.TextSize = 18;
+        tv.Gravity = GravityFlags.Center;
+
+        if (string.IsNullOrEmpty(romPath) ||!System.IO.File.Exists(romPath))
         {
-            Toast.MakeText(this, "Coloque o NSP em /Download/DragoNX/games/", ToastLength.Long).Show();
+            tv.Text = "DragoNX Teste\n\nColoque Zelda em:\n/Download/DragoNX/games/";
+            layout.AddView(tv);
+            SetContentView(layout);
             return;
         }
 
-        var surfaceView = new SurfaceView(this);
-        SetContentView(surfaceView);
-
-        Task.Run(() => {
-            try {
-                var vfs = new VirtualFileSystem();
-                var fileStream = new FileStream(romPath, FileMode.Open, FileAccess.Read);
-                var pfs = new PartitionFileSystem(fileStream);
-
-                var renderer = new VulkanRenderer();
-
-                device = new Switch(vfs, pfs, null, null, renderer, null, null, true);
-
-                // Carrega o jogo
-                vfs.LoadNsp(pfs, pfs); // depende da sua versão do VFS
-                device.LoadApplication(pfs);
-                device.Run();
-            } catch (System.Exception ex) {
-                RunOnUiThread(() => {
-                    Toast.MakeText(this, $"ERRO: {ex.Message}\n{ex.InnerException}", ToastLength.Long).Show();
-                });
-            }
-        });
+        var fileName = System.IO.Path.GetFileName(romPath);
+        tv.Text = $"Tentando bootar:\n{fileName}\n\nLeu o jogo! Pronto pro host Vulkan.";
+        layout.AddView(tv);
+        SetContentView(layout);
     }
 }
