@@ -19,7 +19,6 @@ namespace Ryujinx.Android
         protected override void OnCreate(Bundle? savedInstanceState)
         {
             base.OnCreate(savedInstanceState);
-
             if (Build.VERSION.SdkInt >= BuildVersionCodes.R)
             {
                 if (!global::Android.OS.Environment.IsExternalStorageManager)
@@ -33,21 +32,16 @@ namespace Ryujinx.Android
                     }
                 }
             }
-
             try{ Directory.CreateDirectory(_baseDir); Directory.CreateDirectory(Path.Combine(_baseDir,"games")); Directory.CreateDirectory(Path.Combine(_baseDir,"system")); }catch{}
-
             var root = new LinearLayout(this){Orientation=Orientation.Vertical};
             root.SetBackgroundColor(global::Android.Graphics.Color.Black);
-
             _status = new TextView(this);
             _status.SetPadding(20,20,20,20);
             _status.SetTextColor(global::Android.Graphics.Color.White);
             root.AddView(_status);
-
             var btnRefresh = new Button(this){Text="ATUALIZAR JOGOS"};
             btnRefresh.Click += (s,e)=> RefreshList();
             root.AddView(btnRefresh);
-
             _list = new ListView(this);
             _list.ItemClick += (s,e)=>{
                 if(e.Position < 0 || e.Position >= _games.Count) return;
@@ -57,11 +51,9 @@ namespace Ryujinx.Android
                 StartActivity(it);
             };
             root.AddView(_list, new LinearLayout.LayoutParams(-1,-1));
-
             SetContentView(root);
             RefreshList();
         }
-
         void RefreshList()
         {
             try
@@ -71,4 +63,9 @@ namespace Ryujinx.Android
                 bool hasKeys = File.Exists(Path.Combine(_baseDir,"system","prod.keys"));
                 _games = Directory.GetFiles(gamesDir, "*.*", SearchOption.AllDirectories).Where(f=>f.EndsWith(".nsp")||f.EndsWith(".xci")||f.EndsWith(".nsz")||f.EndsWith(".xcz")).ToList();
                 _status.Text = $"DragoNX | Base: {_baseDir}\nprod.keys: {(hasKeys?"OK":"FALTA")}\nJogos: {_games.Count}";
-                _list.Adapter
+                _list.Adapter = new ArrayAdapter<string>(this, global::Android.Resource.Layout.SimpleListItem1, _games.Select(Path.GetFileName).ToList()!);
+            }
+            catch(System.Exception ex){ _status.Text = "Erro: " + ex.Message; }
+        }
+    }
+}
