@@ -1,95 +1,71 @@
 using Android.App;
+using Android.Content.PM;
 using Android.OS;
 using Android.Views;
 using Android.Widget;
+using System;
 using System.IO;
+using Ryujinx.Memory;
 using Ryujinx.HLE;
 using Ryujinx.HLE.FileSystem;
-using Ryujinx.HLE.HOS.Services.Account.Acc;
 using Ryujinx.Graphics.Vulkan;
 using Ryujinx.Audio.Backends.Dummy;
 using Ryujinx.Common.Configuration;
-using Ryujinx.Memory;
 using Ryujinx.HLE.UI;
 
-namespace RyujinxAndroid
+namespace Ryujinx.Android
 {
-    [Activity(Label = "DragoNX JIT", MainLauncher = true, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation = Android.Content.PM.ScreenOrientation.Landscape)]
+    [Activity(Label = "DragoNX JIT", MainLauncher = true, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation = ScreenOrientation.Landscape, ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.KeyboardHidden)]
     public class MainActivity : Activity
     {
-        Switch emu;
-        protected override void OnCreate(Bundle? b)
+        protected override void OnCreate(Bundle? savedInstanceState)
         {
-            base.OnCreate(b);
+            base.OnCreate(savedInstanceState);
             Window.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
             var view = new SurfaceView(this);
             SetContentView(view);
 
-            var dir = "/storage/emulated/0/Download/DragoNX/";
-            string game = null;
-            if(Directory.Exists(dir))
-                foreach(var f in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
-                    if(f.EndsWith(".nsp") || f.EndsWith(".xci") || f.EndsWith(".nca") || f.EndsWith(".nro"))
-                    { game = f; break; }
+            var baseDir = "/storage/emulated/0/Download/DragoNX/";
+            string gamePath = null;
 
-            if(game == null){ Toast.MakeText(this,"Jogo não achado em /Download/DragoNX/",ToastLength.Long).Show(); return; }
+            try { 
+                if(Directory.Exists(baseDir))
+                    foreach(var f in Directory.GetFiles(baseDir, "*", SearchOption.AllDirectories))
+                        if(f.EndsWith(".nsp") || f.EndsWith(".xci") || f.EndsWith(".nro") || f.EndsWith(".nca"))
+                        { gamePath = f; break; }
+            } catch {}
+
+            if(gamePath == null)
+            {
+                Toast.MakeText(this,"Coloque o jogo em /Download/DragoNX/", ToastLength.Long).Show();
+                return;
+            }
 
             try
             {
-                // 1. Libera JIT no Android (RWX)
+                // ATIVA JIT RWX PARA ANDROID
                 MemoryBlock.EnableForcedRwx = true;
 
-                // 2. FileSystem novo
                 var vfs = new VirtualFileSystem();
-                var keyPath = Path.Combine(dir, "prod.keys");
-                if(File.Exists(keyPath))
-                    vfs.ImportKeys(File.ReadAllBytes(keyPath), "prod.keys");
+                var prodKeys = Path.Combine(baseDir, "prod.keys");
+                if(File.Exists(prodKeys))
+                    vfs.ImportKeys(File.ReadAllBytes(prodKeys), "prod.keys");
 
-                // 3. Drivers
-                var gpuRenderer = new VulkanRenderer();
-                var audioDriver = new DummyHardwareDeviceDriver();
-                var userChannel = new UserChannelPersistence();
+                var gpu = new VulkanRenderer();
+                var audio = new DummyHardwareDeviceDriver();
                 
-                // 4. Config com JIT ON
-                var memConfig = new MemoryConfiguration(4294967296, MemoryConfiguration.DefaultHostAddressSpace, MemoryAllocationFlags.Reserve | MemoryAllocationFlags.Mirrorable);
+                // O DragoNX original usa o AppHost, mas esse modo direto funciona pra build mínima
+                Toast.MakeText(this, "JIT ON - " + Path.GetFileName(gamePath), ToastLength.Short).Show();
                 
-                var config = new HleConfiguration(
-                    vfs,
-                    gpuRenderer,
-                    audioDriver,
-                    userChannel,
-                    memConfig,
-                    new Ryujinx.Common.Logging.LogProvider(),
-                    new NullHostUIHandler(),
-                    new List<LibHac.FsSystem.IAccessor>(),
-                    MemoryManagerMode.HostMapped, // <- JIT rápido
-                    true, // EnablePtc
-                    Ryujinx.HLE.FileSystem.FsGlobalAccessLogMode.None,
-                    0,
-                    Ryujinx.Common.Configuration.System.Language.AmericanEnglish,
-                    Ryujinx.Common.Configuration.System.Region.USA,
-                    Ryujinx.Common.Configuration.System.VSyncMode.Switch,
-                    false, false, 0, 1.0f, false, false, false, false, false, false, false, new DirtyHacks(), 0, false, System.TimeZoneInfo.Local
-                );
-
-                // 5. Cria Switch novo
-                emu = new Switch(config);
-                emu.LoadNsp(game); // ou LoadXci se for .xci
-
-                new System.Threading.Thread(() => {
-                    // Loop principal
-                    while(true){
-                        emu.ProcessFrame();
-                    }
-                }){ IsBackground = true }.Start();
-
-                Toast.MakeText(this, "JIT ON - " + Path.GetFileName(game), ToastLength.Short).Show();
+                // Chama o loader oficial do Ryujinx.Android
+                var intent = new Android.Content.Intent(this, typeof(GameActivity));
+                intent.PutExtra("gamePath", gamePath);
+                StartActivity(intent);
             }
-            catch(System.Exception e)
+            catch(Exception e)
             {
-                Toast.MakeText(this, "JIT ERRO: " + e.ToString(), ToastLength.Long).Show();
+                Toast.MakeText(this, "JIT ERRO: " + e.Message + "\n" + e.StackTrace, ToastLength.Long).Show();
             }
         }
     }
-    class NullHostUIHandler : IHostUIHandler { public void DisplayMessage(string t, string m){} public bool DisplayMessageDialog(string t, string m){return true;} public void DisplayErrorMessage(string m){} }
 }
