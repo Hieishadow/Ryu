@@ -1,4 +1,4 @@
-name: DragoNX Android ARM64
+name: DragoNX Android ARM64 - Build 93 VIDEO
 on:
   push:
     branches: [master]
@@ -7,11 +7,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup.NET 10
+      - name: Setup.NET 8
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
-      - name: Setup Java
+          dotnet-version: 8.0.x
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -20,10 +20,10 @@ jobs:
         run: dotnet workload install android
       - name: Restore
         run: dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj -r android-arm64
-      - name: Build 280MB
-        run: dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj -c Debug -r android-arm64 --no-restore
+      - name: Build 93 VIDEO
+        run: dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -r android-arm64 --no-restore -p:ApplicationVersion=93 -p:ApplicationDisplayVersion=1.0-Build93-VIDEO
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: DragoNX
+          name: DragoNX-Build93-VIDEO
           path: "**/*.apk"
