@@ -6,19 +6,24 @@
     <ApplicationVersion>96</ApplicationVersion>
     <ApplicationDisplayVersion>1.0-S20FE-JIT</ApplicationDisplayVersion>
     <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
-    <RuntimeIdentifiers>android-arm64</RuntimeIdentifiers>
-    <!-- Otimizado pro 865 -->
+    <RuntimeIdentifier>android-arm64</RuntimeIdentifier>
+    <!-- Otimizado pro 865 / Fix Android 13 crash -->
     <PublishTrimmed>false</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
     <PublishAot>false</PublishAot>
     <RunAOTCompilation>false</RunAOTCompilation>
     <AndroidLinkMode>None</AndroidLinkMode>
     <AndroidEnableAssemblyCompression>false</AndroidEnableAssemblyCompression>
     <AndroidUseAssemblyStore>false</AndroidUseAssemblyStore>
-    <EmbedAssembliesIntoApk>false</EmbedAssembliesIntoApk>
+    <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <AndroidCreatePackagePerAbi>false</AndroidCreatePackagePerAbi>
+    <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
     <DebugSymbols>false</DebugSymbols>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Ryujinx.Common\Ryujinx.Common.csproj" />
