@@ -16,34 +16,33 @@ namespace Ryujinx.Android
         protected override void OnCreate(Bundle savedInstanceState)
         {
             base.OnCreate(savedInstanceState);
-            var layout = new LinearLayout(this);
-            layout.Orientation = Orientation.Vertical;
+            var layout = new global::Android.Widget.LinearLayout(this);
+            layout.Orientation = global::Android.Widget.Orientation.Vertical;
             layout.SetPadding(40,80,40,40);
-            layout.SetBackgroundColor(Android.Graphics.Color.Rgb(15,15,15));
+            layout.SetBackgroundColor(new global::Android.Graphics.Color(15,15,15));
 
-            var title = new TextView(this);
+            var title = new global::Android.Widget.TextView(this);
             title.Text = "Ryu - Build OK ✓";
-            title.SetTextSize(Android.Util.ComplexUnitType.Sp,22);
-            title.SetTextColor(Android.Graphics.Color.White);
+            title.SetTextSize(global::Android.Util.ComplexUnitType.Sp,22);
+            title.SetTextColor(global::Android.Graphics.Color.White);
             layout.AddView(title);
 
-            logView = new TextView(this);
+            logView = new global::Android.Widget.TextView(this);
             logView.Text = "\nPronto pra rodar Zelda\n";
-            logView.SetTextColor(Android.Graphics.Color.White);
+            logView.SetTextColor(global::Android.Graphics.Color.White);
             layout.AddView(logView);
 
-            var btn = new Button(this);
+            var btn = new global::Android.Widget.Button(this);
             btn.Text = "🎮 RODAR ZELDA LINKS AWAKENING";
-            btn.SetBackgroundColor(Android.Graphics.Color.Rgb(0,120,215));
+            btn.SetBackgroundColor(new global::Android.Graphics.Color(0,120,215));
             layout.AddView(btn);
 
             btn.Click += (s,e) => {
                 string nsp = "/storage/emulated/0/Switch/Games/The Legend of Zelda Links Awakening.nsp";
-                // verifica keys
                 string prod = "/storage/emulated/0/Switch/prod.keys";
                 if(!File.Exists(prod)){
                     logView.Text += "\nFALTA prod.keys em /Switch/prod.keys";
-                    Toast.MakeText(this,"Coloca prod.keys!",ToastLength.Long).Show();
+                    global::Android.Widget.Toast.MakeText(this,"Coloca prod.keys!",global::Android.Widget.ToastLength.Long).Show();
                     return;
                 }
                 if(!File.Exists(nsp)){
@@ -51,8 +50,7 @@ namespace Ryujinx.Android
                     return;
                 }
                 logView.Text += $"\nNSP encontrado! Iniciando...";
-                // Chama GameActivity
-                var intent = new Intent(this, typeof(GameActivity));
+                var intent = new global::Android.Content.Intent(this, typeof(GameActivity));
                 GameActivity.GamePath = nsp;
                 StartActivity(intent);
             };
@@ -67,10 +65,10 @@ namespace Ryujinx.Android
         protected override void OnCreate(Bundle b)
         {
             base.OnCreate(b);
-            Window.AddFlags(WindowManagerFlags.KeepScreenOn | WindowManagerFlags.Fullscreen);
-            var tv = new TextView(this);
+            Window.AddFlags(global::Android.Views.WindowManagerFlags.KeepScreenOn | global::Android.Views.WindowManagerFlags.Fullscreen);
+            var tv = new global::Android.Widget.TextView(this);
             tv.Text = $"Carregando:\n{GamePath}\n\nAqui entra o core do Ryujinx";
-            tv.SetTextColor(Android.Graphics.Color.White);
+            tv.SetTextColor(global::Android.Graphics.Color.White);
             SetContentView(tv);
         }
     }
