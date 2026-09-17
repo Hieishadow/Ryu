@@ -3,22 +3,21 @@
     <TargetFramework>net10.0-android</TargetFramework>
     <OutputType>Exe</OutputType>
     <ApplicationId>com.draganx.ryujinx</ApplicationId>
-    <ApplicationVersion>96</ApplicationVersion>
-    <ApplicationDisplayVersion>1.0-S20FE-JIT</ApplicationDisplayVersion>
+    <ApplicationVersion>97</ApplicationVersion>
+    <ApplicationDisplayVersion>1.0-S20FE-JIT-FIX</ApplicationDisplayVersion>
     <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
     <RuntimeIdentifier>android-arm64</RuntimeIdentifier>
-    <!-- Otimizado pro 865 / Fix Android 13 crash -->
+    <!-- FIX DEFINITIVO DO CRASH E DAS 277 LIBS -->
     <PublishTrimmed>false</PublishTrimmed>
-    <TrimMode>partial</TrimMode>
     <PublishAot>false</PublishAot>
     <RunAOTCompilation>false</RunAOTCompilation>
     <AndroidLinkMode>None</AndroidLinkMode>
-    <AndroidEnableAssemblyCompression>false</AndroidEnableAssemblyCompression>
-    <AndroidUseAssemblyStore>false</AndroidUseAssemblyStore>
+    <AndroidUseAssemblyStore>true</AndroidUseAssemblyStore>
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
     <AndroidPackageFormat>apk</AndroidPackageFormat>
     <AndroidCreatePackagePerAbi>false</AndroidCreatePackagePerAbi>
     <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
+    <AndroidEnableAssemblyCompression>false</AndroidEnableAssemblyCompression>
     <DebugSymbols>false</DebugSymbols>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
