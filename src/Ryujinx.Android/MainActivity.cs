@@ -16,7 +16,7 @@ public class MainActivity : Activity
     {
         base.OnCreate(savedInstanceState);
 
-        if (Build.VERSION.SdkInt >= BuildVersionCodes.R && !Android.OS.Environment.IsExternalStorageManager)
+        if (Build.VERSION.SdkInt >= BuildVersionCodes.R &&!Android.OS.Environment.IsExternalStorageManager)
         {
             try
             {
@@ -56,4 +56,16 @@ public class MainActivity : Activity
 
         try
         {
-           
+            var gamesDir = new File(BasePath + "/games");
+            var files = gamesDir.ListFiles();
+            if (files!= null && files.Length > 0)
+            {
+                intent.PutExtra("rom_path", files[0].AbsolutePath);
+            }
+        }
+        catch { }
+
+        StartActivity(intent);
+        Finish();
+    }
+}
