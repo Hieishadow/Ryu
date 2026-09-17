@@ -4,7 +4,6 @@ using Android.Widget;
 using System;
 using System.IO;
 using Ryujinx.HLE.FileSystem;
-using Ryujinx.HLE.FileSystem.Content;
 using Ryujinx.HLE.HOS;
 
 namespace Ryujinx.Android
