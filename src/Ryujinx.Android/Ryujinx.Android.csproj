@@ -4,35 +4,15 @@
     <OutputType>Exe</OutputType>
     <ApplicationId>com.draganx.ryujinx</ApplicationId>
     <ApplicationVersion>97</ApplicationVersion>
+    <ApplicationTitle>DragoNX</ApplicationTitle>
     <ApplicationDisplayVersion>1.0-S20FE-JIT-FIX</ApplicationDisplayVersion>
     <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
-    <RuntimeIdentifier>android-arm64</RuntimeIdentifier>
-    <!-- FIX DEFINITIVO DO CRASH E DAS 277 LIBS -->
-    <PublishTrimmed>false</PublishTrimmed>
-    <PublishAot>false</PublishAot>
-    <RunAOTCompilation>false</RunAOTCompilation>
-    <AndroidLinkMode>None</AndroidLinkMode>
-    <AndroidUseAssemblyStore>true</AndroidUseAssemblyStore>
-    <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
-    <AndroidPackageFormat>apk</AndroidPackageFormat>
-    <AndroidCreatePackagePerAbi>false</AndroidCreatePackagePerAbi>
-    <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
-    <AndroidEnableAssemblyCompression>false</AndroidEnableAssemblyCompression>
-    <DebugSymbols>false</DebugSymbols>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <InvariantGlobalization>true</InvariantGlobalization>
+    <PublishTrimmed>false</PublishTrimmed>
+    <RunAOTCompilation>false</RunAOTCompilation>
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <AndroidUseAssemblyStore>false</AndroidUseAssemblyStore>
+    <AndroidEnableAssemblyCompression>false</AndroidEnableAssemblyCompression>
   </PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\Ryujinx.Common\Ryujinx.Common.csproj" />
-    <ProjectReference Include="..\Ryujinx.Cpu\Ryujinx.Cpu.csproj" />
-    <ProjectReference Include="..\Ryujinx.HLE\Ryujinx.HLE.csproj" />
-    <ProjectReference Include="..\Ryujinx.Graphics.GAL\Ryujinx.Graphics.GAL.csproj" />
-    <ProjectReference Include="..\Ryujinx.Graphics.Shader\Ryujinx.Graphics.Shader.csproj" />
-    <ProjectReference Include="..\Ryujinx.Graphics.Vulkan\Ryujinx.Graphics.Vulkan.csproj" />
-    <ProjectReference Include="..\Ryujinx.Graphics.Gpu\Ryujinx.Graphics.Gpu.csproj" />
-    <ProjectReference Include="..\ARMeilleure\ARMeilleure.csproj" />
-    <ProjectReference Include="..\Ryujinx.Memory\Ryujinx.Memory.csproj" />
-  </ItemGroup>
 </Project>
