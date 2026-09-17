@@ -22,6 +22,20 @@ public class MainActivity : Activity
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
+        // >>> COLOCA AQUI, LOGO NO COMEÇO <<<
+        AppDomain.CurrentDomain.UnhandledException += (s, e) => {
+            try {
+                var msg = e.ExceptionObject.ToString();
+                File.WriteAllText("/storage/emulated/0/Download/crash_ryujinx.txt", msg);
+            } catch {}
+        };
+        TaskScheduler.UnobservedTaskException += (s, e) => {
+            try {
+                File.WriteAllText("/storage/emulated/0/Download/crash_ryujinx_task.txt", e.Exception.ToString());
+            } catch {}
+            e.SetObserved();
+        };
+
         base.OnCreate(savedInstanceState);
         Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
 
@@ -61,7 +75,6 @@ public class MainActivity : Activity
 
         SetContentView(layout);
 
-        // Auto pede permissão se não tiver
         if (!HasAllFilesPermission())
         {
             RequestAllFilesPermission();
@@ -107,7 +120,6 @@ public class MainActivity : Activity
         title.Gravity = GravityFlags.Center;
         layout.AddView(title);
 
-        // CORRIGIDO: Usa Java.IO.File pra não dar ambiguidade no build 36MB
         var dir = new Java.IO.File(GamesPath);
         var files = dir.ListFiles();
 
