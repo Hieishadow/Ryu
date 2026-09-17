@@ -1,10 +1,14 @@
 using Android.App;
 using Android.OS;
 using Android.Views;
+using Android.Widget;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using Ryujinx.HLE.HOS;
 using Ryujinx.HLE.FileSystem;
 using LibHac.FsSystem;
-using System.IO;
+using Ryujinx.Graphics.Vulkan;
 
 namespace DragoNX;
 
@@ -21,28 +25,39 @@ public class GameActivity : Activity
         var romPath = Intent?.GetStringExtra("rom_path");
         if (string.IsNullOrEmpty(romPath))
         {
-            var games = Directory.GetFiles("/storage/emulated/0/Download/DragoNX/games");
-            if (games.Length > 0) romPath = games[0];
+            try {
+                var games = Directory.GetFiles("/storage/emulated/0/Download/DragoNX/games");
+                if (games.Length > 0) romPath = games[0];
+            } catch {}
+        }
+
+        if (string.IsNullOrEmpty(romPath))
+        {
+            Toast.MakeText(this, "Coloque o NSP em /Download/DragoNX/games/", ToastLength.Long).Show();
+            return;
         }
 
         var surfaceView = new SurfaceView(this);
         SetContentView(surfaceView);
 
-        // Inicializa Ryujinx de verdade
         Task.Run(() => {
             try {
-                var vfs = VirtualFileSystem.Create();
-                var nsp = new FileStream(romPath, FileMode.Open, FileAccess.Read);
-                // aqui carrega o Nsp pra dentro do VFS...
+                var vfs = new VirtualFileSystem();
+                var fileStream = new FileStream(romPath, FileMode.Open, FileAccess.Read);
+                var pfs = new PartitionFileSystem(fileStream);
 
-                device = new Switch(vfs, null, null, null,
-                    new Ryujinx.Graphics.Vulkan.VulkanRenderer(),
-                    null, null, true);
+                var renderer = new VulkanRenderer();
 
-                device.LoadApplication(nsp);
+                device = new Switch(vfs, pfs, null, null, renderer, null, null, true);
+
+                // Carrega o jogo
+                vfs.LoadNsp(pfs, pfs); // depende da sua versão do VFS
+                device.LoadApplication(pfs);
                 device.Run();
-            } catch (Exception ex) {
-                RunOnUiThread(() => Toast.MakeText(this, ex.ToString(), ToastLength.Long).Show());
+            } catch (System.Exception ex) {
+                RunOnUiThread(() => {
+                    Toast.MakeText(this, $"ERRO: {ex.Message}\n{ex.InnerException}", ToastLength.Long).Show();
+                });
             }
         });
     }
