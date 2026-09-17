@@ -18,7 +18,7 @@
     <DebugSymbols>true</DebugSymbols>
   </PropertyGroup>
 
-  <!-- RELEASE GORDA = NÃO CRASHA - CORRIGIDA -->
+  <!-- RELEASE GORDA FIX ANDROID 13 - 5 LIBS IGUAL DEBUG -->
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
     <PublishTrimmed>false</PublishTrimmed>
     <IsTrimmable>false</IsTrimmable>
@@ -26,15 +26,14 @@
     <PublishAot>false</PublishAot>
     <RunAOTCompilation>false</RunAOTCompilation>
     <AndroidLinkMode>None</AndroidLinkMode>
+    <AndroidUseAssemblyStore>true</AndroidUseAssemblyStore>
     <AndroidEnableAssemblyCompression>false</AndroidEnableAssemblyCompression>
-    <AndroidUseAssemblyStore>false</AndroidUseAssemblyStore>
     <AndroidEnableMarshalMethods>false</AndroidEnableMarshalMethods>
     <AndroidEnableProguard>false</AndroidEnableProguard>
     <InvariantGlobalization>false</InvariantGlobalization>
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
-    <AndroidDebuggable>true</AndroidDebuggable>
-    <AndroidIncludeDebugSymbols>true</AndroidIncludeDebugSymbols>
-    <DebugSymbols>true</DebugSymbols>
+    <AndroidDebuggable>false</AndroidDebuggable>
+    <SatelliteResourceLanguages>en;pt-BR</SatelliteResourceLanguages>
   </PropertyGroup>
 
   <ItemGroup>
