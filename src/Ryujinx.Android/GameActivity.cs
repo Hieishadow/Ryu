@@ -14,43 +14,21 @@ namespace Ryujinx.Android
         {
             base.OnCreate(savedInstanceState);
             Window.AddFlags(WindowManagerFlags.KeepScreenOn | WindowManagerFlags.Fullscreen);
-
-            var gamePath = Intent?.GetStringExtra("gamePath")?? "nenhum";
-            var baseDir = Intent?.GetStringExtra("baseDir")?? GetExternalFilesDir(null)!.AbsolutePath;
+            var gamePath = Intent?.GetStringExtra("gamePath")?? "";
+            var baseDir = Intent?.GetStringExtra("baseDir")?? "";
 
             var layout = new FrameLayout(this);
-
-            // Surface onde o Vulkan vai renderizar
             var surface = new SurfaceView(this);
-            layout.AddView(surface, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
+            layout.AddView(surface, new FrameLayout.LayoutParams(-1,-1));
 
-            // Log overlay
             var log = new TextView(this);
-            log.SetBackgroundColor(Android.Graphics.Color.ParseColor("#CC000000"));
-            log.SetTextColor(Android.Graphics.Color.ParseColor("#00FF00"));
+            log.SetBackgroundColor(global::Android.Graphics.Color.ParseColor("#CC000000"));
+            log.SetTextColor(global::Android.Graphics.Color.Green);
             log.SetPadding(20,20,20,20);
             log.TextSize = 12f;
-            log.Text = $"DragoNX FULL\n\nGame: {Path.GetFileName(gamePath)}\nPath: {gamePath}\nBase: {baseDir}\n\n[JIT] libarmeilleure-jitsupport.so = ATIVO\n[Vulkan] Surface criada - pronto pra VulkanRenderer\n\nKeys: {baseDir}/system/prod.keys\nFirmware: {baseDir}/bis/\n\nStatus: Aguardando inicializacao do core...";
-
-            layout.AddView(log, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, 700));
+            log.Text = $"DragoNX FULL\nGame: {Path.GetFileName(gamePath)}\nJIT: ON\nVulkan: Surface OK\nBase: {baseDir}\n";
+            layout.AddView(log, new FrameLayout.LayoutParams(-1,700));
             SetContentView(layout);
-
-            // Inicialização real do Ryujinx (descomente quando quiser ligar)
-            /*
-            Task.Run(() => {
-                try {
-                    var vfs = new Ryujinx.HLE.FileSystem.VirtualFileSystem();
-                    var keyset = Ryujinx.HLE.FileSystem.Content.ExternalKeyReader.ReadKeyFile(
-                        Path.Combine(baseDir, "system", "prod.keys"),
-                        Path.Combine(baseDir, "system", "title.keys"), null, null);
-                    // var gpu = new Ryujinx.Graphics.Vulkan.VulkanRenderer(surface.Handle);
-                    // var device = new Ryujinx.HLE.Switch(...);
-                    // device.LoadApplication(gamePath);
-                } catch (Exception ex) {
-                    RunOnUiThread(() => log.Text += "\nERRO: " + ex.Message);
-                }
-            });
-            */
         }
     }
 }
