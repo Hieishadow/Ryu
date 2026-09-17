@@ -21,10 +21,11 @@ jobs:
         run: dotnet workload install android --skip-manifest-update
       - name: Restore
         run: dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj -r android-arm64
-      - name: Build 93 VIDEO
-        run: dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -r android-arm64 --no-restore -p:ApplicationVersion=93 -p:ApplicationDisplayVersion=1.0-Build93-VIDEO
-      - name: Upload
+      - name: Build
+        run: dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -r android-arm64 --no-restore -p:ApplicationVersion=97 -p:ApplicationDisplayVersion=1.0-S20FE-JIT-FIX
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: DragoNX-Build93-VIDEO
+          name: DragoNX-APK-FIX
           path: "**/*.apk"
+          if-no-files-found: error
