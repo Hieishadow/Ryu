@@ -6,10 +6,9 @@ namespace Ryujinx.Android
     [Activity(Label = "Ryujinx", MainLauncher = true, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen")]
     public class MainActivity : Activity
     {
-        protected override void OnCreate(Bundle savedInstanceState)
+        protected override void OnCreate(Bundle? savedInstanceState)
         {
             base.OnCreate(savedInstanceState);
-            SetContentView(Resource.Layout.activity_main);
         }
     }
 }
