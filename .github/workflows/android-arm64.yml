@@ -1,15 +1,13 @@
 name: Ryujinx Android ARM64
-
 on:
   push:
-    branches: [ master ]
-
+    branches: [master]
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup .NET 8
+      - name: Setup.NET 8
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
@@ -18,27 +16,14 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-      - name: Install Android Workload
+      - name: Workload
         run: dotnet workload install android
       - name: Restore
         run: dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj -r android-arm64
-      - name: Build APK 280MB
-        run: |
-          dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj \
-          -c Release \
-          -r android-arm64 \
-          -f net8.0-android \
-          /p:PublishTrimmed=false \
-          /p:TrimMode=copyused \
-          /p:AndroidLinkMode=None \
-          /p:RunAOTCompilation=false \
-          /p:PublishAot=false \
-          /p:EnableTrimAnalyzer=false \
-          /p:SuppressTrimAnalysisWarnings=true \
-          /p:DebugType=None \
-          /p:DebugSymbols=false
-      - name: Upload APK
+      - name: Build 280MB
+        run: dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -r android-arm64 --no-restore
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: Ryujinx-APK-MASTER
-          path: src/Ryujinx.Android/bin/Release/net8.0-android/android-arm64/publish/*.apk
+          path: "**/*.apk"
