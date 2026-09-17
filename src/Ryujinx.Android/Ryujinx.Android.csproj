@@ -18,15 +18,12 @@
     <AndroidUseAssemblyStore>false</AndroidUseAssemblyStore>
     <IsTrimmable>false</IsTrimmable>
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
+    <AndroidIncludeDebugSymbols>true</AndroidIncludeDebugSymbols>
+    <DebugType>portable</DebugType>
+    <DebugSymbols>true</DebugSymbols>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-    <AndroidIncludeDebugSymbols>false</AndroidIncludeDebugSymbols>
-    <DebugType>None</DebugType>
-    <DebugSymbols>false</DebugSymbols>
-    <AndroidPackageFormat>apk</AndroidPackageFormat>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Ryujinx.Common\Ryujinx.Common.csproj" />
