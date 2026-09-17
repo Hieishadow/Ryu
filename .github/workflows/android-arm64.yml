@@ -1,4 +1,4 @@
-name: Ryujinx Android ARM64
+name: DragoNX Android ARM64
 on:
   push:
     branches: [master]
