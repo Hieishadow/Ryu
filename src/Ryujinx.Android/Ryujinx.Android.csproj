@@ -7,15 +7,18 @@
     <ApplicationDisplayVersion>1.0-MASTER-REAL</ApplicationDisplayVersion>
     <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
     <RuntimeIdentifiers>android-arm64</RuntimeIdentifiers>
+
+    <!-- FIX DEBUG 11 LIBS - S20 FE ANDROID 13 -->
     <PublishTrimmed>false</PublishTrimmed>
     <PublishAot>false</PublishAot>
     <RunAOTCompilation>false</RunAOTCompilation>
     <AndroidLinkMode>None</AndroidLinkMode>
-    <TrimMode>copyused</TrimMode>
+    <TrimMode>copy</TrimMode>
     <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
     <InvariantGlobalization>false</InvariantGlobalization>
     <AndroidEnableAssemblyCompression>false</AndroidEnableAssemblyCompression>
-    <AndroidUseAssemblyStore>false</AndroidUseAssemblyStore>
+    <AndroidUseAssemblyStore>true</AndroidUseAssemblyStore>
+    <SatelliteResourceLanguages>en;pt-BR</SatelliteResourceLanguages>
     <IsTrimmable>false</IsTrimmable>
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
     <AndroidIncludeDebugSymbols>true</AndroidIncludeDebugSymbols>
