@@ -18,21 +18,23 @@
     <DebugSymbols>true</DebugSymbols>
   </PropertyGroup>
 
-  <!-- RELEASE GORDA = NÃO CRASHA -->
+  <!-- RELEASE GORDA = NÃO CRASHA - CORRIGIDA -->
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
     <PublishTrimmed>false</PublishTrimmed>
-    <TrimMode>copyused</TrimMode>
+    <IsTrimmable>false</IsTrimmable>
+    <TrimMode>copy</TrimMode>
     <PublishAot>false</PublishAot>
     <RunAOTCompilation>false</RunAOTCompilation>
     <AndroidLinkMode>None</AndroidLinkMode>
-    <InvariantGlobalization>false</InvariantGlobalization>
     <AndroidEnableAssemblyCompression>false</AndroidEnableAssemblyCompression>
     <AndroidUseAssemblyStore>false</AndroidUseAssemblyStore>
-    <IsTrimmable>false</IsTrimmable>
+    <AndroidEnableMarshalMethods>false</AndroidEnableMarshalMethods>
+    <AndroidEnableProguard>false</AndroidEnableProguard>
+    <InvariantGlobalization>false</InvariantGlobalization>
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
-    <AndroidIncludeDebugSymbols>false</AndroidIncludeDebugSymbols>
-    <DebugSymbols>false</DebugSymbols>
-    <DebugType>none</DebugType>
+    <AndroidDebuggable>true</AndroidDebuggable>
+    <AndroidIncludeDebugSymbols>true</AndroidIncludeDebugSymbols>
+    <DebugSymbols>true</DebugSymbols>
   </PropertyGroup>
 
   <ItemGroup>
