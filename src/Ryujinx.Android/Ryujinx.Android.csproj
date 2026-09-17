@@ -3,10 +3,11 @@
     <TargetFramework>net10.0-android</TargetFramework>
     <OutputType>Exe</OutputType>
     <ApplicationId>com.dragoNX.android</ApplicationId>
-    <ApplicationVersion>93</ApplicationVersion>
-    <ApplicationDisplayVersion>1.0-Build93-VIDEO</ApplicationDisplayVersion>
+    <ApplicationVersion>96</ApplicationVersion>
+    <ApplicationDisplayVersion>1.0-S20FE-JIT</ApplicationDisplayVersion>
     <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
     <RuntimeIdentifiers>android-arm64</RuntimeIdentifiers>
+    <!-- Otimizado pro 865 -->
     <PublishTrimmed>false</PublishTrimmed>
     <PublishAot>false</PublishAot>
     <RunAOTCompilation>false</RunAOTCompilation>
