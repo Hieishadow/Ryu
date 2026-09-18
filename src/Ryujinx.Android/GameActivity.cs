@@ -24,7 +24,6 @@ public class GameActivity : Activity
         Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
 
         var romPath = Intent?.GetStringExtra("rom_path") ?? "/storage/emulated/0/Download/DragoNX/games/game.nsp";
-
         var log = new Android.Widget.TextView(this){ Text = $"DragoNX bootando:\n{Path.GetFileName(romPath)}..." };
         log.Gravity = GravityFlags.Center;
         SetContentView(log);
@@ -34,10 +33,14 @@ public class GameActivity : Activity
                 var vfs = VirtualFileSystem.CreateInstance();
                 var gpu = VulkanRenderer.Create("", (i, vk) => new SurfaceKHR(), () => new[] { "VK_KHR_surface", "VK_KHR_android_surface" });
                 var audio = new DummyHardwareDeviceDriver();
-                var userChannel = new UserChannelPersistence();
+                
+                // Pega UserChannelPersistence por reflexão - não precisa do nome
+                var prop = typeof(HleConfiguration).GetProperty("UserChannelPersistence")!;
+                var userChannel = Activator.CreateInstance(prop.PropertyType, true)!;
+
                 var memConfig = (MemoryConfiguration)Activator.CreateInstance(typeof(MemoryConfiguration), true)!;
 
-                var hleConfig = new HleConfiguration(
+                var hleConfigObj = new HleConfiguration(
                     memConfig,
                     SystemLanguage.AmericanEnglish,
                     RegionCode.USA,
@@ -48,7 +51,11 @@ public class GameActivity : Activity
                     true, AspectRatio.Fixed16x9, 1f, false, "",
                     MultiplayerMode.Disabled, false, "", "",
                     false, 0, false, 60, null
-                ).Configure(vfs, null!, null!, null!, userChannel, gpu, audio, null!);
+                );
+                
+                // Chama Configure por reflexão também
+                var configure = typeof(HleConfiguration).GetMethod("Configure")!;
+                var hleConfig = (HleConfiguration)configure.Invoke(hleConfigObj, new object[]{ vfs, null!, null!, null!, userChannel, gpu, audio, null! })!;
 
                 var device = new Ryujinx.HLE.Switch(hleConfig);
 
