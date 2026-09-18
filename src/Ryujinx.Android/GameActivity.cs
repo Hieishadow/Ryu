@@ -113,14 +113,26 @@ public class GameActivity : Activity
             Directory.CreateDirectory(jitDir);
             SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE", jitDir);
 
+            Log("Criando VFS...");
             VirtualFileSystem vfs;
-            try { vfs = VirtualFileSystem.CreateInstance(); }
-            catch
+            try
             {
-                var prop = typeof(VirtualFileSystem).GetProperty("Instance", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
-                vfs = (VirtualFileSystem)prop!.GetValue(null)!;
+                vfs = VirtualFileSystem.CreateInstance();
+                Log("VFS Criado via CreateInstance");
             }
-            try { vfs.ReloadKeySet(); Log("KeySet Reload OK"); } catch (Exception ex){ Log($"KeySet: {ex.Message}"); }
+            catch (Exception ex)
+            {
+                Log($"CreateInstance falhou: {ex.GetType().Name}: {ex.Message}");
+                var prop = typeof(VirtualFileSystem).GetProperty("Instance", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                var inst = prop?.GetValue(null) as VirtualFileSystem;
+                if (inst == null)
+                    throw new Exception($"VFS indisponivel. CreateInstance lancou: {ex.Message} - prop null? {prop==null}");
+                vfs = inst;
+                Log("VFS reutilizado via Instance");
+            }
+
+            try { vfs.ReloadKeySet(); Log("KeySet Reload OK"); }
+            catch (Exception ex) { Log($"KeySet reload: {ex.GetType().Name}: {ex.Message}"); throw; }
 
             Log("Criando VulkanRenderer...");
             gpu = VulkanRenderer.Create("Ryubing", (inst, vk) =>
@@ -210,7 +222,6 @@ public class GameActivity : Activity
 
     HleConfiguration BuildHleConfigurationFIX(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio)
     {
-        // FIX NOVO: não filtra mais por IRenderer, tenta todos os construtores
         var hleType = typeof(HleConfiguration);
         var allTypes = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a => { try{ return a.GetTypes(); }catch{ return Array.Empty<Type>(); }}).ToList();
         var cmType = allTypes.FirstOrDefault(t => t.Name == "ContentManager");
@@ -248,11 +259,9 @@ public class GameActivity : Activity
         foreach (var ctor in hleType.GetConstructors().OrderByDescending(c => c.GetParameters().Length))
         {
             var pars = ctor.GetParameters();
-            // precisa ter pelo menos VFS ou ContentManager
             if (!pars.Any(p => p.ParameterType == typeof(VirtualFileSystem) || p.ParameterType == cmType)) continue;
 
             var args = new object?[pars.Length];
-            bool ok = true;
             for(int i=0;i<pars.Length;i++){
                 var pt = pars[i].ParameterType;
                 var name = pars[i].Name?.ToLower()?? "";
@@ -261,8 +270,8 @@ public class GameActivity : Activity
                 else if(pt == ucpType) args[i]=userChannel;
                 else if(name.Contains("content") && contentManager!= null && pt.IsAssignableFrom(contentManager.GetType())) args[i]=contentManager;
                 else if(name.Contains("user") && userChannel!= null && pt.IsAssignableFrom(userChannel.GetType())) args[i]=userChannel;
-                else if(pt.IsInstanceOfType(gpu) || pt.IsAssignableFrom(gpu.GetType()) || name.Contains("gpu") || name.Contains("render") || name.Contains("renderer")) args[i]=gpu;
-                else if(pt.IsInstanceOfType(audio) || pt.IsAssignableFrom(audio.GetType()) || name.Contains("audio") || name.Contains("device")) args[i]=audio;
+                else if(pt.IsInstanceOfType(gpu) || pt.IsAssignableFrom(gpu.GetType()) || name.Contains("gpu") || name.Contains("render")) args[i]=gpu;
+                else if(pt.IsInstanceOfType(audio) || pt.IsAssignableFrom(audio.GetType()) || name.Contains("audio")) args[i]=audio;
                 else if(pt.IsEnum) args[i]=Enum.GetValues(pt).GetValue(0);
                 else if(pt == typeof(string)) args[i]="";
                 else if(pt == typeof(bool)) args[i]=false;
@@ -274,7 +283,6 @@ public class GameActivity : Activity
                 if (result is HleConfiguration hc) return hc;
                 var configureMethod = hleType.GetMethod("Configure");
                 if(configureMethod!= null){ var ret = configureMethod.Invoke(result, null); if(ret is HleConfiguration hc2) return hc2; }
-                if (result is HleConfiguration hc3) return hc3;
             } catch (Exception ex){ Log($"Tentativa ctor {pars.Length} falhou: {ex.InnerException?.Message?? ex.Message}"); continue; }
         }
         throw new Exception("Construtor HleConfiguration compativel nao encontrado - todos falharam");
