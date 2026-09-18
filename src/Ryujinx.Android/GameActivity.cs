@@ -17,7 +17,7 @@ using SysEnv = System.Environment;
 
 namespace DragoNX;
 
-[Activity(Label = "Ryubing", Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape, Exported = false, MainLauncher = false)]
+[Activity(Name = "com.ryubing.android.GameActivity", Label = "Ryubing", Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape, Exported = false, MainLauncher = false)]
 public class GameActivity : Activity
 {
     const string TAG = "Ryubing";
@@ -112,6 +112,7 @@ public class GameActivity : Activity
             Directory.CreateDirectory(Path.Combine(baseDir, "nand", "user", "save"));
             Directory.CreateDirectory(Path.Combine(baseDir, "sdcard", "Nintendo", "Contents", "registered"));
 
+            // KEYS
             string prodOrig = "/storage/emulated/0/Download/Ryubing/keys/prod.keys";
             if (!File.Exists(prodOrig)) prodOrig = "/storage/emulated/0/Download/DragoNX/keys/prod.keys";
             string prodDest = Path.Combine(systemDir, "prod.keys");
@@ -121,12 +122,26 @@ public class GameActivity : Activity
                 string keysDir = Path.Combine(baseDir, "keys");
                 Directory.CreateDirectory(keysDir);
                 File.Copy(prodOrig, Path.Combine(keysDir, "prod.keys"), true);
-                Log($"prod.keys OK {new FileInfo(prodDest).Length}b em system/");
+                Log($"prod.keys OK {new FileInfo(prodDest).Length}b");
             }
             else
             {
-                Log($"ATENÇÃO prod.keys não achada, tentando {prodDest} existe={File.Exists(prodDest)}");
+                Log($"ATENÇÃO prod.keys não achada, existe={File.Exists(prodDest)}");
             }
+
+            // FIRMWARE - NOVO, SEM PRECISAR ABRIR MAIN
+            try {
+                string fwSrc = "/storage/emulated/0/Download/Ryubing/firmware";
+                string fwDst = Path.Combine(baseDir, "bis", "system", "Contents", "registered");
+                Directory.CreateDirectory(fwDst);
+                if (Directory.Exists(fwSrc))
+                {
+                    var ncas = Directory.GetFiles(fwSrc, "*.nca");
+                    foreach(var nca in ncas) File.Copy(nca, Path.Combine(fwDst, Path.GetFileName(nca)), true);
+                    Log($"Firmware: {ncas.Length}.nca copiados");
+                }
+                else Log($"Firmware pasta não existe: {fwSrc}");
+            } catch(Exception ex){ Log($"Firmware erro: {ex.Message}"); }
 
             try {
                 var appDataType = typeof(AppDataManager);
@@ -209,7 +224,7 @@ public class GameActivity : Activity
                         else cmArgs[j]=null;
                     }
                     contentManager = cmCtor.Invoke(cmArgs);
-                    Log($"ContentManager: {cmType.FullName} criado com VFS");
+                    Log($"ContentManager: {cmType.FullName} criado");
                 }
             }
         } catch(Exception ex){ Log($"ContentManager: {ex.Message}"); }
