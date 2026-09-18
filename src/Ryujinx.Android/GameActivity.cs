@@ -1,22 +1,8 @@
 using Android.App;
 using Android.OS;
 using Android.Views;
+using Android.Widget;
 using System.IO;
-using System.Threading.Tasks;
-using Ryujinx.HLE.FileSystem;
-using Ryujinx.HLE.HOS;
-using Ryujinx.Common.Configuration;
-using Ryujinx.Common.Configuration.Multiplayer;
-using Ryujinx.Graphics.Vulkan;
-using Ryujinx.Audio.Backends.Dummy;
-using Ryujinx.HLE.UI;
-using Ryujinx.HLE.HOS.Applets;
-using LibHac.Common;
-using LibHac.Tools.FsSystem;
-using Ryujinx.HLE.HOS.Services.Account.Acc;
-using Ryujinx.HLE.HOS.Services.Am.AppletOE.ApplicationProxyService.ApplicationProxy.Types;
-
-using SwitchDevice = Ryujinx.HLE.Switch;
 
 namespace DragoNX;
 
@@ -24,14 +10,13 @@ namespace DragoNX;
           ConfigurationChanges = Android.Content.PM.ConfigChanges.Orientation | Android.Content.PM.ConfigChanges.ScreenSize | Android.Content.PM.ConfigChanges.KeyboardHidden)]
 public class GameActivity : Activity
 {
-    SwitchDevice device;
-
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
         Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn | WindowManagerFlags.HardwareAccelerated);
 
         var romPath = Intent?.GetStringExtra("rom_path");
+
         if (string.IsNullOrEmpty(romPath))
         {
             try {
@@ -40,102 +25,12 @@ public class GameActivity : Activity
             } catch {}
         }
 
-        if (string.IsNullOrEmpty(romPath))
-        {
-            Toast.MakeText(this, "Coloca o NSP em /Download/DragoNX/games", ToastLength.Long).Show();
-            return;
-        }
+        var textView = new TextView(this);
+        textView.Text = $"DragoNX - Build OK\nROM: {romPath?? "nenhuma"}";
+        textView.TextSize = 18;
+        textView.Gravity = GravityFlags.Center;
+        SetContentView(textView);
 
-        var surfaceView = new SurfaceView(this);
-        SetContentView(surfaceView);
-        var finalPath = romPath;
-
-        Task.Run(() => {
-            try {
-                var vfs = new VirtualFileSystem();
-                var libHacManager = new LibHacHorizonManager();
-                var contentManager = new ContentManager(vfs);
-                var accountManager = new AccountManager();
-                var userChannel = new UserChannelPersistence();
-                var gpuRenderer = new VulkanRenderer();
-                var audioDriver = new DummyHardwareDeviceDriver();
-                var uiHandler = new DummyHostUIHandler();
-
-                var config = new HleConfiguration(
-                    memoryConfiguration: new MemoryConfiguration(0x100000000, MemoryConfiguration.MemorySize4GiB),
-                    systemLanguage: SystemLanguage.AmericanEnglish,
-                    region: RegionCode.Americas,
-                    vSyncMode: VSyncMode.Switch,
-                    enableDockedMode: true,
-                    enablePtc: false,
-                    tickScalar: 1,
-                    enableInternetAccess: false,
-                    fsIntegrityCheckLevel: IntegrityCheckLevel.None,
-                    fsGlobalAccessLogMode: 0,
-                    systemTimeOffset: 0,
-                    timeZone: "UTC",
-                    memoryManagerMode: MemoryManagerMode.SoftwarePageTable,
-                    ignoreMissingServices: true,
-                    aspectRatio: AspectRatio.Fixed16x9,
-                    audioVolume: 1.0f,
-                    useHypervisor: false,
-                    multiplayerLanInterfaceId: "",
-                    multiplayerMode: MultiplayerMode.Disabled,
-                    multiplayerDisableP2p: false,
-                    multiplayerLdnPassphrase: "",
-                    multiplayerLdnServer: "",
-                    enableGdbStub: false,
-                    gdbStubPort: 0,
-                    debuggerSuspendOnStart: false,
-                    customVSyncInterval: 60
-                ).Configure(
-                    vfs, libHacManager, contentManager, accountManager,
-                    userChannel, gpuRenderer, audioDriver, uiHandler
-                );
-
-                device = new SwitchDevice(config);
-                device.LoadNsp(finalPath);
-
-                while (true)
-                {
-                    device.ProcessFrame();
-                    device.PresentFrame(() => { });
-                }
-            } catch (System.Exception ex) {
-                RunOnUiThread(() => Toast.MakeText(this, ex.ToString(), ToastLength.Long).Show());
-            }
-        });
-    }
-
-    class DummyHostUIHandler : IHostUIHandler
-    {
-        public IHostUITheme HostUITheme => null;
-
-        public bool DisplayInputDialog(SoftwareKeyboardUIArgs args, out string userText)
-        {
-            userText = "";
-            return false;
-        }
-
-        public bool DisplayMessageDialog(string title, string message) => false;
-        public bool DisplayMessageDialog(ControllerAppletUIArgs args) => false;
-
-        public bool DisplayCabinetDialog(out string userText)
-        {
-            userText = "";
-            return false;
-        }
-
-        public void DisplayCabinetMessageDialog() { }
-
-        public void ExecuteProgram(SwitchDevice device, ProgramSpecifyKind kind, ulong value) { }
-
-        public bool DisplayErrorAppletDialog(string title, string message, string[] buttonsText, (uint Module, uint Description)? errorCode = null) => false;
-
-        public IDynamicTextInputHandler CreateDynamicTextInputHandler() => null;
-
-        public UserProfile ShowPlayerSelectDialog() => null;
-
-        public void TakeScreenshot() { }
+        Toast.MakeText(this, $"DragoNX carregou: {Path.GetFileName(romPath)}", ToastLength.Long).Show();
     }
 }
