@@ -17,7 +17,7 @@ using SysEnv = System.Environment;
 
 namespace DragoNX;
 
-[Android.App.Activity(Label = "DragoNX", Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation = Android.Content.PM.ScreenOrientation.Landscape)]
+[Activity(Label = "DragoNX", Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation = Android.Content.PM.ScreenOrientation.Landscape)]
 public class GameActivity : Activity
 {
     const string TAG = "DragoNX";
@@ -51,7 +51,8 @@ public class GameActivity : Activity
         }
         surfaceView = new SurfaceView(this);
         logView = new TextView(this);
-        logView.Text = $"DRAGONX #270\n{Path.GetFileName(romPath)}\nExiste: {File.Exists(romPath)} {(File.Exists(romPath)? new FileInfo(romPath).Length/1024/1024 : 0)}MB";
+        // TIREI O #270 FIXO AQUI
+        logView.Text = $"DRAGONX\n{Path.GetFileName(romPath)}\nExiste: {File.Exists(romPath)} {(File.Exists(romPath)? new FileInfo(romPath).Length/1024/1024 : 0)}MB";
         logView.Gravity = GravityFlags.Center;
         logView.SetTextColor(Android.Graphics.Color.White);
         logView.SetBackgroundColor(Android.Graphics.Color.Black);
@@ -134,7 +135,7 @@ public class GameActivity : Activity
                 frames++;
                 if(sw.ElapsedMilliseconds>=1000){ int f=frames; frames=0; sw.Restart(); RunOnUiThread(()=> fpsView.Text=$"FPS: {f}"); }
             }
-        }catch(Exception ex){ LogError($"ERRO #270:\n{ex.Message}\n{ex}"); }
+        }catch(Exception ex){ LogError($"ERRO:\n{ex.Message}\n{ex}"); } // TIREI O #270 AQUI TAMBÉM
         finally{ try{device?.Dispose();}catch{} try{gpu?.Dispose();}catch{} }
     }
 
