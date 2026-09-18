@@ -2,23 +2,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.ryubing.android">
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="33" />
-    
-    <!-- ESSA LINHA QUE FAZ APARECER NA SUA LISTA DO PRINT -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.INTERNET" />
-
     <application 
         android:allowBackup="false" 
         android:label="Ryubing" 
         android:extractNativeLibs="true"
         android:requestLegacyExternalStorage="true"
-        android:preserveLegacyExternalStorage="true"
-        android:icon="@mipmap/appicon"
-        android:roundIcon="@mipmap/appicon_round">
-
-        <!-- Launcher que lista os jogos -->
+        android:preserveLegacyExternalStorage="true">
         <activity 
             android:name=".MainActivity" 
             android:exported="true" 
@@ -30,13 +23,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!-- Tela do jogo -->
         <activity 
             android:name=".GameActivity" 
             android:exported="true" 
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" 
             android:screenOrientation="landscape" />
-
     </application>
 </manifest>
