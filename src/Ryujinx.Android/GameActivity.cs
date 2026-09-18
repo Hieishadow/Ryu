@@ -14,6 +14,7 @@ using Silk.NET.Vulkan;
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using VkResult = Silk.NET.Vulkan.Result;
 
 namespace DragoNX;
 
@@ -29,7 +30,7 @@ public class GameActivity : Activity
         base.OnCreate(savedInstanceState);
         Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
         romPath = Intent?.GetStringExtra("rom_path") ?? "/storage/emulated/0/Download/DragoNX/games/game.nsp";
-        logView = new Android.Widget.TextView(this){ Text = $"DragoNX #251 REAL VULKAN\n{Path.GetFileName(romPath)}" };
+        logView = new Android.Widget.TextView(this){ Text = $"DragoNX #252 FIX AMBIGUOUS Result\n{Path.GetFileName(romPath)}" };
         logView.Gravity = GravityFlags.Center;
         SetContentView(logView);
         surfaceView = new SurfaceView(this);
@@ -41,7 +42,7 @@ public class GameActivity : Activity
         GameActivity act;
         public SurfaceCallback(GameActivity a){ act = a; }
         
-        unsafe delegate Result CreateAndroidSurfaceDelegate(Instance instance, AndroidSurfaceCreateInfoKHR* pCreateInfo, AllocationCallbacks* pAllocator, SurfaceKHR* pSurface);
+        unsafe delegate VkResult CreateAndroidSurfaceDelegate(Instance instance, AndroidSurfaceCreateInfoKHR* pCreateInfo, AllocationCallbacks* pAllocator, SurfaceKHR* pSurface);
 
         public void SurfaceCreated(ISurfaceHolder holder)
         {
@@ -88,7 +89,7 @@ public class GameActivity : Activity
                 } catch (System.Exception ex) {
                     act.RunOnUiThread(() => {
                         var tv = new Android.Widget.TextView(act);
-                        tv.Text = "CRASH #251:\n" + ex.ToString();
+                        tv.Text = "CRASH #252:\n" + ex.ToString();
                         act.SetContentView(tv);
                     });
                 }
