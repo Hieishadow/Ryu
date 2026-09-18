@@ -1,262 +1,123 @@
 using Android.App;
+using Android.Content;
+using Android.Content.PM;
 using Android.OS;
+using Android.Widget;
 using Android.Views;
-using AFormat = Android.Graphics.Format;
-using Ryujinx.HLE;
-using Ryujinx.HLE.FileSystem;
-using Ryujinx.Common.Configuration;
-using Ryujinx.Graphics.Vulkan;
-using Ryujinx.Audio.Backends.Dummy;
-using Silk.NET.Vulkan;
-using System;
+using Android.Graphics;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
-using System.Threading;
-using SysEnv = System.Environment;
 
 namespace DragoNX;
 
-[Activity(Name = "com.ryubing.android.GameActivity", Label = "Ryubing", Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape, Exported = false, MainLauncher = false)]
-public class GameActivity : Activity
+[Activity(Name = "com.ryubing.android.MainActivity", Label = "Ryubing", MainLauncher = true, Exported = true, ScreenOrientation = ScreenOrientation.Landscape, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen")]
+public class MainActivity : Activity
 {
-    const string TAG = "Ryubing";
-    string romPath = "";
-    SurfaceView surfaceView = null!;
-    TextView logView = null!;
-    TextView fpsView = null!;
-    Thread? emuThread;
-    volatile bool running = false;
-    IntPtr nativeWindow = IntPtr.Zero;
-    Ryujinx.HLE.Switch? device;
-    VulkanRenderer? gpu;
-
-    [DllImport("android")] static extern IntPtr ANativeWindow_fromSurface(IntPtr env, IntPtr surface);
-    [DllImport("android")] static extern void ANativeWindow_acquire(IntPtr window);
-    [DllImport("android")] static extern void ANativeWindow_release(IntPtr window);
+    const string BasePath = "/storage/emulated/0/Download/Ryubing";
+    LinearLayout layout = null!;
+    string? selectedRom = null;
+    Button? btnJogar;
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
-        Window.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
-        romPath = Intent?.GetStringExtra("rom_path")?? "";
-        if (string.IsNullOrEmpty(romPath) ||!File.Exists(romPath))
-        {
-            var dir = "/storage/emulated/0/Download/Ryubing/games";
-            if (Directory.Exists(dir))
-            {
-                var first = Directory.GetFiles(dir, "*.nsp").Concat(Directory.GetFiles(dir, "*.xci")).FirstOrDefault();
-                if (first!= null) romPath = first;
-            }
-        }
-        surfaceView = new SurfaceView(this);
-        logView = new TextView(this);
-        logView.Text = $"RYUBING\n{Path.GetFileName(romPath)}\nExiste: {File.Exists(romPath)} {(File.Exists(romPath)? new FileInfo(romPath).Length / 1024 / 1024 : 0)}MB";
-        logView.Gravity = GravityFlags.Center;
-        logView.SetTextColor(global::Android.Graphics.Color.White);
-        logView.SetBackgroundColor(global::Android.Graphics.Color.Black);
-        fpsView = new TextView(this);
-        fpsView.Text = "FPS: --";
-        fpsView.SetTextColor(global::Android.Graphics.Color.Lime);
-        fpsView.TextSize = 13;
-        fpsView.SetPadding(20, 30, 20, 20);
-        var root = new global::Android.Widget.FrameLayout(this);
-        root.AddView(surfaceView, new global::Android.Widget.FrameLayout.LayoutParams(-1, -1));
-        root.AddView(logView, new global::Android.Widget.FrameLayout.LayoutParams(-1, -1));
-        root.AddView(fpsView, new global::Android.Widget.FrameLayout.LayoutParams(-2, -2));
-        SetContentView(root);
-        surfaceView.Holder!.AddCallback(new SurfaceCallback(this));
-    }
+        Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
+        System.IO.Directory.CreateDirectory(System.IO.Path.Combine(BasePath, "games"));
+        System.IO.Directory.CreateDirectory(System.IO.Path.Combine(BasePath, "keys"));
+        System.IO.Directory.CreateDirectory(System.IO.Path.Combine(BasePath, "firmware"));
 
-    void Log(string msg) { global::Android.Util.Log.Info(TAG, msg); RunOnUiThread(() => logView.Text += "\n" + msg); }
-    void LogError(string msg) { global::Android.Util.Log.Error(TAG, msg); RunOnUiThread(() => { logView.Text += "\n" + msg; logView.SetTextColor(global::Android.Graphics.Color.Red); }); }
-
-    class SurfaceCallback : Java.Lang.Object, ISurfaceHolderCallback
-    {
-        readonly GameActivity act;
-        public SurfaceCallback(GameActivity a) => act = a;
-        public void SurfaceCreated(ISurfaceHolder holder)
-        {
-            act.nativeWindow = ANativeWindow_fromSurface(global::Android.Runtime.JNIEnv.Handle, holder.Surface!.Handle);
-            if (act.nativeWindow == IntPtr.Zero) { act.LogError("ANativeWindow Zero!"); return; }
-            ANativeWindow_acquire(act.nativeWindow);
-            if (act.emuThread == null ||!act.emuThread.IsAlive)
-            {
-                act.running = true;
-                act.emuThread = new Thread(act.EmulationLoop) { IsBackground = true, Priority = System.Threading.ThreadPriority.Highest, Name = "RyujinxEmu" };
-                act.emuThread.Start();
-            }
-        }
-        public void SurfaceChanged(ISurfaceHolder h, AFormat f, int w, int ht) { }
-        public void SurfaceDestroyed(ISurfaceHolder h) { act.running = false; if (act.nativeWindow!= IntPtr.Zero) { ANativeWindow_release(act.nativeWindow); act.nativeWindow = IntPtr.Zero; } }
-    }
-
-    void EmulationLoop()
-    {
-        try
-        {
-            Log($"Iniciando {Path.GetFileName(romPath)}");
-            try {
-                var tz = Java.Util.TimeZone.Default;
-                Log($"TimeZone: {tz.ID}");
-            } catch {
-                Java.Util.TimeZone.Default = Java.Util.TimeZone.GetTimeZone("UTC");
-                Log("TimeZone fallback UTC");
-            }
-
-            string baseDir = Path.Combine(FilesDir!.AbsolutePath, "Ryujinx");
-            string systemDir = Path.Combine(baseDir, "system");
-            Directory.CreateDirectory(systemDir);
-            Directory.CreateDirectory(Path.Combine(baseDir, "bis", "user", "save", "8000000000000010"));
-            Directory.CreateDirectory(Path.Combine(baseDir, "bis", "system", "save", "8000000000000060"));
-            Directory.CreateDirectory(Path.Combine(baseDir, "nand", "user", "save"));
-            Directory.CreateDirectory(Path.Combine(baseDir, "sdcard", "Nintendo", "Contents", "registered"));
-
-            // KEYS
-            string prodOrig = "/storage/emulated/0/Download/Ryubing/keys/prod.keys";
-            if (!File.Exists(prodOrig)) prodOrig = "/storage/emulated/0/Download/DragoNX/keys/prod.keys";
-            string prodDest = Path.Combine(systemDir, "prod.keys");
-            if (File.Exists(prodOrig))
-            {
-                File.Copy(prodOrig, prodDest, true);
-                string keysDir = Path.Combine(baseDir, "keys");
-                Directory.CreateDirectory(keysDir);
-                File.Copy(prodOrig, Path.Combine(keysDir, "prod.keys"), true);
-                Log($"prod.keys OK {new FileInfo(prodDest).Length}b");
-            }
-            else
-            {
-                Log($"ATENÇÃO prod.keys não achada, existe={File.Exists(prodDest)}");
-            }
-
-            // FIRMWARE - NOVO, SEM PRECISAR ABRIR MAIN
-            try {
-                string fwSrc = "/storage/emulated/0/Download/Ryubing/firmware";
-                string fwDst = Path.Combine(baseDir, "bis", "system", "Contents", "registered");
-                Directory.CreateDirectory(fwDst);
-                if (Directory.Exists(fwSrc))
-                {
-                    var ncas = Directory.GetFiles(fwSrc, "*.nca");
-                    foreach(var nca in ncas) File.Copy(nca, Path.Combine(fwDst, Path.GetFileName(nca)), true);
-                    Log($"Firmware: {ncas.Length}.nca copiados");
-                }
-                else Log($"Firmware pasta não existe: {fwSrc}");
-            } catch(Exception ex){ Log($"Firmware erro: {ex.Message}"); }
-
-            try {
-                var appDataType = typeof(AppDataManager);
-                var initMethod = appDataType.GetMethod("Initialize", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
-                if(initMethod!=null){
-                    var p = initMethod.GetParameters();
-                    if(p.Length==1) initMethod.Invoke(null, new object[]{ baseDir });
-                    else if(p.Length==2) initMethod.Invoke(null, new object[]{ baseDir, AppDataManager.LaunchMode.UserProfile });
-                }
-                Log($"AppData Base: {AppDataManager.BaseDirPath}");
-            } catch(Exception ex){ Log($"AppData init: {ex.Message}"); }
-
-            string jitDir = Path.Combine(CacheDir!.AbsolutePath, "jit");
-            Directory.CreateDirectory(jitDir);
-            SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE", jitDir);
-
-            VirtualFileSystem vfs;
-            try { vfs = VirtualFileSystem.CreateInstance(); Log("VFS Criado"); }
-            catch {
-                var prop = typeof(VirtualFileSystem).GetProperty("Instance", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
-                vfs = (VirtualFileSystem)prop!.GetValue(null)!;
-                Log("VFS reutilizado");
-            }
-
-            Log("Criando VulkanRenderer...");
-            gpu = VulkanRenderer.Create("Ryubing", (inst, vk) => {
-                unsafe {
-                    var ci = new AndroidSurfaceCreateInfoKHR { SType = StructureType.AndroidSurfaceCreateInfoKhr, Window = (nint*)nativeWindow };
-                    var fp = vk.GetInstanceProcAddr(inst, "vkCreateAndroidSurfaceKHR");
-                    if (fp == IntPtr.Zero) throw new Exception("vkCreateAndroidSurfaceKHR nao encontrado");
-                    var func = Marshal.GetDelegateForFunctionPointer<CreateAndroidSurfaceDelegate>(fp);
-                    SurfaceKHR surf; var res = func(inst, &ci, null, &surf);
-                    if (res!= Silk.NET.Vulkan.Result.Success) throw new Exception($"vkCreateSurface falhou: {res}");
-                    return surf;
-                }
-            }, () => new[] { "VK_KHR_surface", "VK_KHR_android_surface" });
-            Log("Vulkan OK");
-
-            var audio = new DummyHardwareDeviceDriver();
-            var hleConf = BuildHleConfiguration(vfs, gpu, audio);
-            Log("HLE Config OK");
-
-            try { vfs.ReloadKeySet(); Log("KeySet Reload OK"); } catch(Exception ex){ Log($"KeySet reload: {ex.Message}"); }
-
-            device = new Ryujinx.HLE.Switch(hleConf);
-            Log("Switch criado - Horizon OK");
-            Log("Loading NSP...");
-            if (!device.LoadNsp(romPath)) throw new Exception("LoadNsp false");
-            Log("NSP OK - INICIANDO JOGO");
-            RunOnUiThread(() => logView.Visibility = ViewStates.Gone);
-            var sw = System.Diagnostics.Stopwatch.StartNew(); int frames = 0;
-            while (running) {
-                device.ProcessFrame();
-                device.PresentFrame(() => { });
-                frames++;
-                if (sw.ElapsedMilliseconds >= 1000) { int f = frames; frames = 0; sw.Restart(); RunOnUiThread(() => fpsView.Text = $"FPS: {f}"); }
-            }
-        } catch (Exception ex) { LogError($"ERRO:\n{ex.Message}\n{ex}"); }
-        finally { try { device?.Dispose(); } catch { } try { gpu?.Dispose(); } catch { } }
-    }
-
-    delegate Silk.NET.Vulkan.Result CreateAndroidSurfaceDelegate(Instance i, AndroidSurfaceCreateInfoKHR* p, AllocationCallbacks* a, SurfaceKHR* s);
-
-    HleConfiguration BuildHleConfiguration(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio)
-    {
-        object? contentManager = null;
         try {
-            var allTypes = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a=>{try{return a.GetTypes();}catch{return Array.Empty<Type>();}}).ToList();
-            var cmType = allTypes.FirstOrDefault(t=>t.Name=="ContentManager");
-            if(cmType!=null){
-                var cmCtor = cmType.GetConstructors().OrderByDescending(c=>c.GetParameters().Length).FirstOrDefault();
-                if(cmCtor!=null){
-                    var cmParams = cmCtor.GetParameters();
-                    object?[] cmArgs = new object?[cmParams.Length];
-                    for(int j=0;j<cmParams.Length;j++){
-                        var pt = cmParams[j].ParameterType;
-                        if(pt==typeof(string)) cmArgs[j]=AppDataManager.BaseDirPath;
-                        else if(pt==typeof(VirtualFileSystem)) cmArgs[j]=vfs;
-                        else if(pt.IsValueType) cmArgs[j]=Activator.CreateInstance(pt);
-                        else cmArgs[j]=null;
-                    }
-                    contentManager = cmCtor.Invoke(cmArgs);
-                    Log($"ContentManager: {cmType.FullName} criado");
-                }
-            }
-        } catch(Exception ex){ Log($"ContentManager: {ex.Message}"); }
+            var internalSystem = System.IO.Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "system");
+            System.IO.Directory.CreateDirectory(internalSystem);
+            var srcKey = System.IO.Path.Combine(BasePath, "keys", "prod.keys");
+            var dstKey = System.IO.Path.Combine(internalSystem, "prod.keys");
+            if (File.Exists(srcKey)) File.Copy(srcKey, dstKey, true);
+        } catch {}
 
-        var hleType = typeof(HleConfiguration);
-        var ctor = hleType.GetConstructors().OrderByDescending(c => c.GetParameters().Length).First();
-        var pars = ctor.GetParameters(); object?[] args = new object?[pars.Length];
-        for (int i = 0; i < pars.Length; i++) {
-            var pt = pars[i].ParameterType;
-            if (pt.IsEnum) args[i] = Enum.GetValues(pt).GetValue(0);
-            else if (pt == typeof(string)) args[i] = "";
-            else if (pt == typeof(bool)) args[i] = false;
-            else if (pt.IsValueType) args[i] = Activator.CreateInstance(pt);
-            else args[i] = null;
-        }
-        var cfgObj = ctor.Invoke(args);
-        var userChannel = Activator.CreateInstance(hleType.GetProperty("UserChannelPersistence")!.PropertyType, true);
-        var configureMethod = hleType.GetMethod("Configure");
-        var configureParams = configureMethod!.GetParameters();
-        object?[] configArgs = new object?[configureParams.Length];
-        for(int i=0;i<configureParams.Length;i++){
-            var pType = configureParams[i].ParameterType;
-            if(pType==typeof(VirtualFileSystem)) configArgs[i]=vfs;
-            else if(pType.Name=="ContentManager") configArgs[i]=contentManager;
-            else if(pType.Name.Contains("UserChannel")) configArgs[i]=userChannel;
-            else if(pType.IsAssignableFrom(gpu.GetType()) || pType.Name.Contains("Renderer") || pType.Name.Contains("IGpu")) configArgs[i]=gpu;
-            else if(pType.IsAssignableFrom(audio.GetType()) || pType.Name.Contains("Audio")) configArgs[i]=audio;
-            else if(pType.IsValueType) configArgs[i]=Activator.CreateInstance(pType);
-            else configArgs[i]=null;
-        }
-        var res = configureMethod.Invoke(cfgObj, configArgs);
-        return (HleConfiguration)res!;
+        layout = new LinearLayout(this);
+        layout.Orientation = Orientation.Vertical;
+        layout.SetGravity(GravityFlags.Center);
+        layout.SetBackgroundColor(Color.Black);
+        layout.SetPadding(40,20,40,20);
+        
+        var title = new TextView(this){ Text = "Ryubing - S20 FE Edition" };
+        title.SetTextColor(Color.White); title.TextSize = 20; title.Gravity = GravityFlags.Center;
+        layout.AddView(title);
+
+        var info = new TextView(this);
+        info.Gravity = GravityFlags.Center; info.TextSize = 11f;
+        var prodFile = System.IO.Path.Combine(BasePath, "keys", "prod.keys");
+        bool prodOk = File.Exists(prodFile);
+        info.Text = prodOk ? $"✓ prod.keys {new FileInfo(prodFile).Length} bytes" : $"✗ prod.keys NAO em {BasePath}/keys";
+        info.SetTextColor(prodOk ? Color.Green : Color.Yellow);
+        layout.AddView(info);
+
+        var topRow = new LinearLayout(this);
+        topRow.Orientation = Orientation.Horizontal;
+        topRow.SetGravity(GravityFlags.Center);
+        var btnPerm = new Button(this){ Text = "1 - Permissão" };
+        btnPerm.Click += (s,e) => RequestAllFilesPermission();
+        topRow.AddView(btnPerm);
+        var btnScan = new Button(this){ Text = "2 - Listar Jogos" };
+        btnScan.Click += (s,e) => ScanGames();
+        topRow.AddView(btnScan);
+        btnJogar = new Button(this){ Text = "▶ JOGAR" };
+        btnJogar.SetBackgroundColor(Color.Green);
+        btnJogar.Enabled = false;
+        btnJogar.Click += (s,e) => {
+            if(selectedRom != null){
+                var intent = new Intent(this, typeof(GameActivity));
+                intent.PutExtra("rom_path", selectedRom);
+                StartActivity(intent);
+            }
+        };
+        topRow.AddView(btnJogar);
+        layout.AddView(topRow);
+        SetContentView(layout);
+        if (Build.VERSION.SdkInt >= BuildVersionCodes.R && !global::Android.OS.Environment.IsExternalStorageManager) RequestAllFilesPermission();
+        else ScanGames();
     }
-    protected override void OnDestroy() { running = false; try { emuThread?.Join(2000); } catch { } base.OnDestroy(); }
+    void RequestAllFilesPermission()
+    {
+        try {
+            var intent = new Intent(global::Android.Provider.Settings.ActionManageAppAllFilesAccessPermission);
+            intent.SetData(global::Android.Net.Uri.Parse("package:" + PackageName));
+            StartActivity(intent);
+        } catch {
+            StartActivity(new Intent(global::Android.Provider.Settings.ActionManageAllFilesAccessPermission));
+        }
+    }
+    void ScanGames()
+    {
+        if(layout.ChildCount > 3) layout.RemoveViews(3, layout.ChildCount - 3);
+        var container = new LinearLayout(this);
+        container.Orientation = Orientation.Horizontal;
+        container.SetGravity(GravityFlags.Center);
+        var dir = new Java.IO.File(System.IO.Path.Combine(BasePath, "games"));
+        var files = dir.ListFiles();
+        if (files == null || files.Length == 0) {
+            var empty = new TextView(this){ Text = $"Nenhum jogo em {BasePath}/games" };
+            empty.SetTextColor(Color.Red); empty.Gravity = GravityFlags.Center;
+            layout.AddView(empty);
+            return;
+        }
+        foreach (var file in files.Where(f => !f.IsDirectory && (f.Name.EndsWith(".nsp") || f.Name.EndsWith(".xci")))) {
+            var col = new LinearLayout(this);
+            col.Orientation = Orientation.Vertical;
+            col.SetPadding(10,10,10,10);
+            col.SetBackgroundColor(Color.DarkGray);
+            var name = new TextView(this){ Text = file.Name };
+            name.SetTextColor(Color.White); name.TextSize = 10;
+            col.AddView(name);
+            var btn = new Button(this){ Text = "Selecionar" };
+            btn.Click += (s,e) => {
+                selectedRom = file.AbsolutePath;
+                btnJogar!.Enabled = true;
+                btnJogar.Text = $"▶ JOGAR {file.Name}";
+            };
+            col.AddView(btn);
+            container.AddView(col);
+        }
+        layout.AddView(container);
+    }
 }
