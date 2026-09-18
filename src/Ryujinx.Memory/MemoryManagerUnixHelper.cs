@@ -6,6 +6,7 @@ namespace Ryujinx.Memory
 {
     [SupportedOSPlatform("linux")]
     [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("android")]
     public static partial class MemoryManagerUnixHelper
     {
         [Flags]
@@ -27,21 +28,6 @@ namespace Ryujinx.Memory
             MAP_FIXED = 16,
             MAP_UNLOCKED = 32,
             MAP_JIT_DARWIN = 0x800,
-        }
-
-        [Flags]
-        public enum OpenFlags : uint
-        {
-            O_RDONLY = 0,
-            O_WRONLY = 1,
-            O_RDWR = 2,
-            O_CREAT = 4,
-            O_EXCL = 8,
-            O_NOCTTY = 16,
-            O_TRUNC = 32,
-            O_APPEND = 64,
-            O_NONBLOCK = 128,
-            O_SYNC = 256,
         }
 
         public const nint MAP_FAILED = -1;
@@ -94,72 +80,44 @@ namespace Ryujinx.Memory
             int result = 0;
 
             if (flags.HasFlag(MmapFlags.MAP_SHARED))
-            {
-                result |= (int)MmapFlags.MAP_SHARED;
-            }
+                result |= 0x01; // MAP_SHARED
 
             if (flags.HasFlag(MmapFlags.MAP_PRIVATE))
-            {
-                result |= (int)MmapFlags.MAP_PRIVATE;
-            }
+                result |= 0x02; // MAP_PRIVATE
 
             if (flags.HasFlag(MmapFlags.MAP_FIXED))
-            {
-                result |= (int)MmapFlags.MAP_FIXED;
-            }
+                result |= 0x10; // MAP_FIXED
 
             if (flags.HasFlag(MmapFlags.MAP_ANONYMOUS))
             {
-                if (OperatingSystem.IsLinux())
-                {
-                    result |= MAP_ANONYMOUS_LINUX_GENERIC;
-                }
+                if (OperatingSystem.IsLinux() || OperatingSystem.IsAndroid())
+                    result |= MAP_ANONYMOUS_LINUX_GENERIC; // 0x20
                 else if (OperatingSystem.IsMacOS())
-                {
                     result |= MAP_ANONYMOUS_DARWIN;
-                }
                 else
-                {
-                    throw new NotImplementedException();
-                }
+                    result |= MAP_ANONYMOUS_LINUX_GENERIC;
             }
 
             if (flags.HasFlag(MmapFlags.MAP_NORESERVE))
             {
-                if (OperatingSystem.IsLinux())
-                {
-                    result |= MAP_NORESERVE_LINUX_GENERIC;
-                }
+                if (OperatingSystem.IsLinux() || OperatingSystem.IsAndroid())
+                    result |= MAP_NORESERVE_LINUX_GENERIC; // 0x4000
                 else if (OperatingSystem.IsMacOS())
-                {
                     result |= MAP_NORESERVE_DARWIN;
-                }
-                else
-                {
-                    throw new NotImplementedException();
-                }
             }
 
             if (flags.HasFlag(MmapFlags.MAP_UNLOCKED))
             {
-                if (OperatingSystem.IsLinux())
-                {
+                if (OperatingSystem.IsLinux() || OperatingSystem.IsAndroid())
                     result |= MAP_UNLOCKED_LINUX_GENERIC;
-                }
-                else if (OperatingSystem.IsMacOS())
-                {
-                    // FIXME: Doesn't exist on Darwin
-                }
-                else
-                {
-                    throw new NotImplementedException();
-                }
+                // no Darwin
             }
 
-            if (flags.HasFlag(MmapFlags.MAP_JIT_DARWIN) && OperatingSystem.IsMacOSVersionAtLeast(10, 14))
-            {
+            if (flags.HasFlag(MmapFlags.MAP_JIT_DARWIN) && OperatingSystem.IsMacOS() && OperatingSystem.IsMacOSVersionAtLeast(10, 14))
                 result |= (int)MmapFlags.MAP_JIT_DARWIN;
-            }
+
+            if (result == 0)
+                result = 0x22; // PRIVATE | ANONYMOUS fallback
 
             return result;
         }
