@@ -13,6 +13,7 @@ using LibHac.Tools.FsSystem;
 using Silk.NET.Vulkan;
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 
 namespace DragoNX;
 
@@ -28,7 +29,7 @@ public class GameActivity : Activity
         base.OnCreate(savedInstanceState);
         Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
         romPath = Intent?.GetStringExtra("rom_path") ?? "/storage/emulated/0/Download/DragoNX/games/game.nsp";
-        logView = new Android.Widget.TextView(this){ Text = $"DragoNX #250 FIX 249\n{Path.GetFileName(romPath)}" };
+        logView = new Android.Widget.TextView(this){ Text = $"DragoNX #251 REAL VULKAN\n{Path.GetFileName(romPath)}" };
         logView.Gravity = GravityFlags.Center;
         SetContentView(logView);
         surfaceView = new SurfaceView(this);
@@ -39,16 +40,30 @@ public class GameActivity : Activity
     {
         GameActivity act;
         public SurfaceCallback(GameActivity a){ act = a; }
+        
+        unsafe delegate Result CreateAndroidSurfaceDelegate(Instance instance, AndroidSurfaceCreateInfoKHR* pCreateInfo, AllocationCallbacks* pAllocator, SurfaceKHR* pSurface);
+
         public void SurfaceCreated(ISurfaceHolder holder)
         {
-            act.RunOnUiThread(() => act.logView!.Text = "Surface criado, iniciando...");
+            act.RunOnUiThread(() => act.logView!.Text = "Surface criado, iniciando Vulkan REAL...");
             new System.Threading.Thread(() => {
                 try {
                     var vfs = VirtualFileSystem.CreateInstance();
-                    // FIX DOS 3 ERROS DA SUA PRINT #249:
-                    // Não usa KhrAndroidSurfaceExtension, não usa Window, não precisa unsafe
                     var gpu = VulkanRenderer.Create("DragoNX", (instance, vk) => {
-                        return new SurfaceKHR(0);
+                        unsafe {
+                            var createInfo = new AndroidSurfaceCreateInfoKHR{
+                                SType = StructureType.AndroidSurfaceCreateInfoKhr,
+                                Window = (void*)holder.Surface!.Handle
+                            };
+                            SurfaceKHR surface;
+                            var funcPtr = vk.GetInstanceProcAddr(instance, "vkCreateAndroidSurfaceKHR");
+                            if (funcPtr == IntPtr.Zero) throw new Exception("vkCreateAndroidSurfaceKHR not found");
+                            var func = Marshal.GetDelegateForFunctionPointer<CreateAndroidSurfaceDelegate>(funcPtr);
+                            fixed (SurfaceKHR* pSurface = &surface) {
+                                func(instance, &createInfo, null, pSurface).CheckResult();
+                            }
+                            return surface;
+                        }
                     }, () => new[] { "VK_KHR_surface", "VK_KHR_android_surface" });
 
                     var audio = new DummyHardwareDeviceDriver();
@@ -73,7 +88,7 @@ public class GameActivity : Activity
                 } catch (System.Exception ex) {
                     act.RunOnUiThread(() => {
                         var tv = new Android.Widget.TextView(act);
-                        tv.Text = "CRASH #250 LOG:\n" + ex.ToString();
+                        tv.Text = "CRASH #251:\n" + ex.ToString();
                         act.SetContentView(tv);
                     });
                 }
