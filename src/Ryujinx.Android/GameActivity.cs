@@ -75,7 +75,6 @@ public class GameActivity : Activity
         public SurfaceCallback(GameActivity a) => act = a;
         public void SurfaceCreated(ISurfaceHolder holder)
         {
-            // #2 mantido como você pediu - JNIEnv.Handle é safe na UI thread
             act.nativeWindow = ANativeWindow_fromSurface(global::Android.Runtime.JNIEnv.Handle, holder.Surface!.Handle);
             if (act.nativeWindow == IntPtr.Zero) { act.LogError("ANativeWindow Zero!"); return; }
             ANativeWindow_acquire(act.nativeWindow);
@@ -171,7 +170,7 @@ public class GameActivity : Activity
             Log($"{name} OK");
         }
     }
-    void CopyFirmware(string baseDir){ /* mesmo seu código com skip por tamanho */
+    void CopyFirmware(string baseDir){
         try{
             var fwSrc = Path.Combine(ExternalBase, "firmware");
             var fwDst = Path.Combine(baseDir, "bis", "system", "Contents", "registered");
@@ -196,7 +195,6 @@ public class GameActivity : Activity
             if(p.Length == 1) initMethod.Invoke(null, new object[] { baseDir });
             else if(p.Length == 2)
             {
-                // #3 seu fix com TryParse + fallback
                 object mode;
                 var enumType = p[1].ParameterType;
                 if (Enum.TryParse(enumType, "User", out var m1)) mode = m1!;
@@ -212,46 +210,74 @@ public class GameActivity : Activity
 
     HleConfiguration BuildHleConfigurationFIX(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio)
     {
-        var allTypes = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a => { try{ return a.GetTypes(); }catch{ return Array.Empty<Type>(); }}).ToList();
-        var cmType = allTypes.FirstOrDefault(t => t.Name == "ContentManager")?? throw new Exception("ContentManager nao encontrado");
-        var ucpType = allTypes.FirstOrDefault(t => t.Name == "UserChannelPersistence")?? throw new Exception("UserChannelPersistence nao encontrado");
-
-        // #1 seu fix por tipo real
-        var rendererInterface = gpu.GetType().GetInterfaces().FirstOrDefault(i => i.Name is "IRenderer" or "IGpu");
+        // FIX NOVO: não filtra mais por IRenderer, tenta todos os construtores
         var hleType = typeof(HleConfiguration);
+        var allTypes = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a => { try{ return a.GetTypes(); }catch{ return Array.Empty<Type>(); }}).ToList();
+        var cmType = allTypes.FirstOrDefault(t => t.Name == "ContentManager");
+        var ucpType = allTypes.FirstOrDefault(t => t.Name == "UserChannelPersistence");
 
-        var ctor = hleType.GetConstructors()
-           .Where(c => c.GetParameters().Any(par => par.ParameterType == typeof(VirtualFileSystem)))
-           .Where(c => rendererInterface == null || c.GetParameters().Any(par => par.ParameterType.IsAssignableFrom(rendererInterface) || par.ParameterType == rendererInterface || par.ParameterType.IsAssignableFrom(gpu.GetType())))
-           .OrderByDescending(c => c.GetParameters().Length)
-           .FirstOrDefault()
-           ?? throw new Exception("Construtor HleConfiguration compativel nao encontrado");
-
-        object contentManager;
-        var cmCtorVfs = cmType.GetConstructor(new[] { typeof(VirtualFileSystem) });
-        if (cmCtorVfs!= null) contentManager = cmCtorVfs.Invoke(new object[] { vfs });
-        else contentManager = cmType.GetConstructors().OrderByDescending(c=>c.GetParameters().Length).First().Invoke(new object[] { AppDataManager.BaseDirPath, vfs });
-
-        var userChannel = Activator.CreateInstance(ucpType, new object[] { true })!;
-        var pars = ctor.GetParameters();
-        object?[] args = new object?[pars.Length];
-        for(int i=0;i<pars.Length;i++){
-            var pt = pars[i].ParameterType; var name = pars[i].Name?.ToLower()?? "";
-            if(pt == typeof(VirtualFileSystem)) args[i]=vfs;
-            else if(pt == cmType || name.Contains("content")) args[i]=contentManager;
-            else if(pt == ucpType || name.Contains("userchannel")) args[i]=userChannel;
-            else if(pt.IsAssignableFrom(gpu.GetType()) || (rendererInterface!= null && pt.IsAssignableFrom(rendererInterface))) args[i]=gpu;
-            else if(pt.IsAssignableFrom(audio.GetType()) || name.Contains("audio")) args[i]=audio;
-            else if(pt.IsEnum) args[i]=Enum.GetValues(pt).GetValue(0);
-            else if(pt == typeof(string)) args[i]="";
-            else if(pt == typeof(bool)) args[i]=false;
-            else if(pt.IsValueType) args[i]=Activator.CreateInstance(pt);
-            else args[i]=null;
+        object? contentManager = null;
+        if (cmType!= null)
+        {
+            try {
+                var cmCtorVfs = cmType.GetConstructor(new[] { typeof(VirtualFileSystem) });
+                if (cmCtorVfs!= null) contentManager = cmCtorVfs.Invoke(new object[] { vfs });
+                else {
+                    var ct = cmType.GetConstructors().OrderByDescending(c=>c.GetParameters().Length).FirstOrDefault();
+                    if (ct!= null) {
+                        var pars = ct.GetParameters();
+                        var args = new object?[pars.Length];
+                        for(int i=0;i<pars.Length;i++){
+                            if(pars[i].ParameterType == typeof(VirtualFileSystem)) args[i]=vfs;
+                            else if(pars[i].ParameterType == typeof(string)) args[i]=AppDataManager.BaseDirPath?? "";
+                            else args[i]=null;
+                        }
+                        contentManager = ct.Invoke(args);
+                    }
+                }
+            } catch (Exception ex){ Log($"CM falhou: {ex.Message}"); }
         }
-        var cfgObj = ctor.Invoke(args);
-        var configureMethod = hleType.GetMethod("Configure");
-        if(configureMethod!= null){ var ret = configureMethod.Invoke(cfgObj, null); if(ret is HleConfiguration hc) return hc; }
-        return (HleConfiguration)cfgObj;
+
+        object? userChannel = null;
+        if (ucpType!= null)
+        {
+            try { userChannel = Activator.CreateInstance(ucpType, new object[] { true }); }
+            catch { try { userChannel = Activator.CreateInstance(ucpType); } catch {} }
+        }
+
+        foreach (var ctor in hleType.GetConstructors().OrderByDescending(c => c.GetParameters().Length))
+        {
+            var pars = ctor.GetParameters();
+            // precisa ter pelo menos VFS ou ContentManager
+            if (!pars.Any(p => p.ParameterType == typeof(VirtualFileSystem) || p.ParameterType == cmType)) continue;
+
+            var args = new object?[pars.Length];
+            bool ok = true;
+            for(int i=0;i<pars.Length;i++){
+                var pt = pars[i].ParameterType;
+                var name = pars[i].Name?.ToLower()?? "";
+                if(pt == typeof(VirtualFileSystem)) args[i]=vfs;
+                else if(pt == cmType) args[i]=contentManager;
+                else if(pt == ucpType) args[i]=userChannel;
+                else if(name.Contains("content") && contentManager!= null && pt.IsAssignableFrom(contentManager.GetType())) args[i]=contentManager;
+                else if(name.Contains("user") && userChannel!= null && pt.IsAssignableFrom(userChannel.GetType())) args[i]=userChannel;
+                else if(pt.IsInstanceOfType(gpu) || pt.IsAssignableFrom(gpu.GetType()) || name.Contains("gpu") || name.Contains("render") || name.Contains("renderer")) args[i]=gpu;
+                else if(pt.IsInstanceOfType(audio) || pt.IsAssignableFrom(audio.GetType()) || name.Contains("audio") || name.Contains("device")) args[i]=audio;
+                else if(pt.IsEnum) args[i]=Enum.GetValues(pt).GetValue(0);
+                else if(pt == typeof(string)) args[i]="";
+                else if(pt == typeof(bool)) args[i]=false;
+                else if(pt.IsValueType) args[i]=Activator.CreateInstance(pt);
+                else args[i]=null;
+            }
+            try {
+                var result = ctor.Invoke(args);
+                if (result is HleConfiguration hc) return hc;
+                var configureMethod = hleType.GetMethod("Configure");
+                if(configureMethod!= null){ var ret = configureMethod.Invoke(result, null); if(ret is HleConfiguration hc2) return hc2; }
+                if (result is HleConfiguration hc3) return hc3;
+            } catch (Exception ex){ Log($"Tentativa ctor {pars.Length} falhou: {ex.InnerException?.Message?? ex.Message}"); continue; }
+        }
+        throw new Exception("Construtor HleConfiguration compativel nao encontrado - todos falharam");
     }
 
     protected override void OnDestroy(){ running=false; try{ emuThread?.Join(2000);}catch{} base.OnDestroy(); }
