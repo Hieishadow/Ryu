@@ -10,13 +10,12 @@ using Ryujinx.Common.Configuration.Multiplayer;
 using Ryujinx.Graphics.Vulkan;
 using Ryujinx.Audio.Backends.Dummy;
 using Ryujinx.HLE.UI;
+using Ryujinx.HLE.HOS.Applets;
 using LibHac.Common;
 using LibHac.Tools.FsSystem;
-using Ryujinx.HLE.HOS.Services.SoftwareKeyboard;
-using Ryujinx.HLE.HOS.Services.Am.AppletOE.ApplicationProxyService.ApplicationProxy;
-using Ryujinx.HLE.HOS.Services.Am.AppletAE.AllSystemAppletProxiesService.SystemAppletProxy;
+using Ryujinx.HLE.HOS.Services.Account.Acc;
+using Ryujinx.HLE.HOS.Services.Am.AppletOE.ApplicationProxyService.ApplicationProxy.Types;
 
-// FIX AMBIGUO
 using SwitchDevice = Ryujinx.HLE.Switch;
 
 namespace DragoNX;
@@ -110,19 +109,33 @@ public class GameActivity : Activity
 
     class DummyHostUIHandler : IHostUIHandler
     {
-        public HostUITheme HostUITheme => HostUITheme.Dark;
-        public bool HasFileExtensionChanged(string e) => false;
-        public void HandleErrorMessage(string m) {}
-        public void HandleInfoMessage(string m) {}
-        public bool DisplayInputDialog(SoftwareKeyboardUIArgs args, out string text) { text = ""; return false; }
-        public bool DisplayMessageDialog(string title, string msg) => false;
+        public IHostUITheme HostUITheme => null;
+
+        public bool DisplayInputDialog(SoftwareKeyboardUIArgs args, out string userText)
+        {
+            userText = "";
+            return false;
+        }
+
+        public bool DisplayMessageDialog(string title, string message) => false;
         public bool DisplayMessageDialog(ControllerAppletUIArgs args) => false;
-        public bool DisplayCabinetDialog(out string path) { path = ""; return false; }
-        public bool DisplayCabinetMessageDialog() => false;
-        public bool ExecuteProgram(SwitchDevice device, ProgramSpecifierKind kind, ulong uid) => false;
-        public bool DisplayErrorAppletDialog(string title, string msg, string[] buttons, (uint Module, uint Description)? code) => false;
+
+        public bool DisplayCabinetDialog(out string userText)
+        {
+            userText = "";
+            return false;
+        }
+
+        public void DisplayCabinetMessageDialog() { }
+
+        public void ExecuteProgram(SwitchDevice device, ProgramSpecifyKind kind, ulong value) { }
+
+        public bool DisplayErrorAppletDialog(string title, string message, string[] buttonsText, (uint Module, uint Description)? errorCode = null) => false;
+
         public IDynamicTextInputHandler CreateDynamicTextInputHandler() => null;
-        public bool ShowPlayerSelectDialog() => false;
-        public bool TakeScreenshot() => false;
+
+        public UserProfile ShowPlayerSelectDialog() => null;
+
+        public void TakeScreenshot() { }
     }
 }
