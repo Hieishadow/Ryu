@@ -14,7 +14,6 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using SysEnv = System.Environment;
-using Ryujinx.HLE.FileSystem.Content;
 
 namespace DragoNX;
 
@@ -110,11 +109,11 @@ public class GameActivity : Activity
             Directory.CreateDirectory(Path.Combine(baseDir, "bis"));
             Directory.CreateDirectory(Path.Combine(baseDir, "bis", "user"));
             Directory.CreateDirectory(Path.Combine(baseDir, "bis", "system"));
+            Directory.CreateDirectory(Path.Combine(baseDir, "bis", "user", "save"));
             Directory.CreateDirectory(Path.Combine(baseDir, "nand"));
             Directory.CreateDirectory(Path.Combine(baseDir, "sdcard"));
             Directory.CreateDirectory(Path.Combine(baseDir, "sdcard", "Nintendo", "Contents"));
 
-            // FIX #284 - Inicializa AppDataManager antes de tudo
             try {
                 var appDataType = typeof(AppDataManager);
                 var initMethod = appDataType.GetMethod("Initialize", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
@@ -123,7 +122,6 @@ public class GameActivity : Activity
                     if(p.Length==1) initMethod.Invoke(null, new object[]{ baseDir });
                     else if(p.Length==2) initMethod.Invoke(null, new object[]{ baseDir, AppDataManager.LaunchMode.UserProfile });
                 } else {
-                    // Fallback: seta BaseDirPath via reflexao
                     var prop = appDataType.GetProperty("BaseDirPath", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
                     prop?.SetValue(null, baseDir);
                 }
@@ -194,40 +192,39 @@ public class GameActivity : Activity
         }
         var cfgObj = ctor.Invoke(args);
 
-        // Cria UserChannelPersistence
         var userChannel = Activator.CreateInstance(hleType.GetProperty("UserChannelPersistence")!.PropertyType, true);
 
-        // FIX: Cria ContentManager de verdade via reflexao
         object? contentManager = null;
         try {
-            var cmType = typeof(ContentManager);
-            // tenta construtor vazio ou com path
-            var cmCtor = cmType.GetConstructors().OrderBy(c=>c.GetParameters().Length).First();
-            var cmParams = cmCtor.GetParameters();
-            object?[] cmArgs = new object?[cmParams.Length];
-            for(int i=0;i<cmParams.Length;i++){
-                var pt = cmParams[i].ParameterType;
-                if(pt==typeof(string)) cmArgs[i]=AppDataManager.BaseDirPath;
-                else if(pt.IsValueType) cmArgs[i]=Activator.CreateInstance(pt);
-                else cmArgs[i]=null;
+            var allTypes = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a=>{try{return a.GetTypes();}catch{return Array.Empty<Type>();}}).ToList();
+            var cmType = allTypes.FirstOrDefault(t=>t.Name=="ContentManager");
+            if(cmType!=null){
+                var cmCtor = cmType.GetConstructors().OrderBy(c=>c.GetParameters().Length).FirstOrDefault();
+                if(cmCtor!=null){
+                    var cmParams = cmCtor.GetParameters();
+                    object?[] cmArgs = new object?[cmParams.Length];
+                    for(int j=0;j<cmParams.Length;j++){
+                        var pt = cmParams[j].ParameterType;
+                        if(pt==typeof(string)) cmArgs[j]=AppDataManager.BaseDirPath;
+                        else if(pt.IsValueType) cmArgs[j]=Activator.CreateInstance(pt);
+                        else cmArgs[j]=null;
+                    }
+                    contentManager = cmCtor.Invoke(cmArgs);
+                    Log($"ContentManager: {cmType.FullName}");
+                }
             }
-            contentManager = cmCtor.Invoke(cmArgs);
-            Log("ContentManager criado");
         } catch(Exception ex){ Log($"ContentManager fallback: {ex.Message}"); }
 
         var configureMethod = hleType.GetMethod("Configure");
         var configureParams = configureMethod!.GetParameters();
-
-        // Monta args na ordem certa: vfs, contentManager,...
-        // Descobre posicao de cada tipo
         object?[] configArgs = new object?[configureParams.Length];
         for(int i=0;i<configureParams.Length;i++){
             var pType = configureParams[i].ParameterType;
             if(pType==typeof(VirtualFileSystem)) configArgs[i]=vfs;
-            else if(pType==typeof(ContentManager) || pType.Name.Contains("ContentManager")) configArgs[i]=contentManager;
+            else if(pType.Name=="ContentManager") configArgs[i]=contentManager;
             else if(pType.Name.Contains("UserChannel")) configArgs[i]=userChannel;
             else if(pType.IsAssignableFrom(gpu.GetType()) || pType.Name.Contains("Renderer") || pType.Name.Contains("IGpu")) configArgs[i]=gpu;
-            else if(pType.IsAssignableFrom(audio.GetType()) || pType.Name.Contains("Audio") || pType.Name.Contains("IAalOutput")) configArgs[i]=audio;
+            else if(pType.IsAssignableFrom(audio.GetType()) || pType.Name.Contains("Audio") || pType.Name.Contains("Aal") || pType.Name.Contains("IAal")) configArgs[i]=audio;
             else if(pType.IsValueType) configArgs[i]=Activator.CreateInstance(pType);
             else configArgs[i]=null;
         }
