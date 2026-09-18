@@ -51,8 +51,7 @@ public class GameActivity : Activity
         }
         surfaceView = new SurfaceView(this);
         logView = new TextView(this);
-        // TIREI O #270 FIXO AQUI
-        logView.Text = $"DRAGONX\n{Path.GetFileName(romPath)}\nExiste: {File.Exists(romPath)} {(File.Exists(romPath)? new FileInfo(romPath).Length/1024/1024 : 0)}MB";
+        logView.Text = $"DRAGONX\n{Path.GetFileName(romPath)}\nExiste: {File.Exists(romPath)} {(File.Exists(romPath)? new FileInfo(romPath).Length / 1024 / 1024 : 0)}MB";
         logView.Gravity = GravityFlags.Center;
         logView.SetTextColor(Android.Graphics.Color.White);
         logView.SetBackgroundColor(Android.Graphics.Color.Black);
@@ -60,17 +59,17 @@ public class GameActivity : Activity
         fpsView.Text = "FPS: --";
         fpsView.SetTextColor(Android.Graphics.Color.Lime);
         fpsView.TextSize = 13;
-        fpsView.SetPadding(20,30,20,20);
+        fpsView.SetPadding(20, 30, 20, 20);
         var root = new Android.Widget.FrameLayout(this);
-        root.AddView(surfaceView, new Android.Widget.FrameLayout.LayoutParams(-1,-1));
-        root.AddView(logView, new Android.Widget.FrameLayout.LayoutParams(-1,-1));
-        root.AddView(fpsView, new Android.Widget.FrameLayout.LayoutParams(-2,-2));
+        root.AddView(surfaceView, new Android.Widget.FrameLayout.LayoutParams(-1, -1));
+        root.AddView(logView, new Android.Widget.FrameLayout.LayoutParams(-1, -1));
+        root.AddView(fpsView, new Android.Widget.FrameLayout.LayoutParams(-2, -2));
         SetContentView(root);
         surfaceView.Holder!.AddCallback(new SurfaceCallback(this));
     }
 
-    void Log(string msg){ Android.Util.Log.Info(TAG,msg); RunOnUiThread(()=> logView.Text+="\n"+msg); }
-    void LogError(string msg){ Android.Util.Log.Error(TAG,msg); RunOnUiThread(()=>{ logView.Text+="\n"+msg; logView.SetTextColor(Android.Graphics.Color.Red); }); }
+    void Log(string msg) { Android.Util.Log.Info(TAG, msg); RunOnUiThread(() => logView.Text += "\n" + msg); }
+    void LogError(string msg) { Android.Util.Log.Error(TAG, msg); RunOnUiThread(() => { logView.Text += "\n" + msg; logView.SetTextColor(Android.Graphics.Color.Red); }); }
 
     class SurfaceCallback : Java.Lang.Object, ISurfaceHolderCallback
     {
@@ -79,16 +78,17 @@ public class GameActivity : Activity
         public void SurfaceCreated(ISurfaceHolder holder)
         {
             act.nativeWindow = ANativeWindow_fromSurface(Android.Runtime.JNIEnv.Handle, holder.Surface!.Handle);
-            if(act.nativeWindow==IntPtr.Zero){ act.LogError("ANativeWindow Zero!"); return; }
+            if (act.nativeWindow == IntPtr.Zero) { act.LogError("ANativeWindow Zero!"); return; }
             ANativeWindow_acquire(act.nativeWindow);
-            if(act.emuThread==null ||!act.emuThread.IsAlive){
-                act.running=true;
-                act.emuThread = new Thread(act.EmulationLoop){ IsBackground=true, Priority=System.Threading.ThreadPriority.Highest, Name="RyujinxEmu" };
+            if (act.emuThread == null ||!act.emuThread.IsAlive)
+            {
+                act.running = true;
+                act.emuThread = new Thread(act.EmulationLoop) { IsBackground = true, Priority = System.Threading.ThreadPriority.Highest, Name = "RyujinxEmu" };
                 act.emuThread.Start();
             }
         }
-        public void SurfaceChanged(ISurfaceHolder h,AFormat f,int w,int ht){}
-        public void SurfaceDestroyed(ISurfaceHolder h){ act.running=false; if(act.nativeWindow!=IntPtr.Zero){ ANativeWindow_release(act.nativeWindow); act.nativeWindow=IntPtr.Zero; } }
+        public void SurfaceChanged(ISurfaceHolder h, AFormat f, int w, int ht) { }
+        public void SurfaceDestroyed(ISurfaceHolder h) { act.running = false; if (act.nativeWindow!= IntPtr.Zero) { ANativeWindow_release(act.nativeWindow); act.nativeWindow = IntPtr.Zero; } }
     }
 
     void EmulationLoop()
@@ -96,59 +96,82 @@ public class GameActivity : Activity
         try
         {
             Log($"Iniciando {Path.GetFileName(romPath)}");
-            string prodOrig="/storage/emulated/0/Download/DragoNX/keys/prod.keys";
-            string keysDir=Path.Combine(FilesDir!.AbsolutePath,"Ryujinx","keys");
+            string prodOrig = "/storage/emulated/0/Download/DragoNX/keys/prod.keys";
+            string keysDir = Path.Combine(FilesDir!.AbsolutePath, "Ryujinx", "keys");
             Directory.CreateDirectory(keysDir);
-            string prodDest=Path.Combine(keysDir,"prod.keys");
-            if(!File.Exists(prodOrig)) throw new Exception($"prod.keys nao achada {prodOrig}");
-            File.Copy(prodOrig,prodDest,true);
+            string prodDest = Path.Combine(keysDir, "prod.keys");
+            if (!File.Exists(prodOrig)) throw new Exception($"prod.keys nao achada {prodOrig}");
+            File.Copy(prodOrig, prodDest, true);
             Log($"prod.keys OK {new FileInfo(prodDest).Length}b");
-            string jitDir=Path.Combine(CacheDir!.AbsolutePath,"jit");
+            string jitDir = Path.Combine(CacheDir!.AbsolutePath, "jit");
             Directory.CreateDirectory(jitDir);
-            SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE",jitDir);
-            SysEnv.SetEnvironmentVariable("XDG_CONFIG_HOME",FilesDir.AbsolutePath);
-            var vfs=VirtualFileSystem.CreateInstance();
+            SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE", jitDir);
+            SysEnv.SetEnvironmentVariable("XDG_CONFIG_HOME", FilesDir.AbsolutePath);
+
+            // FIX #280: VFS só pode ser criado uma vez no Android
+            VirtualFileSystem vfs;
+            try
+            {
+                vfs = VirtualFileSystem.CreateInstance();
+                Log("VFS Criado");
+            }
+            catch (InvalidOperationException)
+            {
+                Log("VFS já existe, reutilizando...");
+                // Pega a instancia existente via reflexão
+                var instanceProp = typeof(VirtualFileSystem).GetProperty("Instance", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                vfs = (VirtualFileSystem)instanceProp!.GetValue(null)!;
+                // Tenta recarregar as keys
+                try { vfs.ReloadKeys(); } catch {}
+                try { typeof(VirtualFileSystem).GetMethod("Reload")?.Invoke(vfs, null); } catch {}
+            }
+
             Log("Criando VulkanRenderer...");
-            gpu=VulkanRenderer.Create("DragoNX",(inst,vk)=>{
-                unsafe{
-                    var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)nativeWindow };
-                    var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR");
-                    if(fp==IntPtr.Zero) throw new Exception("vkCreateAndroidSurfaceKHR nao encontrado");
-                    var func=Marshal.GetDelegateForFunctionPointer<CreateAndroidSurfaceDelegate>(fp);
-                    SurfaceKHR surf; var res=func(inst,&ci,null,&surf);
-                    if(res!=Silk.NET.Vulkan.Result.Success) throw new Exception($"vkCreateSurface falhou: {res}");
+            gpu = VulkanRenderer.Create("DragoNX", (inst, vk) =>
+            {
+                unsafe
+                {
+                    var ci = new AndroidSurfaceCreateInfoKHR { SType = StructureType.AndroidSurfaceCreateInfoKhr, Window = (nint*)nativeWindow };
+                    var fp = vk.GetInstanceProcAddr(inst, "vkCreateAndroidSurfaceKHR");
+                    if (fp == IntPtr.Zero) throw new Exception("vkCreateAndroidSurfaceKHR nao encontrado");
+                    var func = Marshal.GetDelegateForFunctionPointer<CreateAndroidSurfaceDelegate>(fp);
+                    SurfaceKHR surf; var res = func(inst, &ci, null, &surf);
+                    if (res!= Silk.NET.Vulkan.Result.Success) throw new Exception($"vkCreateSurface falhou: {res}");
                     return surf;
                 }
-            },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
+            }, () => new[] { "VK_KHR_surface", "VK_KHR_android_surface" });
             Log("Vulkan OK");
-            var audio=new DummyHardwareDeviceDriver();
-            var hleConf=BuildHleConfiguration(vfs,gpu,audio);
-            device=new Ryujinx.HLE.Switch(hleConf);
+            var audio = new DummyHardwareDeviceDriver();
+            var hleConf = BuildHleConfiguration(vfs, gpu, audio);
+            device = new Ryujinx.HLE.Switch(hleConf);
             Log("Loading NSP...");
-            if(!device.LoadNsp(romPath)) throw new Exception("LoadNsp false");
+            if (!device.LoadNsp(romPath)) throw new Exception("LoadNsp false");
             Log("NSP OK");
-            RunOnUiThread(()=> logView.Visibility=ViewStates.Gone);
-            var sw=System.Diagnostics.Stopwatch.StartNew(); int frames=0;
-            while(running){
+            RunOnUiThread(() => logView.Visibility = ViewStates.Gone);
+            var sw = System.Diagnostics.Stopwatch.StartNew(); int frames = 0;
+            while (running)
+            {
                 device.ProcessFrame();
-                device.PresentFrame(()=>{});
+                device.PresentFrame(() => { });
                 frames++;
-                if(sw.ElapsedMilliseconds>=1000){ int f=frames; frames=0; sw.Restart(); RunOnUiThread(()=> fpsView.Text=$"FPS: {f}"); }
+                if (sw.ElapsedMilliseconds >= 1000) { int f = frames; frames = 0; sw.Restart(); RunOnUiThread(() => fpsView.Text = $"FPS: {f}"); }
             }
-        }catch(Exception ex){ LogError($"ERRO:\n{ex.Message}\n{ex}"); } // TIREI O #270 AQUI TAMBÉM
-        finally{ try{device?.Dispose();}catch{} try{gpu?.Dispose();}catch{} }
+        }
+        catch (Exception ex) { LogError($"ERRO:\n{ex.Message}\n{ex}"); }
+        finally { try { device?.Dispose(); } catch { } try { gpu?.Dispose(); } catch { } }
     }
 
-    delegate Silk.NET.Vulkan.Result CreateAndroidSurfaceDelegate(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
-    HleConfiguration BuildHleConfiguration(VirtualFileSystem vfs,VulkanRenderer gpu,DummyHardwareDeviceDriver audio){
-        var hleType=typeof(HleConfiguration);
-        var ctor=hleType.GetConstructors().OrderByDescending(c=>c.GetParameters().Length).First();
-        var pars=ctor.GetParameters(); object?[] args=new object?[pars.Length];
-        for(int i=0;i<pars.Length;i++){ var pt=pars[i].ParameterType; if(pt.IsEnum) args[i]=Enum.GetValues(pt).GetValue(0); else if(pt==typeof(string)) args[i]=""; else if(pt==typeof(bool)) args[i]=false; else if(pt.IsValueType) args[i]=Activator.CreateInstance(pt); else args[i]=null; }
-        var cfgObj=ctor.Invoke(args);
-        var userChannel=Activator.CreateInstance(hleType.GetProperty("UserChannelPersistence")!.PropertyType,true);
-        var res=hleType.GetMethod("Configure")!.Invoke(cfgObj,new object?[]{vfs,null,null,null,userChannel,gpu,audio,null});
+    delegate Silk.NET.Vulkan.Result CreateAndroidSurfaceDelegate(Instance i, AndroidSurfaceCreateInfoKHR* p, AllocationCallbacks* a, SurfaceKHR* s);
+    HleConfiguration BuildHleConfiguration(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio)
+    {
+        var hleType = typeof(HleConfiguration);
+        var ctor = hleType.GetConstructors().OrderByDescending(c => c.GetParameters().Length).First();
+        var pars = ctor.GetParameters(); object?[] args = new object?[pars.Length];
+        for (int i = 0; i < pars.Length; i++) { var pt = pars[i].ParameterType; if (pt.IsEnum) args[i] = Enum.GetValues(pt).GetValue(0); else if (pt == typeof(string)) args[i] = ""; else if (pt == typeof(bool)) args[i] = false; else if (pt.IsValueType) args[i] = Activator.CreateInstance(pt); else args[i] = null; }
+        var cfgObj = ctor.Invoke(args);
+        var userChannel = Activator.CreateInstance(hleType.GetProperty("UserChannelPersistence")!.PropertyType, true);
+        var res = hleType.GetMethod("Configure")!.Invoke(cfgObj, new object?[] { vfs, null, null, null, userChannel, gpu, audio, null });
         return (HleConfiguration)res!;
     }
-    protected override void OnDestroy(){ running=false; try{emuThread?.Join(2000);}catch{} base.OnDestroy(); }
+    protected override void OnDestroy() { running = false; try { emuThread?.Join(2000); } catch { } base.OnDestroy(); }
 }
