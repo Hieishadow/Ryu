@@ -17,7 +17,7 @@ using SysEnv = System.Environment;
 
 namespace DragoNX;
 
-[Activity(Label = "Ryubing", Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape)]
+[Activity(Label = "Ryubing", Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape, Exported = false, MainLauncher = false)]
 public class GameActivity : Activity
 {
     const string TAG = "Ryubing";
