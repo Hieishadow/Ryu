@@ -12,6 +12,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Diagnostics;
 using SysEnv = System.Environment;
 
 namespace DragoNX;
@@ -22,6 +23,7 @@ public class GameActivity : Activity
     string romPath = "";
     SurfaceView surfaceView = null!;
     TextView logView = null!;
+    TextView fpsView = null!;
 
     [DllImport("android")] static extern IntPtr ANativeWindow_fromSurface(IntPtr env, IntPtr surface);
 
@@ -30,22 +32,28 @@ public class GameActivity : Activity
         base.OnCreate(savedInstanceState);
         Window.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
         romPath = Intent?.GetStringExtra("rom_path")?? "";
-        if(string.IsNullOrEmpty(romPath) ||!File.Exists(romPath)){
-            var dir = "/storage/emulated/0/Download/DragoNX/games";
-            var first = Directory.GetFiles(dir, "*.nsp").FirstOrDefault();
-            if(first!=null) romPath = first;
+        if(string.IsNullOrEmpty(romPath) || !File.Exists(romPath)){
+            romPath = Directory.GetFiles("/storage/emulated/0/Download/DragoNX/games", "*.nsp").FirstOrDefault() ?? "";
         }
 
         surfaceView = new SurfaceView(this);
         logView = new TextView(this);
-        logView.Text = $"DRAGONX #264 S20FE\n{Path.GetFileName(romPath)}\nExiste: {File.Exists(romPath)} {new FileInfo(romPath).Length/1024/1024}MB";
+        logView.Text = $"DRAGONX #268 RENDER REAL\n{Path.GetFileName(romPath)}\n{new FileInfo(romPath).Length/1024/1024}MB";
         logView.Gravity = GravityFlags.Center;
         logView.SetTextColor(Android.Graphics.Color.White);
         logView.SetBackgroundColor(Android.Graphics.Color.Black);
 
+        fpsView = new TextView(this);
+        fpsView.Text = "FPS: --";
+        fpsView.SetTextColor(Android.Graphics.Color.Lime);
+        fpsView.TextSize = 12;
+        fpsView.SetPadding(20,30,20,20);
+        fpsView.Visibility = ViewStates.Gone;
+
         var root = new Android.Widget.FrameLayout(this);
         root.AddView(surfaceView, new Android.Widget.FrameLayout.LayoutParams(-1,-1));
         root.AddView(logView, new Android.Widget.FrameLayout.LayoutParams(-1,-1));
+        root.AddView(fpsView, new Android.Widget.FrameLayout.LayoutParams(-2,-2));
         SetContentView(root);
         surfaceView.Holder.AddCallback(new SurfaceCallback(this));
     }
@@ -61,56 +69,75 @@ public class GameActivity : Activity
             new System.Threading.Thread(()=> {
                 void Log(string t){ act.RunOnUiThread(()=> act.logView.Text+="\n"+t); }
                 try{
+                    // 1. KEYS
                     string prodOrig = "/storage/emulated/0/Download/DragoNX/keys/prod.keys";
                     string keysDir = Path.Combine(act.FilesDir.AbsolutePath, "Ryujinx", "keys");
                     Directory.CreateDirectory(keysDir);
                     string prodDest = Path.Combine(keysDir, "prod.keys");
-                    if(!File.Exists(prodOrig)) throw new Exception($"prod.keys nao achada {prodOrig}");
                     File.Copy(prodOrig, prodDest, true);
-                    Log($"prod.keys {new FileInfo(prodDest).Length}b OK");
+                    Log($"keys {new FileInfo(prodDest).Length}b OK");
 
+                    // 2. JIT
                     string jitDir = Path.Combine(act.CacheDir.AbsolutePath, "jit");
                     Directory.CreateDirectory(jitDir);
                     SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE", jitDir);
                     SysEnv.SetEnvironmentVariable("XDG_CONFIG_HOME", act.FilesDir.AbsolutePath);
+                    Log($"jit OK");
 
-                    Log($"ROM: {Path.GetFileName(act.romPath)} OK");
-
+                    // 3. NATIVE WINDOW
                     IntPtr nativeWin = ANativeWindow_fromSurface(IntPtr.Zero, holder.Surface.Handle);
-                    if(nativeWin==IntPtr.Zero) throw new Exception("ANativeWindow falhou");
+                    if(nativeWin==IntPtr.Zero) throw new Exception("ANativeWindow 0");
+                    Log($"window OK");
 
+                    // 4. VFS + GPU
                     var vfs = VirtualFileSystem.CreateInstance();
                     var gpu = VulkanRenderer.Create("DragoNX",(inst,vk)=>{
-                        unsafe{ SurfaceKHR surf; var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)nativeWin };
+                        unsafe{ 
+                            SurfaceKHR surf; 
+                            var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)nativeWin };
                             var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR");
                             var func=Marshal.GetDelegateForFunctionPointer<CreateDelegate>(fp);
-                            func(inst,&ci,null,&surf); return surf; }
+                            func(inst,&ci,null,&surf); return surf; 
+                        }
                     },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
+                    Log($"Vulkan OK");
 
+                    // 5. HLE REAL - sem reflection
                     var audio = new DummyHardwareDeviceDriver();
-                    var hleType = typeof(HleConfiguration);
-                    var ctor = hleType.GetConstructors().OrderByDescending(c=>c.GetParameters().Length).First();
-                    var pars = ctor.GetParameters(); object?[] args = new object?[pars.Length];
-                    for(int i=0;i<pars.Length;i++){
-                        var pt=pars[i].ParameterType;
-                        if(pt.IsEnum) args[i]=Enum.GetValues(pt).GetValue(0);
-                        else if(pt==typeof(string)) args[i]="";
-                        else if(pt==typeof(bool)) args[i]=false;
-                        else if(pt.IsValueType) args[i]=Activator.CreateInstance(pt);
-                        else args[i]=Activator.CreateInstance(pt,true);
+                    var config = new HleConfiguration(vfs, gpu, audio, configMode: ConfigMode.Handheld);
+                    var device = new Switch(config);
+                    Log($"Switch OK");
+
+                    // 6. LOAD REAL - usando ApplicationLoader
+                    Log($"Loading {Path.GetFileName(act.romPath)}...");
+                    var loader = new Ryujinx.HLE.Loaders.NspLoader(vfs, act.romPath);
+                    var app = loader.Load();
+                    if(app == null) throw new Exception("NspLoader null - keys invalida?");
+                    device.LoadApplication(app);
+                    Log($"Loaded! Iniciando render...");
+
+                    act.RunOnUiThread(()=>{ 
+                        act.logView.Visibility=ViewStates.Gone;
+                        act.fpsView.Visibility=ViewStates.Visible;
+                    });
+
+                    var sw = Stopwatch.StartNew();
+                    int frames = 0;
+                    while(true){
+                        device.ProcessFrame();
+                        device.PresentFrame(()=>{});
+                        frames++;
+                        if(sw.ElapsedMilliseconds >= 1000){
+                            int f = frames; frames = 0; sw.Restart();
+                            act.RunOnUiThread(()=> act.fpsView.Text = $"FPS: {f} | {Path.GetFileName(act.romPath)}");
+                        }
                     }
-                    var cfgObj = ctor.Invoke(args);
-                    var userChannel = Activator.CreateInstance(hleType.GetProperty("UserChannelPersistence")!.PropertyType,true);
-                    var hleConf = (HleConfiguration)hleType.GetMethod("Configure")!.Invoke(cfgObj,new object?[]{vfs,null,null,null,userChannel,gpu,audio,null})!;
-                    var device = new Ryujinx.HLE.Switch(hleConf);
-
-                    Log("Loading NSP...");
-                    bool ok = device.LoadNsp(act.romPath);
-                    if(!ok) throw new Exception("LoadNsp false - keys ou NSP");
-
-                    act.RunOnUiThread(()=> act.logView.Visibility=ViewStates.Gone);
-                    while(true){ device.ProcessFrame(); device.PresentFrame(()=>{}); }
-                }catch(Exception ex){ act.RunOnUiThread(()=>{ act.logView.Text=$"ERRO #264:\n{ex.Message}\n{ex}"; act.logView.SetTextColor(Android.Graphics.Color.Red); }); }
+                }catch(Exception ex){ 
+                    act.RunOnUiThread(()=>{ 
+                        act.logView.Text=$"ERRO #268 RENDER:\n{ex.Message}\n\n{ex.StackTrace?.Substring(0,500)}"; 
+                        act.logView.SetTextColor(Android.Graphics.Color.Red); 
+                    }); 
+                }
             }).Start();
         }
         public void SurfaceChanged(ISurfaceHolder h,AFormat f,int w,int ht){}
