@@ -10,7 +10,7 @@ using System.Linq;
 
 namespace DragoNX;
 
-[Activity(Label = "Ryubing", MainLauncher = true, Exported = true, ScreenOrientation = ScreenOrientation.Landscape, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen")]
+[Activity(Name = "com.ryubing.android.MainActivity", Label = "Ryubing", MainLauncher = true, Exported = true, ScreenOrientation = ScreenOrientation.Landscape, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen")]
 public class MainActivity : Activity
 {
     const string BasePath = "/storage/emulated/0/Download/Ryubing";
@@ -26,6 +26,16 @@ public class MainActivity : Activity
         Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
         Directory.CreateDirectory(GamesPath);
         Directory.CreateDirectory(KeysPath);
+
+        // FIX - copia key pro lugar interno que Ryujinx lê
+        try {
+            var internalSystem = Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "system");
+            Directory.CreateDirectory(internalSystem);
+            var srcKey = Path.Combine(KeysPath, "prod.keys");
+            var dstKey = Path.Combine(internalSystem, "prod.keys");
+            if (File.Exists(srcKey)) File.Copy(srcKey, dstKey, true);
+        } catch {}
+
         layout = new LinearLayout(this);
         layout.Orientation = Orientation.Vertical;
         layout.SetGravity(GravityFlags.Center);
