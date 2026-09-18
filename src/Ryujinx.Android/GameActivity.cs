@@ -15,9 +15,9 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using SysEnv = System.Environment;
 
-namespace Ryujinx.Android;
+namespace DragoNX;
 
-[Activity(Label = "Ryubing", Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation = Android.Content.PM.ScreenOrientation.Landscape)]
+[Activity(Label = "Ryubing", Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation = global::Android.Content.PM.ScreenOrientation.Landscape)]
 public class GameActivity : Activity
 {
     const string TAG = "Ryubing";
@@ -53,23 +53,23 @@ public class GameActivity : Activity
         logView = new TextView(this);
         logView.Text = $"RYUBING\n{Path.GetFileName(romPath)}\nExiste: {File.Exists(romPath)} {(File.Exists(romPath)? new FileInfo(romPath).Length / 1024 / 1024 : 0)}MB";
         logView.Gravity = GravityFlags.Center;
-        logView.SetTextColor(Android.Graphics.Color.White);
-        logView.SetBackgroundColor(Android.Graphics.Color.Black);
+        logView.SetTextColor(global::Android.Graphics.Color.White);
+        logView.SetBackgroundColor(global::Android.Graphics.Color.Black);
         fpsView = new TextView(this);
         fpsView.Text = "FPS: --";
-        fpsView.SetTextColor(Android.Graphics.Color.Lime);
+        fpsView.SetTextColor(global::Android.Graphics.Color.Lime);
         fpsView.TextSize = 13;
         fpsView.SetPadding(20, 30, 20, 20);
-        var root = new Android.Widget.FrameLayout(this);
-        root.AddView(surfaceView, new Android.Widget.FrameLayout.LayoutParams(-1, -1));
-        root.AddView(logView, new Android.Widget.FrameLayout.LayoutParams(-1, -1));
-        root.AddView(fpsView, new Android.Widget.FrameLayout.LayoutParams(-2, -2));
+        var root = new global::Android.Widget.FrameLayout(this);
+        root.AddView(surfaceView, new global::Android.Widget.FrameLayout.LayoutParams(-1, -1));
+        root.AddView(logView, new global::Android.Widget.FrameLayout.LayoutParams(-1, -1));
+        root.AddView(fpsView, new global::Android.Widget.FrameLayout.LayoutParams(-2, -2));
         SetContentView(root);
         surfaceView.Holder!.AddCallback(new SurfaceCallback(this));
     }
 
-    void Log(string msg) { Android.Util.Log.Info(TAG, msg); RunOnUiThread(() => logView.Text += "\n" + msg); }
-    void LogError(string msg) { Android.Util.Log.Error(TAG, msg); RunOnUiThread(() => { logView.Text += "\n" + msg; logView.SetTextColor(Android.Graphics.Color.Red); }); }
+    void Log(string msg) { global::Android.Util.Log.Info(TAG, msg); RunOnUiThread(() => logView.Text += "\n" + msg); }
+    void LogError(string msg) { global::Android.Util.Log.Error(TAG, msg); RunOnUiThread(() => { logView.Text += "\n" + msg; logView.SetTextColor(global::Android.Graphics.Color.Red); }); }
 
     class SurfaceCallback : Java.Lang.Object, ISurfaceHolderCallback
     {
@@ -77,7 +77,7 @@ public class GameActivity : Activity
         public SurfaceCallback(GameActivity a) => act = a;
         public void SurfaceCreated(ISurfaceHolder holder)
         {
-            act.nativeWindow = ANativeWindow_fromSurface(Android.Runtime.JNIEnv.Handle, holder.Surface!.Handle);
+            act.nativeWindow = ANativeWindow_fromSurface(global::Android.Runtime.JNIEnv.Handle, holder.Surface!.Handle);
             if (act.nativeWindow == IntPtr.Zero) { act.LogError("ANativeWindow Zero!"); return; }
             ANativeWindow_acquire(act.nativeWindow);
             if (act.emuThread == null ||!act.emuThread.IsAlive)
@@ -96,8 +96,6 @@ public class GameActivity : Activity
         try
         {
             Log($"Iniciando {Path.GetFileName(romPath)}");
-
-            // FIX 1: Android 13 TimeZone - seu S20 FE
             try {
                 var tz = Java.Util.TimeZone.Default;
                 Log($"TimeZone: {tz.ID}");
@@ -114,14 +112,12 @@ public class GameActivity : Activity
             Directory.CreateDirectory(Path.Combine(baseDir, "nand", "user", "save"));
             Directory.CreateDirectory(Path.Combine(baseDir, "sdcard", "Nintendo", "Contents", "registered"));
 
-            // FIX 2: prod.keys no lugar certo: system/prod.keys (não keys/)
             string prodOrig = "/storage/emulated/0/Download/Ryubing/keys/prod.keys";
-            if (!File.Exists(prodOrig)) prodOrig = "/storage/emulated/0/Download/DragoNX/keys/prod.keys"; // compat velho
+            if (!File.Exists(prodOrig)) prodOrig = "/storage/emulated/0/Download/DragoNX/keys/prod.keys";
             string prodDest = Path.Combine(systemDir, "prod.keys");
             if (File.Exists(prodOrig))
             {
                 File.Copy(prodOrig, prodDest, true);
-                // copia também pra keys/ por compatibilidade
                 string keysDir = Path.Combine(baseDir, "keys");
                 Directory.CreateDirectory(keysDir);
                 File.Copy(prodOrig, Path.Combine(keysDir, "prod.keys"), true);
@@ -173,7 +169,6 @@ public class GameActivity : Activity
             var hleConf = BuildHleConfiguration(vfs, gpu, audio);
             Log("HLE Config OK");
 
-            // FIX 3: Força reload das keys antes do Horizon
             try { vfs.ReloadKeySet(); Log("KeySet Reload OK"); } catch(Exception ex){ Log($"KeySet reload: {ex.Message}"); }
 
             device = new Ryujinx.HLE.Switch(hleConf);
@@ -197,7 +192,6 @@ public class GameActivity : Activity
 
     HleConfiguration BuildHleConfiguration(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio)
     {
-        // FIX 4: ContentManager com VFS real, não null
         object? contentManager = null;
         try {
             var allTypes = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a=>{try{return a.GetTypes();}catch{return Array.Empty<Type>();}}).ToList();
