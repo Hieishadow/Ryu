@@ -13,7 +13,6 @@
     <application
         android:allowBackup="false"
         android:label="Ryubing"
-        android:icon="@mipmap/appicon"
         android:extractNativeLibs="true"
         android:largeHeap="true"
         android:hardwareAccelerated="true"
