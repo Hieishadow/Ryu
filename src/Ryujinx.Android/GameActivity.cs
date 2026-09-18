@@ -30,10 +30,16 @@ public class GameActivity : Activity
         base.OnCreate(savedInstanceState);
         Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
         romPath = Intent?.GetStringExtra("rom_path") ?? "/storage/emulated/0/Download/DragoNX/games/game.nsp";
-        logView = new Android.Widget.TextView(this){ Text = $"DragoNX #254 REAL VULKAN\n{Path.GetFileName(romPath)}" };
+        
+        logView = new Android.Widget.TextView(this){ Text = $"DragoNX #255 REAL VULKAN\n{Path.GetFileName(romPath)}" };
         logView.Gravity = GravityFlags.Center;
-        SetContentView(logView);
         surfaceView = new SurfaceView(this);
+        
+        var layout = new Android.Widget.FrameLayout(this);
+        layout.AddView(surfaceView, new Android.Widget.FrameLayout.LayoutParams(-1,-1));
+        layout.AddView(logView, new Android.Widget.FrameLayout.LayoutParams(-1,-1));
+        
+        SetContentView(layout);
         surfaceView.Holder!.AddCallback(new SurfaceCallback(this));
     }
 
@@ -45,7 +51,7 @@ public class GameActivity : Activity
 
         public void SurfaceCreated(ISurfaceHolder holder)
         {
-            act.RunOnUiThread(() => act.logView!.Text = "Surface criado, Vulkan REAL...");
+            act.RunOnUiThread(() => act.logView!.Text = "Surface criado, Vulkan REAL #255...");
             new System.Threading.Thread(() => {
                 try {
                     var vfs = VirtualFileSystem.CreateInstance();
@@ -81,13 +87,13 @@ public class GameActivity : Activity
                     bool ok = device.LoadNsp(act.romPath);
                     act.RunOnUiThread(() => {
                         if (!ok) { act.logView!.Text = $"LoadNsp falhou\n{act.romPath}"; return; }
-                        act.SetContentView(act.surfaceView);
+                        act.logView!.Visibility = ViewStates.Gone;
                     });
                     if (ok) { while (true) { device.ProcessFrame(); device.PresentFrame(() => {}); } }
                 } catch (Exception ex) {
                     act.RunOnUiThread(() => {
                         var tv = new Android.Widget.TextView(act);
-                        tv.Text = "CRASH #254 REAL:\n" + ex.ToString();
+                        tv.Text = "CRASH #255 REAL:\n" + ex.ToString();
                         act.SetContentView(tv);
                     });
                 }
