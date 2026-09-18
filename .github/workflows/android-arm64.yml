@@ -45,38 +45,38 @@ jobs:
         run: dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj -r android-arm64
 
       - name: Decode keystore
-        if: ${{ secrets.KEYSTORE_BASE64!= '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > $RUNNER_TEMP/ryubing.keystore
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "No keystore secret, will build unsigned"
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > $RUNNER_TEMP/ryubing.keystore
           ls -lh $RUNNER_TEMP/ryubing.keystore
 
-      - name: Publish Release (Signed)
-        if: ${{ secrets.KEYSTORE_BASE64!= '' }}
+      - name: Publish Release
         env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           RYU_KEY_PASS: ${{ secrets.KEY_PASS }}
           RYU_STORE_PASS: ${{ secrets.STORE_PASS }}
         run: |
-          dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj \
-            -c Release \
-            -f net10.0-android \
-            -r android-arm64 \
-            --no-restore \
-            -p:AndroidKeyStore=true \
-            -p:AndroidSigningKeyStore=$RUNNER_TEMP/ryubing.keystore \
-            -p:AndroidSigningKeyAlias=${{ secrets.KEY_ALIAS }} \
-            -p:AndroidSigningKeyPass=$RYU_KEY_PASS \
-            -p:AndroidSigningStorePass=$RYU_STORE_PASS \
-            -p:AndroidPackageFormat=apk
-
-      - name: Publish Release (Unsigned - fallback)
-        if: ${{ secrets.KEYSTORE_BASE64 == '' }}
-        run: |
-          dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj \
-            -c Release \
-            -f net10.0-android \
-            -r android-arm64 \
-            --no-restore \
-            -p:AndroidPackageFormat=apk
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "Building unsigned APK"
+            dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj \
+              -c Release -f net10.0-android -r android-arm64 --no-restore -p:AndroidPackageFormat=apk
+          else
+            echo "Building signed APK"
+            dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj \
+              -c Release -f net10.0-android -r android-arm64 --no-restore \
+              -p:AndroidKeyStore=true \
+              -p:AndroidSigningKeyStore=$RUNNER_TEMP/ryubing.keystore \
+              -p:AndroidSigningKeyAlias=$KEY_ALIAS \
+              -p:AndroidSigningKeyPass=$RYU_KEY_PASS \
+              -p:AndroidSigningStorePass=$RYU_STORE_PASS \
+              -p:AndroidPackageFormat=apk
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
