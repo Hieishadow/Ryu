@@ -11,6 +11,7 @@ using Ryujinx.Graphics.Vulkan;
 using Ryujinx.Audio.Backends.Dummy;
 using LibHac.Tools.FsSystem;
 using Silk.NET.Vulkan;
+using Silk.NET.Vulkan.Extensions.KHR;
 using System;
 using System.IO;
 
@@ -28,30 +29,34 @@ public class GameActivity : Activity
         base.OnCreate(savedInstanceState);
         Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
         romPath = Intent?.GetStringExtra("rom_path") ?? "/storage/emulated/0/Download/DragoNX/games/game.nsp";
-        logView = new Android.Widget.TextView(this){ Text = $"DragoNX #247\n{Path.GetFileName(romPath)}" };
+        logView = new Android.Widget.TextView(this){ Text = $"DragoNX #248\n{Path.GetFileName(romPath)}" };
         logView.Gravity = GravityFlags.Center;
         SetContentView(logView);
         surfaceView = new SurfaceView(this);
-        surfaceView.Holder.AddCallback(new SurfaceCallback(this));
+        surfaceView.Holder!.AddCallback(new SurfaceCallback(this));
     }
 
     class SurfaceCallback : Java.Lang.Object, ISurfaceHolderCallback
     {
         GameActivity act;
         public SurfaceCallback(GameActivity a){ act = a; }
-        public void SurfaceCreated(ISurfaceHolder holder)
+        public unsafe void SurfaceCreated(ISurfaceHolder holder)
         {
             act.RunOnUiThread(() => act.logView!.Text = "Surface criado, iniciando Vulkan...");
             new System.Threading.Thread(() => {
                 try {
                     var vfs = VirtualFileSystem.CreateInstance();
                     var gpu = VulkanRenderer.Create("DragoNX", (instance, vk) => {
-                        var ci = new AndroidSurfaceCreateInfoKHR{
-                            SType = StructureType.AndroidSurfaceCreateInfoKhr,
-                            Window = holder.Surface!.Handle
-                        };
-                        vk.CreateAndroidSurface(instance, ci, null, out var surf).CheckResult();
-                        return surf;
+                        unsafe {
+                            var ci = new AndroidSurfaceCreateInfoKHR{
+                                SType = StructureType.AndroidSurfaceCreateInfoKhr,
+                                Window = (void*)holder.Surface!.Handle
+                            };
+                            SurfaceKHR surface;
+                            var ext = vk.GetKhrAndroidSurface(instance);
+                            ext.CreateAndroidSurface(instance, &ci, null, &surface).CheckResult();
+                            return surface;
+                        }
                     }, () => new[] { "VK_KHR_surface", "VK_KHR_android_surface" });
 
                     var audio = new DummyHardwareDeviceDriver();
