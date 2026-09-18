@@ -5,7 +5,6 @@ using Android.OS;
 using Android.Widget;
 using Android.Views;
 using System.Linq;
-// FIX DO BUILD - evita ambiguidade com Android.Graphics.Path
 using Path = System.IO.Path;
 using File = System.IO.File;
 using Directory = System.IO.Directory;
@@ -13,12 +12,12 @@ using FileInfo = System.IO.FileInfo;
 
 namespace DragoNX;
 
-[Activity(Name = "com.ryubing.android.MainActivity", Label = "Ryubing", MainLauncher = true, Exported = true, ScreenOrientation = ScreenOrientation.Landscape, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen")]
 public class MainActivity : Activity
 {
     const string BasePath = "/storage/emulated/0/Download/Ryubing";
     const string GamesPath = BasePath + "/games";
     const string KeysPath = BasePath + "/keys";
+    const string FirmwarePath = BasePath + "/firmware";
     LinearLayout layout = null!;
     string? selectedRom = null;
     Button? btnJogar;
@@ -29,6 +28,7 @@ public class MainActivity : Activity
         Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
         Directory.CreateDirectory(GamesPath);
         Directory.CreateDirectory(KeysPath);
+        Directory.CreateDirectory(FirmwarePath);
 
         try {
             var internalSystem = Path.Combine(FilesDir!.AbsolutePath, "Ryujinx", "system");
