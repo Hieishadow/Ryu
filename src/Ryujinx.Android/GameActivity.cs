@@ -6,6 +6,8 @@ using Android.Widget;
 using AFormat = Android.Graphics.Format;
 using Ryujinx.HLE;
 using Ryujinx.HLE.FileSystem;
+using Ryujinx.HLE.HOS;
+using Ryujinx.HLE.UI;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Graphics.Vulkan;
 using Ryujinx.Audio.Backends.Dummy;
@@ -55,7 +57,7 @@ public class GameActivity : Activity
             if (Directory.Exists(dir))
             {
                 var first = Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories)
-                   .FirstOrDefault(p => p.EndsWith(".nsp", StringComparison.OrdinalIgnoreCase) || p.EndsWith(".xci", StringComparison.OrdinalIgnoreCase));
+                  .FirstOrDefault(p => p.EndsWith(".nsp", StringComparison.OrdinalIgnoreCase) || p.EndsWith(".xci", StringComparison.OrdinalIgnoreCase));
                 if (first!= null) romPath = first;
             }
         }
@@ -128,7 +130,7 @@ public class GameActivity : Activity
                 Log($"CreateInstance falhou: {ex.GetType().Name}: {ex.Message}");
                 var prop = typeof(VirtualFileSystem).GetProperty("Instance", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
                 var inst = prop?.GetValue(null) as VirtualFileSystem;
-                if (inst == null) throw new Exception($"VFS null: {ex.Message} - prop null? {prop==null}");
+                if (inst == null) throw new Exception($"VFS null: {ex.Message}");
                 vfs = inst;
                 Log("VFS reutilizado");
             }
@@ -226,9 +228,10 @@ public class GameActivity : Activity
     HleConfiguration BuildHleConfigurationFIX(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio)
     {
         var allTypes = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a=>{try{return a.GetTypes();}catch{return Array.Empty<Type>();}}).ToList();
-        var cmType = allTypes.FirstOrDefault(t=>t.Name=="ContentManager")?? throw new Exception("ContentManager nao encontrado (trimming?)");
-        var ucpType = allTypes.FirstOrDefault(t=>t.Name=="UserChannelPersistence")?? throw new Exception("UserChannelPersistence nao encontrado");
-        Log($"HLE ctors: {typeof(HleConfiguration).GetConstructors().Length}, CM: {cmType!=null}, UCP: {ucpType!=null}");
+        var cmType = allTypes.First(t=> t.Name == "ContentManager");
+        var ucpType = allTypes.First(t=> t.Name == "UserChannelPersistence");
+        var lhmType = allTypes.First(t=> t.Name == "LibHacHorizonManager");
+        var amType = allTypes.First(t=> t.Name == "AccountManager");
 
         object? contentManager = null;
         foreach(var c in cmType.GetConstructors().OrderByDescending(x=>x.GetParameters().Length)){
@@ -240,47 +243,93 @@ public class GameActivity : Activity
                     else if(pars[i].ParameterType == typeof(string)) args[i]=AppDataManager.BaseDirPath?? "";
                     else args[i]=null;
                 }
-                contentManager = c.Invoke(args);
-                Log($"CM OK via ctor {pars.Length}");
-                break;
-            }catch(Exception ex){ Log($"CM ctor fail: {ex.InnerException?.Message?? ex.Message}"); }
+                contentManager = c.Invoke(args); Log($"CM OK {pars.Length}"); break;
+            }catch(Exception ex){ Log($"CM fail {ex.InnerException?.Message?? ex.Message}"); }
         }
 
-        object? userChannel = null;
-        try{ userChannel = Activator.CreateInstance(ucpType, new object[] { true }); Log("UCP OK"); }
-        catch{ try{ userChannel = Activator.CreateInstance(ucpType); Log("UCP OK default"); }catch(Exception ex){ Log($"UCP fail {ex.Message}"); } }
+        object userChannel = Activator.CreateInstance(ucpType, new object[]{ true })?? Activator.CreateInstance(ucpType)!;
+        Log("UCP OK");
 
-        var hleType = typeof(HleConfiguration);
-        foreach (var ctor in hleType.GetConstructors().OrderByDescending(c => c.GetParameters().Length))
-        {
-            var pars = ctor.GetParameters();
-            string sig = string.Join(", ", pars.Select(p=> $"{p.ParameterType.Name} {p.Name}"));
-            Log($"Tentando HLE({sig})");
-            var args = new object?[pars.Length];
-            for(int i=0;i<pars.Length;i++){
-                var pt = pars[i].ParameterType;
-                var name = pars[i].Name?.ToLower()?? "";
-                if(pt == typeof(VirtualFileSystem)) args[i]=vfs;
-                else if(pt == cmType) args[i]=contentManager;
-                else if(pt == ucpType) args[i]=userChannel;
-                else if(name.Contains("content") && contentManager!=null && pt.IsAssignableFrom(contentManager.GetType())) args[i]=contentManager;
-                else if(name.Contains("user") && userChannel!=null && pt.IsAssignableFrom(userChannel.GetType())) args[i]=userChannel;
-                else if(pt.IsInstanceOfType(gpu) || pt.IsAssignableFrom(gpu.GetType()) || name.Contains("gpu") || name.Contains("render") || pt.Name.Contains("Renderer") || pt.Name.Contains("IGpu")) args[i]=gpu;
-                else if(pt.IsInstanceOfType(audio) || pt.IsAssignableFrom(audio.GetType()) || name.Contains("audio")) args[i]=audio;
-                else if(pt.IsEnum) args[i]=Enum.GetValues(pt).GetValue(0);
-                else if(pt == typeof(string)) args[i]="";
-                else if(pt == typeof(bool)) args[i]=false;
-                else if(pt.IsValueType) args[i]=Activator.CreateInstance(pt);
-                else args[i]=null;
-            }
+        object? libHac = null;
+        foreach(var c in lhmType.GetConstructors().OrderByDescending(x=>x.GetParameters().Length)){
             try{
-                var result = ctor.Invoke(args);
-                Log($"HLE ctor {pars.Length} OK!");
-                if(result is HleConfiguration hc) return hc;
-                return (HleConfiguration)result;
-            }catch(Exception ex){ Log($"Fail HLE {pars.Length}: {ex.InnerException?.Message?? ex.Message}"); }
+                var pars = c.GetParameters();
+                var args = new object?[pars.Length];
+                for(int i=0;i<pars.Length;i++){
+                    if(pars[i].ParameterType == typeof(VirtualFileSystem)) args[i]=vfs;
+                    else if(pars[i].ParameterType == typeof(string)) args[i]=AppDataManager.BaseDirPath?? "";
+                    else if(pars[i].ParameterType.IsValueType) args[i]=Activator.CreateInstance(pars[i].ParameterType);
+                    else args[i]=null;
+                }
+                libHac = c.Invoke(args); Log($"LHM OK {pars.Length}"); break;
+            }catch(Exception ex){ Log($"LHM fail {ex.InnerException?.Message}"); }
         }
-        throw new Exception("HLE compativel nao encontrado - todos falharam");
+
+        object? accountManager = null;
+        foreach(var c in amType.GetConstructors().OrderByDescending(x=>x.GetParameters().Length)){
+            try{
+                var pars = c.GetParameters();
+                var args = new object?[pars.Length];
+                for(int i=0;i<pars.Length;i++){
+                    if(pars[i].ParameterType == typeof(VirtualFileSystem)) args[i]=vfs;
+                    else if(pars[i].ParameterType == typeof(string)) args[i]=AppDataManager.BaseDirPath?? "";
+                    else if(pars[i].ParameterType.IsValueType) args[i]=Activator.CreateInstance(pars[i].ParameterType);
+                    else args[i]=null;
+                }
+                accountManager = c.Invoke(args); Log($"AM OK {pars.Length}"); break;
+            }catch(Exception ex){ Log($"AM fail {ex.InnerException?.Message}"); }
+        }
+        if(accountManager==null) accountManager = Activator.CreateInstance(amType)!;
+
+        var dummyUI = new DummyHostUIHandler();
+
+        var hleConf = new HleConfiguration(
+            memoryConfiguration: MemoryConfiguration.MemoryConfiguration4GiB,
+            systemLanguage: SystemLanguage.AmericanEnglish,
+            region: RegionCode.USA,
+            vSyncMode: VSyncMode.Switch,
+            enableDockedMode: true,
+            enablePtc: true,
+            tickScalar: 1,
+            enableInternetAccess: false,
+            fsIntegrityCheckLevel: IntegrityCheckLevel.None,
+            fsGlobalAccessLogMode: 0,
+            systemTimeOffset: 0,
+            timeZone: "UTC",
+            memoryManagerMode: MemoryManagerMode.SoftwarePageTable,
+            ignoreMissingServices: true,
+            aspectRatio: AspectRatio.Fixed16x9,
+            audioVolume: 1f,
+            useHypervisor: false,
+            multiplayerLanInterfaceId: "",
+            multiplayerMode: MultiplayerMode.Disabled,
+            multiplayerDisableP2p: false,
+            multiplayerLdnPassphrase: "",
+            multiplayerLdnServer: "",
+            enableGdbStub: false,
+            gdbStubPort: 0,
+            debuggerSuspendOnStart: false,
+            customVSyncInterval: 1,
+            dirtyHacks: Array.Empty<EnabledDirtyHack>()
+        );
+        Log("HleConfiguration base OK");
+
+        return hleConf.Configure(
+            (VirtualFileSystem)vfs,
+            (LibHacHorizonManager)libHac!,
+            (ContentManager)contentManager!,
+            (AccountManager)accountManager!,
+            (UserChannelPersistence)userChannel,
+            gpu,
+            audio,
+            dummyUI
+        );
+    }
+
+    class DummyHostUIHandler : IHostUIHandler
+    {
+        public void HandleErrorDialog(string title, string message, bool isError, bool canContinue, object icon, int titleId, int messageId) {}
+        public bool ShowMessageDialog(string title, string message, bool isError, bool canContinue) => true;
     }
 
     protected override void OnDestroy(){ running=false; try{ emuThread?.Join(2000);}catch{} base.OnDestroy(); }
