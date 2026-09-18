@@ -4,12 +4,10 @@ using Android.Views;
 using AFormat = Android.Graphics.Format;
 using Ryujinx.HLE;
 using Ryujinx.HLE.FileSystem;
-using Ryujinx.HLE.HOS.SystemState;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Configuration.Multiplayer;
 using Ryujinx.Graphics.Vulkan;
 using Ryujinx.Audio.Backends.Dummy;
-using LibHac.Tools.FsSystem;
 using Silk.NET.Vulkan;
 using System;
 using System.IO;
@@ -18,27 +16,29 @@ using VkResult = Silk.NET.Vulkan.Result;
 
 namespace DragoNX;
 
-[Activity(Label = "DragoNX", Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen")]
+[Activity(Label = "DragoNX", Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation = Android.Content.PM.ScreenOrientation.Landscape)]
 public class GameActivity : Activity
 {
     string romPath = "";
     SurfaceView? surfaceView;
-    Android.Widget.TextView? logView;
+    TextView? logView;
+
+    [DllImport("android")] static extern IntPtr ANativeWindow_fromSurface(IntPtr env, IntPtr surface);
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
         Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
-        romPath = Intent?.GetStringExtra("rom_path") ?? "/storage/emulated/0/Download/DragoNX/games/game.nsp";
+        romPath = Intent?.GetStringExtra("rom_path") ?? "/storage/emulated/0/Download/DragoNX/games/Links Awakening.nsp";
         
-        logView = new Android.Widget.TextView(this){ Text = $"DragoNX #255 REAL VULKAN\n{Path.GetFileName(romPath)}" };
+        logView = new TextView(this){ Text = $"DragoNX #257 ZELDA\n{Path.GetFileName(romPath)}\nIniciando..." };
         logView.Gravity = GravityFlags.Center;
+        logView.SetTextColor(Android.Graphics.Color.White);
         surfaceView = new SurfaceView(this);
         
         var layout = new Android.Widget.FrameLayout(this);
         layout.AddView(surfaceView, new Android.Widget.FrameLayout.LayoutParams(-1,-1));
         layout.AddView(logView, new Android.Widget.FrameLayout.LayoutParams(-1,-1));
-        
         SetContentView(layout);
         surfaceView.Holder!.AddCallback(new SurfaceCallback(this));
     }
@@ -49,18 +49,47 @@ public class GameActivity : Activity
         public SurfaceCallback(GameActivity a){ act = a; }
         unsafe delegate VkResult CreateAndroidSurfaceDelegate(Instance instance, AndroidSurfaceCreateInfoKHR* pCreateInfo, AllocationCallbacks* pAllocator, SurfaceKHR* pSurface);
 
+        void Log(string s) => act.RunOnUiThread(() => act.logView!.Text += "\n" + s);
+
         public void SurfaceCreated(ISurfaceHolder holder)
         {
-            act.RunOnUiThread(() => act.logView!.Text = "Surface criado, Vulkan REAL #255...");
+            act.RunOnUiThread(() => act.logView!.Text = $"Surface OK #257\nROM: {Path.GetFileName(act.romPath)}");
             new System.Threading.Thread(() => {
                 try {
+                    // 1 - PROD KEYS - ESSENCIAL
+                    string prodOrig = "/storage/emulated/0/Download/DragoNX/keys/prod.keys";
+                    string prodDest1 = Path.Combine(act.FilesDir.AbsolutePath, "prod.keys");
+                    string prodDest2 = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".ryujinx", "system", "prod.keys");
+                    
+                    if (!File.Exists(prodOrig)) throw new Exception($"prod.keys NAO ACHADA em {prodOrig}");
+                    File.Copy(prodOrig, prodDest1, true);
+                    Directory.CreateDirectory(Path.GetDirectoryName(prodDest2)!);
+                    File.Copy(prodOrig, prodDest2, true);
+                    Log($"✓ prod.keys {new FileInfo(prodOrig).Length} bytes copiada");
+
+                    // 2 - FIRMWARE CHECK
+                    string firmPath = "/storage/emulated/0/Download/DragoNX/firmware/";
+                    int firmCount = Directory.Exists(firmPath) ? Directory.GetFiles(firmPath, "*", SearchOption.AllDirectories).Length : 0;
+                    Log(firmCount > 50 ? $"✓ firmware {firmCount} arq" : $"! firmware só {firmCount} arq - pode crashar");
+
+                    // 3 - JIT CACHE
+                    string jitDir = "/storage/emulated/0/Download/DragoNX/cache/jit";
+                    Directory.CreateDirectory(jitDir);
+                    Environment.SetEnvironmentVariable("RYUJINX_JIT_CACHE", jitDir);
+                    Log($"✓ JIT {jitDir}");
+
+                    // 4 - VULKAN REAL
+                    IntPtr nativeWindow = ANativeWindow_fromSurface(IntPtr.Zero, holder.Surface.Handle);
+                    if (nativeWindow == IntPtr.Zero) throw new Exception("ANativeWindow_fromSurface falhou");
+                    Log($"✓ ANativeWindow 0x{nativeWindow.ToString("X")}");
+
                     var vfs = VirtualFileSystem.CreateInstance();
                     var gpu = VulkanRenderer.Create("DragoNX", (instance, vk) => {
                         unsafe {
                             SurfaceKHR surface;
                             var createInfo = new AndroidSurfaceCreateInfoKHR{
                                 SType = StructureType.AndroidSurfaceCreateInfoKhr,
-                                Window = (nint*)holder.Surface!.Handle
+                                Window = (nint*)nativeWindow
                             };
                             var funcPtr = vk.GetInstanceProcAddr(instance, "vkCreateAndroidSurfaceKHR");
                             if (funcPtr == IntPtr.Zero) throw new Exception("vkCreateAndroidSurfaceKHR not found");
@@ -84,22 +113,17 @@ public class GameActivity : Activity
                     var configure = typeof(HleConfiguration).GetMethod("Configure")!;
                     var hleConfig = (HleConfiguration)configure.Invoke(hleConfigObj, new object[]{ vfs, null!, null!, null!, userChannel, gpu, audio, null! })!;
                     var device = new Ryujinx.HLE.Switch(hleConfig);
+
+                    Log($"Loading NSP...");
                     bool ok = device.LoadNsp(act.romPath);
+                    if (!ok) throw new Exception($"LoadNsp falhou - {act.romPath} - prod.keys errada?");
+
                     act.RunOnUiThread(() => {
-                        if (!ok) { act.logView!.Text = $"LoadNsp falhou\n{act.romPath}"; return; }
+                        act.logView!.Text = $"Zelda BOOTOU #257!";
                         act.logView!.Visibility = ViewStates.Gone;
                     });
-                    if (ok) { while (true) { device.ProcessFrame(); device.PresentFrame(() => {}); } }
-                } catch (Exception ex) {
-                    act.RunOnUiThread(() => {
-                        var tv = new Android.Widget.TextView(act);
-                        tv.Text = "CRASH #255 REAL:\n" + ex.ToString();
-                        act.SetContentView(tv);
-                    });
+                    
+                    // LOOP DO ZELDA
+                    while (true) { device.ProcessFrame(); device.PresentFrame(() => {}); }
+
                 }
-            }).Start();
-        }
-        public void SurfaceChanged(ISurfaceHolder holder, AFormat format, int width, int height) {}
-        public void SurfaceDestroyed(ISurfaceHolder holder) {}
-    }
-}
