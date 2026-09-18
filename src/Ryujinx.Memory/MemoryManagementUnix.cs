@@ -28,85 +28,80 @@ namespace Ryujinx.Memory
             MmapFlags flags = MmapFlags.MAP_ANONYMOUS;
 
             if (shared)
-            {
                 flags |= MmapFlags.MAP_SHARED | MmapFlags.MAP_UNLOCKED;
-            }
             else
-            {
                 flags |= MmapFlags.MAP_PRIVATE;
-            }
 
             if (prot == MmapProts.PROT_NONE)
-            {
                 flags |= MmapFlags.MAP_NORESERVE;
-            }
 
-            // JIT só no macOS 10.14+, NUNCA no Android/Linux
+            // JIT só no macOS
             if (OperatingSystem.IsMacOS() && OperatingSystem.IsMacOSVersionAtLeast(10, 14) && forJit)
             {
                 flags |= MmapFlags.MAP_JIT_DARWIN;
-
                 if (prot == (MmapProts.PROT_READ | MmapProts.PROT_WRITE))
-                {
                     prot |= MmapProts.PROT_EXEC;
-                }
             }
 
             nint ptr = Mmap(nint.Zero, size, prot, flags, -1, 0);
 
             if (ptr == MAP_FAILED)
-            {
                 throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-            }
 
-            if (!_allocations.TryAdd(ptr, size))
-            {
-                throw new InvalidOperationException();
-            }
-
+            _allocations.TryAdd(ptr, size);
             return ptr;
         }
 
         public static void Commit(nint address, ulong size, bool forJit)
         {
+            // No Android NUNCA usa EXEC no Commit inicial
             MmapProts prot = MmapProts.PROT_READ | MmapProts.PROT_WRITE;
 
             if (OperatingSystem.IsMacOS() && OperatingSystem.IsMacOSVersionAtLeast(10, 14) && forJit)
-            {
                 prot |= MmapProts.PROT_EXEC;
+
+            int result = mprotect(address, size, prot);
+
+            // FIX ANDROID: Se mprotect falhou com Invalid argument, refaz o mmap com MAP_FIXED
+            if (result != 0 && OperatingSystem.IsAndroid())
+            {
+                nint mapped = Mmap(address, size, prot, MmapFlags.MAP_FIXED | MmapFlags.MAP_PRIVATE | MmapFlags.MAP_ANONYMOUS, -1, 0);
+                if (mapped == MAP_FAILED)
+                {
+                    // última tentativa: só READ
+                    Mmap(address, size, MmapProts.PROT_READ | MmapProts.PROT_WRITE, MmapFlags.MAP_FIXED | MmapFlags.MAP_PRIVATE | MmapFlags.MAP_ANONYMOUS, -1, 0);
+                }
+                return;
             }
 
-            if (mprotect(address, size, prot) != 0)
-            {
+            if (result != 0)
                 throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-            }
         }
 
         public static void Decommit(nint address, ulong size)
         {
-            if (mprotect(address, size, MmapProts.PROT_READ | MmapProts.PROT_WRITE) != 0)
-            {
-                throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-            }
-
-            // MADV_REMOVE não existe no Android, usa MADV_DONTNEED
-            int advice = OperatingSystem.IsAndroid() ? 4 : MADV_REMOVE; // 4 = MADV_DONTNEED
-            if (madvise(address, size, advice) != 0)
-            {
-                // ignora erro no Android
-                if (!OperatingSystem.IsAndroid())
-                    throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-            }
-
-            if (mprotect(address, size, MmapProts.PROT_NONE) != 0)
-            {
-                throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-            }
+            mprotect(address, size, MmapProts.PROT_READ | MmapProts.PROT_WRITE);
+            int advice = 4; // MADV_DONTNEED funciona no Android
+            madvise(address, size, advice);
+            mprotect(address, size, MmapProts.PROT_NONE);
         }
 
         public static bool Reprotect(nint address, ulong size, MemoryPermission permission)
         {
-            return mprotect(address, size, GetProtection(permission)) == 0;
+            MmapProts prot = GetProtection(permission);
+            // No Android, tira EXEC se for JIT até o Ryujinx pedir de novo
+            if (OperatingSystem.IsAndroid() && prot.HasFlag(MmapProts.PROT_EXEC))
+            {
+                // Tenta com EXEC, se falhar tenta sem
+                if (mprotect(address, size, prot) != 0)
+                {
+                    prot &= ~MmapProts.PROT_EXEC;
+                    prot |= MmapProts.PROT_READ | MmapProts.PROT_WRITE;
+                    return mprotect(address, size, prot) == 0;
+                }
+                return true;
+            }
+            return mprotect(address, size, prot) == 0;
         }
 
         private static MmapProts GetProtection(MemoryPermission permission)
@@ -126,16 +121,11 @@ namespace Ryujinx.Memory
         public static bool Free(nint address)
         {
             if (_allocations.TryRemove(address, out ulong size))
-            {
                 return munmap(address, size) == 0;
-            }
             return false;
         }
 
-        public static bool Unmap(nint address, ulong size)
-        {
-            return munmap(address, size) == 0;
-        }
+        public static bool Unmap(nint address, ulong size) => munmap(address, size) == 0;
 
         public unsafe static nint CreateSharedMemory(ulong size, bool reserve)
         {
@@ -147,7 +137,7 @@ namespace Ryujinx.Memory
                 {
                     fd = shm_open((nint)pMemName, 0x2 | 0x200 | 0x800 | 0x400, 384);
                     if (fd == -1) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-                    if (shm_unlink((nint)pMemName) != 0) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+                    shm_unlink((nint)pMemName);
                 }
             }
             else
@@ -157,7 +147,7 @@ namespace Ryujinx.Memory
                 {
                     fd = mkstemp((nint)pFileName);
                     if (fd == -1) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-                    if (unlink((nint)pFileName) != 0) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+                    unlink((nint)pFileName);
                 }
             }
             if (ftruncate(fd, (nint)size) != 0) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
