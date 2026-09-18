@@ -8,6 +8,7 @@ namespace Ryujinx.Memory
 {
     [SupportedOSPlatform("linux")]
     [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("android")]
     static class MemoryManagementUnix
     {
         private static readonly ConcurrentDictionary<nint, ulong> _allocations = new();
@@ -40,7 +41,8 @@ namespace Ryujinx.Memory
                 flags |= MmapFlags.MAP_NORESERVE;
             }
 
-            if (OperatingSystem.IsMacOSVersionAtLeast(10, 14) && forJit)
+            // JIT só no macOS 10.14+, NUNCA no Android/Linux
+            if (OperatingSystem.IsMacOS() && OperatingSystem.IsMacOSVersionAtLeast(10, 14) && forJit)
             {
                 flags |= MmapFlags.MAP_JIT_DARWIN;
 
@@ -59,7 +61,6 @@ namespace Ryujinx.Memory
 
             if (!_allocations.TryAdd(ptr, size))
             {
-                // This should be impossible, kernel shouldn't return an already mapped address.
                 throw new InvalidOperationException();
             }
 
@@ -70,7 +71,7 @@ namespace Ryujinx.Memory
         {
             MmapProts prot = MmapProts.PROT_READ | MmapProts.PROT_WRITE;
 
-            if (OperatingSystem.IsMacOSVersionAtLeast(10, 14) && forJit)
+            if (OperatingSystem.IsMacOS() && OperatingSystem.IsMacOSVersionAtLeast(10, 14) && forJit)
             {
                 prot |= MmapProts.PROT_EXEC;
             }
@@ -83,15 +84,18 @@ namespace Ryujinx.Memory
 
         public static void Decommit(nint address, ulong size)
         {
-            // Must be writable for madvise to work properly.
             if (mprotect(address, size, MmapProts.PROT_READ | MmapProts.PROT_WRITE) != 0)
             {
                 throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
             }
 
-            if (madvise(address, size, MADV_REMOVE) != 0)
+            // MADV_REMOVE não existe no Android, usa MADV_DONTNEED
+            int advice = OperatingSystem.IsAndroid() ? 4 : MADV_REMOVE; // 4 = MADV_DONTNEED
+            if (madvise(address, size, advice) != 0)
             {
-                throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+                // ignora erro no Android
+                if (!OperatingSystem.IsAndroid())
+                    throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
             }
 
             if (mprotect(address, size, MmapProts.PROT_NONE) != 0)
@@ -125,7 +129,6 @@ namespace Ryujinx.Memory
             {
                 return munmap(address, size) == 0;
             }
-
             return false;
         }
 
@@ -137,75 +140,34 @@ namespace Ryujinx.Memory
         public unsafe static nint CreateSharedMemory(ulong size, bool reserve)
         {
             int fd;
-
             if (OperatingSystem.IsMacOS())
             {
                 byte[] memName = "Ryujinx-XXXXXX"u8.ToArray();
-
                 fixed (byte* pMemName = memName)
                 {
-                    fd = shm_open((nint)pMemName, 0x2 | 0x200 | 0x800 | 0x400, 384); // O_RDWR | O_CREAT | O_EXCL | O_TRUNC, 0600
-                    if (fd == -1)
-                    {
-                        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-                    }
-
-                    if (shm_unlink((nint)pMemName) != 0)
-                    {
-                        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-                    }
+                    fd = shm_open((nint)pMemName, 0x2 | 0x200 | 0x800 | 0x400, 384);
+                    if (fd == -1) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+                    if (shm_unlink((nint)pMemName) != 0) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
                 }
             }
             else
             {
                 byte[] fileName = "/dev/shm/Ryujinx-XXXXXX"u8.ToArray();
-
                 fixed (byte* pFileName = fileName)
                 {
                     fd = mkstemp((nint)pFileName);
-                    if (fd == -1)
-                    {
-                        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-                    }
-
-                    if (unlink((nint)pFileName) != 0)
-                    {
-                        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-                    }
+                    if (fd == -1) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+                    if (unlink((nint)pFileName) != 0) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
                 }
             }
-
-            if (ftruncate(fd, (nint)size) != 0)
-            {
-                throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-            }
-
+            if (ftruncate(fd, (nint)size) != 0) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
             return fd;
         }
 
-        public static void DestroySharedMemory(nint handle)
-        {
-            close(handle.ToInt32());
-        }
-
-        public static nint MapSharedMemory(nint handle, ulong size)
-        {
-            return Mmap(nint.Zero, size, MmapProts.PROT_READ | MmapProts.PROT_WRITE, MmapFlags.MAP_SHARED, handle.ToInt32(), 0);
-        }
-
-        public static void UnmapSharedMemory(nint address, ulong size)
-        {
-            munmap(address, size);
-        }
-
-        public static void MapView(nint sharedMemory, ulong srcOffset, nint location, ulong size)
-        {
-            Mmap(location, size, MmapProts.PROT_READ | MmapProts.PROT_WRITE, MmapFlags.MAP_FIXED | MmapFlags.MAP_SHARED, sharedMemory.ToInt32(), (long)srcOffset);
-        }
-
-        public static void UnmapView(nint location, ulong size)
-        {
-            Mmap(location, size, MmapProts.PROT_NONE, MmapFlags.MAP_FIXED | MmapFlags.MAP_PRIVATE | MmapFlags.MAP_ANONYMOUS | MmapFlags.MAP_NORESERVE, -1, 0);
-        }
+        public static void DestroySharedMemory(nint handle) => close(handle.ToInt32());
+        public static nint MapSharedMemory(nint handle, ulong size) => Mmap(nint.Zero, size, MmapProts.PROT_READ | MmapProts.PROT_WRITE, MmapFlags.MAP_SHARED, handle.ToInt32(), 0);
+        public static void UnmapSharedMemory(nint address, ulong size) => munmap(address, size);
+        public static void MapView(nint sharedMemory, ulong srcOffset, nint location, ulong size) => Mmap(location, size, MmapProts.PROT_READ | MmapProts.PROT_WRITE, MmapFlags.MAP_FIXED | MmapFlags.MAP_SHARED, sharedMemory.ToInt32(), (long)srcOffset);
+        public static void UnmapView(nint location, ulong size) => Mmap(location, size, MmapProts.PROT_NONE, MmapFlags.MAP_FIXED | MmapFlags.MAP_PRIVATE | MmapFlags.MAP_ANONYMOUS | MmapFlags.MAP_NORESERVE, -1, 0);
     }
 }
