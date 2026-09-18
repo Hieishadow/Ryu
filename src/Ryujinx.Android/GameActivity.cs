@@ -27,7 +27,8 @@ public class GameActivity : Activity
         SetContentView(new TextView(this){ Text = $"Boot: {romPath}" });
 
         try {
-            var horizon = new Horizon();
+            var horizonConfig = new HorizonConfiguration();
+            var horizon = new Horizon(horizonConfig);
             var vfs = VirtualFileSystem.CreateInstance();
             vfs.InitializeFsServer(horizon, out HorizonClient fsClient);
             var acc = new AccountManager(fsClient);
@@ -35,7 +36,7 @@ public class GameActivity : Activity
                 (instance, vk) => new SurfaceKHR(), 
                 () => new string[] { "VK_KHR_surface", "VK_KHR_android_surface" });
 
-            Toast.MakeText(this, $"DragoNX OK - VFS + ACC + Vulkan criados!", ToastLength.Long).Show();
+            Toast.MakeText(this, "DragoNX OK - VFS + ACC + Vulkan criados!", ToastLength.Long).Show();
         } catch (System.Exception ex) {
             Toast.MakeText(this, ex.ToString(), ToastLength.Long).Show();
         }
