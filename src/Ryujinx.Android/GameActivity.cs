@@ -8,6 +8,7 @@ using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Configuration.Multiplayer;
 using Ryujinx.Graphics.Vulkan;
 using Ryujinx.Audio.Backends.Dummy;
+using LibHac.Tools.FsSystem;
 using Silk.NET.Vulkan;
 using System;
 using System.IO;
@@ -22,7 +23,6 @@ public class GameActivity : Activity
         base.OnCreate(savedInstanceState);
         Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
 
-        // Pega o caminho que o MainActivity mandou
         var romPath = Intent?.GetStringExtra("rom_path") ?? "/storage/emulated/0/Download/DragoNX/games/game.nsp";
 
         var log = new Android.Widget.TextView(this){ Text = $"DragoNX bootando:\n{Path.GetFileName(romPath)}..." };
@@ -40,7 +40,7 @@ public class GameActivity : Activity
                 var hleConfig = new HleConfiguration(
                     memConfig,
                     SystemLanguage.AmericanEnglish,
-                    RegionCode.Americas,
+                    RegionCode.USA,
                     VSyncMode.Switch,
                     true, true, 1, true,
                     IntegrityCheckLevel.None, 0, 0, "UTC",
@@ -50,13 +50,13 @@ public class GameActivity : Activity
                     false, 0, false, 60, null
                 ).Configure(vfs, null!, null!, null!, userChannel, gpu, audio, null!);
 
-                var device = new Switch(hleConfig);
+                var device = new Ryujinx.HLE.Switch(hleConfig);
 
                 RunOnUiThread(() => log.Text = $"LoadNsp: {Path.GetFileName(romPath)}");
                 bool ok = device.LoadNsp(romPath);
 
                 RunOnUiThread(() => {
-                    if (!ok) { log.Text = $"LoadNsp falhou!\nVerifique prod.keys em /system/ e NSP\nPath: {romPath}"; return; }
+                    if (!ok) { log.Text = $"LoadNsp falhou!\n{romPath}"; return; }
                     var sv = new SurfaceView(this);
                     SetContentView(sv);
                     Android.Widget.Toast.MakeText(this, "ZELDA LOADOU!", Android.Widget.ToastLength.Long)!.Show();
