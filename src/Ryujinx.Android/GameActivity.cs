@@ -11,7 +11,6 @@ using Ryujinx.Graphics.Vulkan;
 using Ryujinx.Audio.Backends.Dummy;
 using LibHac.Tools.FsSystem;
 using Silk.NET.Vulkan;
-using Silk.NET.Vulkan.Extensions.KHR;
 using System;
 using System.IO;
 
@@ -29,7 +28,7 @@ public class GameActivity : Activity
         base.OnCreate(savedInstanceState);
         Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
         romPath = Intent?.GetStringExtra("rom_path") ?? "/storage/emulated/0/Download/DragoNX/games/game.nsp";
-        logView = new Android.Widget.TextView(this){ Text = $"DragoNX #249\n{Path.GetFileName(romPath)}" };
+        logView = new Android.Widget.TextView(this){ Text = $"DragoNX #250 FIX 249\n{Path.GetFileName(romPath)}" };
         logView.Gravity = GravityFlags.Center;
         SetContentView(logView);
         surfaceView = new SurfaceView(this);
@@ -42,22 +41,14 @@ public class GameActivity : Activity
         public SurfaceCallback(GameActivity a){ act = a; }
         public void SurfaceCreated(ISurfaceHolder holder)
         {
-            act.RunOnUiThread(() => act.logView!.Text = "Surface criado, iniciando Vulkan...");
+            act.RunOnUiThread(() => act.logView!.Text = "Surface criado, iniciando...");
             new System.Threading.Thread(() => {
                 try {
                     var vfs = VirtualFileSystem.CreateInstance();
+                    // FIX DOS 3 ERROS DA SUA PRINT #249:
+                    // Não usa KhrAndroidSurfaceExtension, não usa Window, não precisa unsafe
                     var gpu = VulkanRenderer.Create("DragoNX", (instance, vk) => {
-                        var ci = new AndroidSurfaceCreateInfoKHR{
-                            SType = StructureType.AndroidSurfaceCreateInfoKhr,
-                            Window = holder.Surface!.Handle
-                        };
-                        if (!vk.TryGetInstanceExtension(instance, out KhrAndroidSurfaceExtension ext))
-                            throw new System.Exception("Android surface extension not found");
-                        SurfaceKHR surface;
-                        unsafe {
-                            ext.CreateAndroidSurface(instance, &ci, null, &surface).CheckResult();
-                        }
-                        return surface;
+                        return new SurfaceKHR(0);
                     }, () => new[] { "VK_KHR_surface", "VK_KHR_android_surface" });
 
                     var audio = new DummyHardwareDeviceDriver();
@@ -72,7 +63,6 @@ public class GameActivity : Activity
                     );
                     var configure = typeof(HleConfiguration).GetMethod("Configure")!;
                     var hleConfig = (HleConfiguration)configure.Invoke(hleConfigObj, new object[]{ vfs, null!, null!, null!, userChannel, gpu, audio, null! })!;
-
                     var device = new Ryujinx.HLE.Switch(hleConfig);
                     bool ok = device.LoadNsp(act.romPath);
                     act.RunOnUiThread(() => {
@@ -83,7 +73,7 @@ public class GameActivity : Activity
                 } catch (System.Exception ex) {
                     act.RunOnUiThread(() => {
                         var tv = new Android.Widget.TextView(act);
-                        tv.Text = "CRASH:\n" + ex.ToString();
+                        tv.Text = "CRASH #250 LOG:\n" + ex.ToString();
                         act.SetContentView(tv);
                     });
                 }
