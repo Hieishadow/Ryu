@@ -7,21 +7,31 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- NÃO obrigue Vulkan, S20 FE tem mas some da launcher se for required=true -->
     <uses-feature android:name="android.hardware.vulkan.version" android:required="false" android:version="0x400003" />
     <uses-feature android:glEsVersion="0x00030001" android:required="false" />
 
     <application
         android:allowBackup="false"
         android:label="Ryubing"
+        android:icon="@mipmap/appicon"
         android:extractNativeLibs="true"
         android:largeHeap="true"
         android:hardwareAccelerated="true"
         android:isGame="true"
         tools:replace="android:allowBackup,android:label">
 
-        <!-- A activity vai ser injetada aqui pelo MainLauncher = true do MainActivity.cs -->
-    
-    </application>
+        <activity
+            android:name="com.ryubing.android.MainActivity"
+            android:label="Ryubing"
+            android:exported="true"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
 
+    </application>
 </manifest>
