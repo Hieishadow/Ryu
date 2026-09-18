@@ -8,7 +8,7 @@ using Android.Graphics;
 using System.IO;
 using System.Linq;
 
-namespace Ryujinx.Android;
+namespace DragoNX;
 
 [Activity(Label = "Ryubing", MainLauncher = true, Exported = true, ScreenOrientation = ScreenOrientation.Landscape, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen")]
 public class MainActivity : Activity
@@ -16,57 +16,40 @@ public class MainActivity : Activity
     const string BasePath = "/storage/emulated/0/Download/Ryubing";
     const string GamesPath = BasePath + "/games";
     const string KeysPath = BasePath + "/keys";
-
     LinearLayout layout = null!;
     string? selectedRom = null;
     Button? btnJogar;
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
-        AppDomain.CurrentDomain.UnhandledException += (s, e) => {
-            RunOnUiThread(() => {
-                var tv = new TextView(this){ Text = "CRASH:\n" + e.ExceptionObject.ToString() };
-                tv.SetTextColor(Color.Yellow); tv.SetBackgroundColor(Color.Black);
-                SetContentView(tv);
-            });
-        };
-
         base.OnCreate(savedInstanceState);
         Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
-
         Directory.CreateDirectory(GamesPath);
         Directory.CreateDirectory(KeysPath);
-
         layout = new LinearLayout(this);
         layout.Orientation = Orientation.Vertical;
         layout.SetGravity(GravityFlags.Center);
         layout.SetBackgroundColor(Color.Black);
         layout.SetPadding(40,20,40,20);
-
         var title = new TextView(this){ Text = "Ryubing - S20 FE Edition" };
         title.SetTextColor(Color.White); title.TextSize = 20; title.Gravity = GravityFlags.Center;
         layout.AddView(title);
-
         string prodFile = KeysPath + "/prod.keys";
         bool prodOk = File.Exists(prodFile);
         var info = new TextView(this);
         info.Gravity = GravityFlags.Center; info.TextSize = 11f;
-        info.Text = prodOk ? $"✓ prod.keys {new FileInfo(prodFile).Length} bytes em {KeysPath}" : $"✗ prod.keys NAO em {KeysPath}";
+        info.Text = prodOk ? $"✓ prod.keys {new FileInfo(prodFile).Length} bytes" : $"✗ prod.keys NAO em {KeysPath}";
         info.SetTextColor(prodOk ? Color.Green : Color.Yellow);
         layout.AddView(info);
-
         var topRow = new LinearLayout(this);
         topRow.Orientation = Orientation.Horizontal;
         topRow.SetGravity(GravityFlags.Center);
-
         var btnPerm = new Button(this){ Text = "1 - Permissão" };
         btnPerm.Click += (s,e) => RequestAllFilesPermission();
         topRow.AddView(btnPerm);
-
         var btnScan = new Button(this){ Text = "2 - Listar Jogos" };
         btnScan.Click += (s,e) => ScanGames();
         topRow.AddView(btnScan);
-
         btnJogar = new Button(this){ Text = "▶ JOGAR" };
         btnJogar.SetBackgroundColor(Color.Green);
         btnJogar.Enabled = false;
@@ -79,56 +62,47 @@ public class MainActivity : Activity
         };
         topRow.AddView(btnJogar);
         layout.AddView(topRow);
-
         SetContentView(layout);
-        if (Build.VERSION.SdkInt >= BuildVersionCodes.R && !Android.OS.Environment.IsExternalStorageManager) RequestAllFilesPermission();
+        if (Build.VERSION.SdkInt >= BuildVersionCodes.R && !global::Android.OS.Environment.IsExternalStorageManager) RequestAllFilesPermission();
         else ScanGames();
     }
-
     void RequestAllFilesPermission()
     {
         try {
-            var intent = new Intent(Android.Provider.Settings.ActionManageAppAllFilesAccessPermission);
-            intent.SetData(Android.Net.Uri.Parse("package:" + PackageName));
+            var intent = new Intent(global::Android.Provider.Settings.ActionManageAppAllFilesAccessPermission);
+            intent.SetData(global::Android.Net.Uri.Parse("package:" + PackageName));
             StartActivity(intent);
         } catch {
-            StartActivity(new Intent(Android.Provider.Settings.ActionManageAllFilesAccessPermission));
+            StartActivity(new Intent(global::Android.Provider.Settings.ActionManageAllFilesAccessPermission));
         }
     }
-
     void ScanGames()
     {
         if(layout.ChildCount > 3) layout.RemoveViews(3, layout.ChildCount - 3);
         var container = new LinearLayout(this);
         container.Orientation = Orientation.Horizontal;
         container.SetGravity(GravityFlags.Center);
-        container.SetPadding(0,20,0,0);
-
         var dir = new Java.IO.File(GamesPath);
         var files = dir.ListFiles();
         if (files == null || files.Length == 0) {
-            var empty = new TextView(this){ Text = $"Nenhum jogo em {GamesPath}\nCrie a pasta e coloque .nsp" };
+            var empty = new TextView(this){ Text = $"Nenhum jogo em {GamesPath}" };
             empty.SetTextColor(Color.Red); empty.Gravity = GravityFlags.Center;
             layout.AddView(empty);
             return;
         }
-
         foreach (var file in files.Where(f => !f.IsDirectory && (f.Name.EndsWith(".nsp") || f.Name.EndsWith(".xci")))) {
             var col = new LinearLayout(this);
             col.Orientation = Orientation.Vertical;
             col.SetPadding(10,10,10,10);
             col.SetBackgroundColor(Color.DarkGray);
-
             var name = new TextView(this){ Text = file.Name };
-            name.SetTextColor(Color.White); name.TextSize = 10; name.Gravity = GravityFlags.Center;
+            name.SetTextColor(Color.White); name.TextSize = 10;
             col.AddView(name);
-
             var btn = new Button(this){ Text = "Selecionar" };
             btn.Click += (s,e) => {
                 selectedRom = file.AbsolutePath;
                 btnJogar!.Enabled = true;
                 btnJogar.Text = $"▶ JOGAR {file.Name}";
-                Toast.MakeText(this, $"Selecionado: {file.Name}", ToastLength.Short)?.Show();
             };
             col.AddView(btn);
             container.AddView(col);
