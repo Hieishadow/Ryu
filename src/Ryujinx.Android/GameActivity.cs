@@ -1,9 +1,9 @@
 using Android.App;
 using Android.OS;
 using Android.Views;
-using Android.Widget;
 using Ryujinx.HLE;
 using Ryujinx.HLE.FileSystem;
+using Ryujinx.HLE.HOS;
 using Ryujinx.HLE.HOS.Services.Account.Acc;
 using Ryujinx.Graphics.Vulkan;
 using LibHac;
@@ -23,11 +23,11 @@ public class GameActivity : Activity
 
         var romPath = "/storage/emulated/0/Download/DragoNX/games/game.nsp";
         try {
-            var f = Directory.GetFiles("/storage/emulated/0/Download/DragoNX/games", "*.nsp");
-            if (f.Length > 0) romPath = f[0];
+            var files = Directory.GetFiles("/storage/emulated/0/Download/DragoNX/games", "*.nsp");
+            if (files.Length > 0) romPath = files[0];
         } catch {}
 
-        var log = new TextView(this){ Text = $"Bootando {Path.GetFileName(romPath)}..." };
+        var log = new Android.Widget.TextView(this){ Text = $"Bootando {Path.GetFileName(romPath)}..." };
         log.Gravity = GravityFlags.Center;
         SetContentView(log);
 
@@ -38,16 +38,13 @@ public class GameActivity : Activity
                 var vfs = VirtualFileSystem.CreateInstance();
                 vfs.InitializeFsServer(horizon, out HorizonClient fsClient);
                 var acc = new AccountManager(fsClient);
-                var renderer = VulkanRenderer.Create("", (i, vk) => new SurfaceKHR(), () => new[] { "VK_KHR_surface", "VK_KHR_android_surface" });
+                var renderer = VulkanRenderer.Create("", (instance, vk) => new SurfaceKHR(), () => new[] { "VK_KHR_surface", "VK_KHR_android_surface" });
 
                 RunOnUiThread(() => log.Text = "Vulkan OK - Iniciando Switch...");
 
-                // Cria o Switch sem quebrar o build (dynamic)
-                dynamic hleConfig = null;
-                try { hleConfig = new HLEConfiguration(vfs, renderer); }
-                catch { hleConfig = System.Activator.CreateInstance(typeof(HLEConfiguration)); }
-
-                var device = new Switch(hleConfig);
+                // FIX: usa nome completo pra não conflitar com Android.Widget.Switch
+                var hleConfig = new HLEConfiguration(vfs, renderer);
+                var device = new Ryujinx.HLE.Switch(hleConfig);
                 device.Configuration.AccountManager = acc;
 
                 RunOnUiThread(() => log.Text = $"Carregando {Path.GetFileName(romPath)}...");
@@ -56,7 +53,7 @@ public class GameActivity : Activity
                 RunOnUiThread(() => {
                     var sv = new SurfaceView(this);
                     SetContentView(sv);
-                    Toast.MakeText(this, "ZELDA BOOTOU! Gravando video...", ToastLength.Long).Show();
+                    Android.Widget.Toast.MakeText(this, "ZELDA BOOTOU!", Android.Widget.ToastLength.Long)!.Show();
                 });
 
                 device.Run();
