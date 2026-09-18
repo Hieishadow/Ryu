@@ -55,18 +55,16 @@ namespace Ryujinx.HLE.FileSystem
         private VirtualFileSystem()
         {
             ReloadKeySet();
-            ModLoader = new ModLoader(); // Should only be created once
+            ModLoader = new ModLoader();
             _romFsByPid = new ConcurrentDictionary<ulong, Stream>();
         }
 
         public void LoadRomFs(ulong pid, string fileName)
         {
             FileStream romfsStream = new(fileName, FileMode.Open, FileAccess.Read);
-
             _romFsByPid.AddOrUpdate(pid, romfsStream, (pid, oldStream) =>
             {
                 oldStream.Close();
-
                 return romfsStream;
             });
         }
@@ -76,7 +74,6 @@ namespace Ryujinx.HLE.FileSystem
             _romFsByPid.AddOrUpdate(pid, romfsStream, (pid, oldStream) =>
             {
                 oldStream.Close();
-
                 return romfsStream;
             });
         }
@@ -118,7 +115,7 @@ namespace Ryujinx.HLE.FileSystem
         {
             string[] parts = switchPath.Split(":");
 
-            if (parts.Length != 2)
+            if (parts.Length!= 2)
             {
                 return null;
             }
@@ -151,7 +148,6 @@ namespace Ryujinx.HLE.FileSystem
 
         private static string MakeFullPath(string path, bool isDirectory = true)
         {
-            // Handles Common Switch Content Paths
             switch (path)
             {
                 case ContentPath.SdCard:
@@ -176,7 +172,7 @@ namespace Ryujinx.HLE.FileSystem
 
             string fullPath = Path.Combine(AppDataManager.BaseDirPath, path);
 
-            if (isDirectory && !Directory.Exists(fullPath))
+            if (isDirectory &&!Directory.Exists(fullPath))
             {
                 Directory.CreateDirectory(fullPath);
             }
@@ -200,7 +196,6 @@ namespace Ryujinx.HLE.FileSystem
 
             DefaultFsServerObjects fsServerObjects = DefaultFsServerObjects.GetDefaultEmulatedCreators(serverBaseFs, KeySet, fsServer, randomGenerator);
 
-            // Use our own encrypted fs creator that doesn't actually do any encryption
             fsServerObjects.FsCreators.EncryptedFileSystemCreator = new EncryptedFileSystemCreator();
 
             GameCard = fsServerObjects.GameCard;
@@ -221,7 +216,7 @@ namespace Ryujinx.HLE.FileSystem
 
         public void ReloadKeySet()
         {
-            KeySet ??= KeySet.CreateDefaultKeySet();
+            KeySet??= KeySet.CreateDefaultKeySet();
 
             string prodKeyFile = null;
             string titleKeyFile = null;
@@ -237,6 +232,9 @@ namespace Ryujinx.HLE.FileSystem
 
             void LoadSetAtPath(string basePath)
             {
+                if (string.IsNullOrEmpty(basePath))
+                    return;
+
                 string localProdKeyFile = Path.Combine(basePath, "prod.keys");
                 string localTitleKeyFile = Path.Combine(basePath, "title.keys");
                 string localConsoleKeyFile = Path.Combine(basePath, "console.keys");
@@ -276,19 +274,16 @@ namespace Ryujinx.HLE.FileSystem
 
                 if (result.IsSuccess())
                 {
-                    // When reading a file from a Sha256PartitionFileSystem, you can't start a read in the middle
-                    // of the hashed portion (usually the first 0x200 bytes) of the file and end the read after
-                    // the end of the hashed portion, so we read the ticket file using a single read.
                     byte[] ticketData = new byte[0x2C0];
                     result = ticketFile.Get.Read(out long bytesRead, 0, ticketData);
 
-                    if (result.IsFailure() || bytesRead != ticketData.Length)
+                    if (result.IsFailure() || bytesRead!= ticketData.Length)
                         continue;
 
                     Ticket ticket = new(new MemoryStream(ticketData));
                     byte[] titleKey = ticket.GetTitleKey(KeySet);
 
-                    if (titleKey != null)
+                    if (titleKey!= null)
                     {
                         KeySet.ExternalKeySet.Add(new RightsId(ticket.RightsId), new AccessKey(titleKey));
                     }
@@ -296,11 +291,6 @@ namespace Ryujinx.HLE.FileSystem
             }
         }
 
-        // Save data created before we supported extra data in directory save data will not work properly if
-        // given empty extra data. Luckily some of that extra data can be created using the data from the
-        // save data indexer, which should be enough to check access permissions for user saves.
-        // Every single save data's extra data will be checked and fixed if needed each time the emulator is opened.
-        // Consider removing this at some point in the future when we don't need to worry about old saves.
         public static Result FixExtraData(HorizonClient hos)
         {
             Result rc = GetSystemSaveList(hos, out List<ulong> systemSaveIds);
@@ -361,20 +351,15 @@ namespace Ryujinx.HLE.FileSystem
 
                     if (ResultFs.TargetNotFound.Includes(rc))
                     {
-                        // If the save wasn't found, try to create the directory for its save data ID
                         rc = CreateSaveDataDirectory(hos, in info[i]);
 
                         if (rc.IsFailure())
                         {
                             Logger.Warning?.Print(LogClass.Application, $"Error {rc.ToStringWithName()} when creating save data 0x{info[i].SaveDataId:x} in the {spaceId} save data space");
-
-                            // Don't bother fixing the extra data if we couldn't create the directory
                             continue;
                         }
 
                         Logger.Info?.Print(LogClass.Application, $"Recreated directory for save data 0x{info[i].SaveDataId:x} in the {spaceId} save data space");
-
-                        // Try to fix the extra data in the new directory
                         rc = FixExtraData(out wasFixNeeded, hos, in info[i]);
                     }
 
@@ -432,7 +417,6 @@ namespace Ryujinx.HLE.FileSystem
             }
         }
 
-        // Gets a list of all the save data files or directories in the system partition.
         private static Result GetSystemSaveList(HorizonClient hos, out List<ulong> list)
         {
             list = null;
@@ -494,8 +478,6 @@ namespace Ryujinx.HLE.FileSystem
             }
         }
 
-        // Adds system save data that isn't in the save data indexer to the indexer and creates extra data for it.
-        // Only save data IDs added to SystemExtraDataFixInfo will be fixed.
         private static Result FixUnindexedSystemSaves(HorizonClient hos, List<ulong> existingSaveIds)
         {
             foreach (ExtraDataFixInfo fixInfo in _systemExtraDataFixInfo)
@@ -534,13 +516,11 @@ namespace Ryujinx.HLE.FileSystem
                     return rc;
                 }
 
-                // We'll reach this point only if the save data directory exists but it's not in the save data indexer.
-                // Creating the save will add it to the indexer while leaving its existing contents intact.
                 return hos.Fs.CreateSystemSaveData(info.StaticSaveDataId, UserId.InvalidId, info.OwnerId, info.DataSize,
                     info.JournalSize, info.Flags);
             }
 
-            if (extraData.Attribute.StaticSaveDataId != 0 && extraData.OwnerId != 0)
+            if (extraData.Attribute.StaticSaveDataId!= 0 && extraData.OwnerId!= 0)
             {
                 wasFixNeeded = false;
                 return Result.Success;
@@ -555,7 +535,6 @@ namespace Ryujinx.HLE.FileSystem
                 JournalSize = info.JournalSize,
             };
 
-            // Make a mask for writing the entire extra data
             Unsafe.SkipInit(out SaveDataExtraData extraDataMask);
             SpanHelpers.AsByteSpan(ref extraDataMask).Fill(0xFF);
 
@@ -573,22 +552,19 @@ namespace Ryujinx.HLE.FileSystem
                 return rc;
             }
 
-            // The extra data should have program ID or static save data ID set if it's valid.
-            // We only try to fix the extra data if the info from the save data indexer has a program ID or static save data ID.
             bool canFixByProgramId = extraData.Attribute.ProgramId == ProgramId.InvalidId &&
-                                       info.ProgramId != ProgramId.InvalidId;
+                                       info.ProgramId!= ProgramId.InvalidId;
 
-            bool canFixBySaveDataId = extraData.Attribute.StaticSaveDataId == 0 && info.StaticSaveDataId != 0;
+            bool canFixBySaveDataId = extraData.Attribute.StaticSaveDataId == 0 && info.StaticSaveDataId!= 0;
 
-            bool hasEmptyOwnerId = extraData.OwnerId == 0 && info.Type != SaveDataType.System;
+            bool hasEmptyOwnerId = extraData.OwnerId == 0 && info.Type!= SaveDataType.System;
 
-            if (!canFixByProgramId && !canFixBySaveDataId && !hasEmptyOwnerId)
+            if (!canFixByProgramId &&!canFixBySaveDataId &&!hasEmptyOwnerId)
             {
                 wasFixNeeded = false;
                 return Result.Success;
             }
 
-            // The save data attribute struct can be completely created from the save data info.
             extraData.Attribute.ProgramId = info.ProgramId;
             extraData.Attribute.UserId = info.UserId;
             extraData.Attribute.StaticSaveDataId = info.StaticSaveDataId;
@@ -596,15 +572,12 @@ namespace Ryujinx.HLE.FileSystem
             extraData.Attribute.Rank = info.Rank;
             extraData.Attribute.Index = info.Index;
 
-            // The rest of the extra data can't be created from the save data info.
-            // On user saves the owner ID will almost certainly be the same as the program ID.
-            if (info.Type != SaveDataType.System)
+            if (info.Type!= SaveDataType.System)
             {
                 extraData.OwnerId = info.ProgramId.Value;
             }
             else
             {
-                // Try to match the system save with one of the known saves
                 foreach (ExtraDataFixInfo fixInfo in _systemExtraDataFixInfo)
                 {
                     if (extraData.Attribute.StaticSaveDataId == fixInfo.StaticSaveDataId)
@@ -613,13 +586,11 @@ namespace Ryujinx.HLE.FileSystem
                         extraData.Flags = fixInfo.Flags;
                         extraData.DataSize = fixInfo.DataSize;
                         extraData.JournalSize = fixInfo.JournalSize;
-
                         break;
                     }
                 }
             }
 
-            // Make a mask for writing the entire extra data
             Unsafe.SkipInit(out SaveDataExtraData extraDataMask);
             SpanHelpers.AsByteSpan(ref extraDataMask).Fill(0xFF);
 
