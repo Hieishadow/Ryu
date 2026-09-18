@@ -14,6 +14,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using SysEnv = System.Environment;
+using Ryujinx.HLE.FileSystem.Content;
 
 namespace DragoNX;
 
@@ -103,29 +104,48 @@ public class GameActivity : Activity
             if (!File.Exists(prodOrig)) throw new Exception($"prod.keys nao achada {prodOrig}");
             File.Copy(prodOrig, prodDest, true);
             Log($"prod.keys OK {new FileInfo(prodDest).Length}b");
+
+            string baseDir = Path.Combine(FilesDir.AbsolutePath, "Ryujinx");
+            Directory.CreateDirectory(baseDir);
+            Directory.CreateDirectory(Path.Combine(baseDir, "bis"));
+            Directory.CreateDirectory(Path.Combine(baseDir, "bis", "user"));
+            Directory.CreateDirectory(Path.Combine(baseDir, "bis", "system"));
+            Directory.CreateDirectory(Path.Combine(baseDir, "nand"));
+            Directory.CreateDirectory(Path.Combine(baseDir, "sdcard"));
+            Directory.CreateDirectory(Path.Combine(baseDir, "sdcard", "Nintendo", "Contents"));
+
+            // FIX #284 - Inicializa AppDataManager antes de tudo
+            try {
+                var appDataType = typeof(AppDataManager);
+                var initMethod = appDataType.GetMethod("Initialize", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                if(initMethod!=null){
+                    var p = initMethod.GetParameters();
+                    if(p.Length==1) initMethod.Invoke(null, new object[]{ baseDir });
+                    else if(p.Length==2) initMethod.Invoke(null, new object[]{ baseDir, AppDataManager.LaunchMode.UserProfile });
+                } else {
+                    // Fallback: seta BaseDirPath via reflexao
+                    var prop = appDataType.GetProperty("BaseDirPath", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                    prop?.SetValue(null, baseDir);
+                }
+                Log($"AppData Base: {AppDataManager.BaseDirPath}");
+            } catch(Exception ex){ Log($"AppData init fallback: {ex.Message}"); }
+
             string jitDir = Path.Combine(CacheDir!.AbsolutePath, "jit");
             Directory.CreateDirectory(jitDir);
             SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE", jitDir);
             SysEnv.SetEnvironmentVariable("XDG_CONFIG_HOME", FilesDir.AbsolutePath);
 
             VirtualFileSystem vfs;
-            try
-            {
-                vfs = VirtualFileSystem.CreateInstance();
-                Log("VFS Criado");
-            }
-            catch (InvalidOperationException)
-            {
-                Log("VFS ja existe, reutilizando...");
+            try { vfs = VirtualFileSystem.CreateInstance(); Log("VFS Criado"); }
+            catch {
                 var prop = typeof(VirtualFileSystem).GetProperty("Instance", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
                 vfs = (VirtualFileSystem)prop!.GetValue(null)!;
+                Log("VFS reutilizado");
             }
 
             Log("Criando VulkanRenderer...");
-            gpu = VulkanRenderer.Create("DragoNX", (inst, vk) =>
-            {
-                unsafe
-                {
+            gpu = VulkanRenderer.Create("DragoNX", (inst, vk) => {
+                unsafe {
                     var ci = new AndroidSurfaceCreateInfoKHR { SType = StructureType.AndroidSurfaceCreateInfoKhr, Window = (nint*)nativeWindow };
                     var fp = vk.GetInstanceProcAddr(inst, "vkCreateAndroidSurfaceKHR");
                     if (fp == IntPtr.Zero) throw new Exception("vkCreateAndroidSurfaceKHR nao encontrado");
@@ -136,36 +156,83 @@ public class GameActivity : Activity
                 }
             }, () => new[] { "VK_KHR_surface", "VK_KHR_android_surface" });
             Log("Vulkan OK");
+
             var audio = new DummyHardwareDeviceDriver();
             var hleConf = BuildHleConfiguration(vfs, gpu, audio);
+            Log("HLE Config OK");
             device = new Ryujinx.HLE.Switch(hleConf);
+            Log("Switch criado - Horizon OK");
             Log("Loading NSP...");
             if (!device.LoadNsp(romPath)) throw new Exception("LoadNsp false");
-            Log("NSP OK");
+            Log("NSP OK - INICIANDO JOGO");
             RunOnUiThread(() => logView.Visibility = ViewStates.Gone);
             var sw = System.Diagnostics.Stopwatch.StartNew(); int frames = 0;
-            while (running)
-            {
+            while (running) {
                 device.ProcessFrame();
                 device.PresentFrame(() => { });
                 frames++;
                 if (sw.ElapsedMilliseconds >= 1000) { int f = frames; frames = 0; sw.Restart(); RunOnUiThread(() => fpsView.Text = $"FPS: {f}"); }
             }
-        }
-        catch (Exception ex) { LogError($"ERRO:\n{ex.Message}\n{ex}"); }
+        } catch (Exception ex) { LogError($"ERRO:\n{ex.Message}\n{ex}"); }
         finally { try { device?.Dispose(); } catch { } try { gpu?.Dispose(); } catch { } }
     }
 
     delegate Silk.NET.Vulkan.Result CreateAndroidSurfaceDelegate(Instance i, AndroidSurfaceCreateInfoKHR* p, AllocationCallbacks* a, SurfaceKHR* s);
+
     HleConfiguration BuildHleConfiguration(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio)
     {
         var hleType = typeof(HleConfiguration);
         var ctor = hleType.GetConstructors().OrderByDescending(c => c.GetParameters().Length).First();
         var pars = ctor.GetParameters(); object?[] args = new object?[pars.Length];
-        for (int i = 0; i < pars.Length; i++) { var pt = pars[i].ParameterType; if (pt.IsEnum) args[i] = Enum.GetValues(pt).GetValue(0); else if (pt == typeof(string)) args[i] = ""; else if (pt == typeof(bool)) args[i] = false; else if (pt.IsValueType) args[i] = Activator.CreateInstance(pt); else args[i] = null; }
+        for (int i = 0; i < pars.Length; i++) {
+            var pt = pars[i].ParameterType;
+            if (pt.IsEnum) args[i] = Enum.GetValues(pt).GetValue(0);
+            else if (pt == typeof(string)) args[i] = "";
+            else if (pt == typeof(bool)) args[i] = false;
+            else if (pt.IsValueType) args[i] = Activator.CreateInstance(pt);
+            else args[i] = null;
+        }
         var cfgObj = ctor.Invoke(args);
+
+        // Cria UserChannelPersistence
         var userChannel = Activator.CreateInstance(hleType.GetProperty("UserChannelPersistence")!.PropertyType, true);
-        var res = hleType.GetMethod("Configure")!.Invoke(cfgObj, new object?[] { vfs, null, null, null, userChannel, gpu, audio, null });
+
+        // FIX: Cria ContentManager de verdade via reflexao
+        object? contentManager = null;
+        try {
+            var cmType = typeof(ContentManager);
+            // tenta construtor vazio ou com path
+            var cmCtor = cmType.GetConstructors().OrderBy(c=>c.GetParameters().Length).First();
+            var cmParams = cmCtor.GetParameters();
+            object?[] cmArgs = new object?[cmParams.Length];
+            for(int i=0;i<cmParams.Length;i++){
+                var pt = cmParams[i].ParameterType;
+                if(pt==typeof(string)) cmArgs[i]=AppDataManager.BaseDirPath;
+                else if(pt.IsValueType) cmArgs[i]=Activator.CreateInstance(pt);
+                else cmArgs[i]=null;
+            }
+            contentManager = cmCtor.Invoke(cmArgs);
+            Log("ContentManager criado");
+        } catch(Exception ex){ Log($"ContentManager fallback: {ex.Message}"); }
+
+        var configureMethod = hleType.GetMethod("Configure");
+        var configureParams = configureMethod!.GetParameters();
+
+        // Monta args na ordem certa: vfs, contentManager,...
+        // Descobre posicao de cada tipo
+        object?[] configArgs = new object?[configureParams.Length];
+        for(int i=0;i<configureParams.Length;i++){
+            var pType = configureParams[i].ParameterType;
+            if(pType==typeof(VirtualFileSystem)) configArgs[i]=vfs;
+            else if(pType==typeof(ContentManager) || pType.Name.Contains("ContentManager")) configArgs[i]=contentManager;
+            else if(pType.Name.Contains("UserChannel")) configArgs[i]=userChannel;
+            else if(pType.IsAssignableFrom(gpu.GetType()) || pType.Name.Contains("Renderer") || pType.Name.Contains("IGpu")) configArgs[i]=gpu;
+            else if(pType.IsAssignableFrom(audio.GetType()) || pType.Name.Contains("Audio") || pType.Name.Contains("IAalOutput")) configArgs[i]=audio;
+            else if(pType.IsValueType) configArgs[i]=Activator.CreateInstance(pType);
+            else configArgs[i]=null;
+        }
+
+        var res = configureMethod.Invoke(cfgObj, configArgs);
         return (HleConfiguration)res!;
     }
     protected override void OnDestroy() { running = false; try { emuThread?.Join(2000); } catch { } base.OnDestroy(); }
