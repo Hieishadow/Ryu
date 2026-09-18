@@ -108,7 +108,6 @@ public class GameActivity : Activity
             SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE", jitDir);
             SysEnv.SetEnvironmentVariable("XDG_CONFIG_HOME", FilesDir.AbsolutePath);
 
-            // FIX #280: VFS só pode ser criado uma vez no Android
             VirtualFileSystem vfs;
             try
             {
@@ -117,13 +116,9 @@ public class GameActivity : Activity
             }
             catch (InvalidOperationException)
             {
-                Log("VFS já existe, reutilizando...");
-                // Pega a instancia existente via reflexão
-                var instanceProp = typeof(VirtualFileSystem).GetProperty("Instance", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
-                vfs = (VirtualFileSystem)instanceProp!.GetValue(null)!;
-                // Tenta recarregar as keys
-                try { vfs.ReloadKeys(); } catch {}
-                try { typeof(VirtualFileSystem).GetMethod("Reload")?.Invoke(vfs, null); } catch {}
+                Log("VFS ja existe, reutilizando...");
+                var prop = typeof(VirtualFileSystem).GetProperty("Instance", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                vfs = (VirtualFileSystem)prop!.GetValue(null)!;
             }
 
             Log("Criando VulkanRenderer...");
