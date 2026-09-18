@@ -1,192 +1,148 @@
 using Android.App;
 using Android.Content;
+using Android.Content.PM;
 using Android.OS;
 using Android.Widget;
 using Android.Views;
 using Android.Graphics;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace DragoNX;
 
-[Activity(Label = "DragoNX", MainLauncher = true, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen")]
+[Activity(Label = "DragoNX", MainLauncher = true, Exported = true, ScreenOrientation = ScreenOrientation.Landscape, Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen")]
 public class MainActivity : Activity
 {
     const string BasePath = "/storage/emulated/0/Download/DragoNX";
     const string GamesPath = BasePath + "/games";
-    const string SystemPath = BasePath + "/system";
+    const string KeysPath = BasePath + "/keys";
+    const string FirmwarePath = BasePath + "/firmware";
     const string JitPath = BasePath + "/cache/jit";
 
     LinearLayout layout = null!;
-    TextView status = null!;
+    string? selectedRom = null;
+    Button? btnJogar;
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
-        // CRASH APARECE NA TELA
         AppDomain.CurrentDomain.UnhandledException += (s, e) => {
             RunOnUiThread(() => {
-                var tv = new TextView(this);
-                tv.Text = "CRASH:\n" + e.ExceptionObject.ToString();
-                tv.SetTextColor(Color.Yellow);
-                tv.TextSize = 10;
-                tv.SetPadding(20,20,20,20);
-                tv.SetBackgroundColor(Color.Black);
+                var tv = new TextView(this){ Text = "CRASH:\n" + e.ExceptionObject.ToString() };
+                tv.SetTextColor(Color.Yellow); tv.SetBackgroundColor(Color.Black);
                 SetContentView(tv);
             });
         };
 
-        TaskScheduler.UnobservedTaskException += (s, e) => {
-            RunOnUiThread(() => {
-                var tv = new TextView(this);
-                tv.Text = "CRASH TASK:\n" + e.Exception.ToString();
-                tv.SetTextColor(Color.Red);
-                tv.TextSize = 10;
-                tv.SetPadding(20,20,20,20);
-                tv.SetBackgroundColor(Color.Black);
-                SetContentView(tv);
-            });
-            e.SetObserved();
-        };
+        base.OnCreate(savedInstanceState);
+        Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
 
-        try
-        {
-            base.OnCreate(savedInstanceState);
-            Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
+        Directory.CreateDirectory(GamesPath);
+        Directory.CreateDirectory(KeysPath);
+        Directory.CreateDirectory(FirmwarePath);
+        Directory.CreateDirectory(JitPath);
 
-            Directory.CreateDirectory(GamesPath);
-            Directory.CreateDirectory(SystemPath);
-            Directory.CreateDirectory(JitPath);
+        layout = new LinearLayout(this);
+        layout.Orientation = Orientation.Vertical;
+        layout.SetGravity(GravityFlags.Center);
+        layout.SetBackgroundColor(Color.Black);
+        layout.SetPadding(40,20,40,20);
 
-            layout = new LinearLayout(this);
-            layout.Orientation = Orientation.Vertical;
-            layout.SetGravity(GravityFlags.Center);
-            layout.SetBackgroundColor(Color.Black);
-            layout.SetPadding(40, 40, 40, 40);
+        var title = new TextView(this){ Text = "DragoNX - Horizontal" };
+        title.SetTextColor(Color.White); title.TextSize = 20; title.Gravity = GravityFlags.Center;
+        layout.AddView(title);
 
-            var title = new TextView(this);
-            title.Text = "DragoNX - Teste Debug";
-            title.SetTextColor(Color.White);
-            title.TextSize = 22;
-            title.Gravity = GravityFlags.Center;
-            layout.AddView(title);
+        // INFO PROD + FIRMWARE
+        string prodFile = KeysPath + "/prod.keys";
+        bool prodOk = File.Exists(prodFile);
+        bool firmOk = Directory.Exists(FirmwarePath);
+        var info = new TextView(this);
+        info.Gravity = GravityFlags.Center; info.TextSize = 11f;
+        info.Text = (prodOk ? $"✓ prod.keys {new FileInfo(prodFile).Length} bytes | " : $"✗ prod.keys NAO | ") + (firmOk ? $"✓ firmware {Directory.GetFiles(FirmwarePath, "*", SearchOption.AllDirectories).Length} arq" : "✗ firmware NAO");
+        info.SetTextColor(prodOk && firmOk ? Color.Green : Color.Yellow);
+        layout.AddView(info);
 
-            status = new TextView(this);
-            status.SetTextColor(Color.Gray);
-            status.TextSize = 14;
-            status.Gravity = GravityFlags.Center;
-            status.Text = $"Games: {GamesPath}\nJIT: {JitPath}";
-            layout.AddView(status);
+        // BOTOES TOPO HORIZONTAL
+        var topRow = new LinearLayout(this);
+        topRow.Orientation = Orientation.Horizontal;
+        topRow.SetGravity(GravityFlags.Center);
 
-            var btnPerm = new Button(this);
-            btnPerm.Text = "1 - Dar Permissão de Arquivos";
-            btnPerm.Click += (s, e) => RequestAllFilesPermission();
-            layout.AddView(btnPerm);
+        var btnPerm = new Button(this){ Text = "1 - Permissão" };
+        btnPerm.Click += (s,e) => RequestAllFilesPermission();
+        topRow.AddView(btnPerm);
 
-            var btnScan = new Button(this);
-            btnScan.Text = "2 - Procurar Zelda Links Awakening";
-            btnScan.Click += (s, e) => ScanGames();
-            layout.AddView(btnScan);
+        var btnScan = new Button(this){ Text = "2 - Listar Jogos" };
+        btnScan.Click += (s,e) => ScanGames();
+        topRow.AddView(btnScan);
 
-            SetContentView(layout);
-
-            if (!HasAllFilesPermission())
-            {
-                RequestAllFilesPermission();
+        btnJogar = new Button(this){ Text = "▶ JOGAR" };
+        btnJogar.SetBackgroundColor(Color.Green);
+        btnJogar.Enabled = false;
+        btnJogar.Click += (s,e) => {
+            if(selectedRom != null){
+                var intent = new Intent(this, typeof(GameActivity));
+                intent.PutExtra("rom_path", selectedRom);
+                StartActivity(intent);
             }
-        }
-        catch (System.Exception ex)
-        {
-            var tv = new TextView(this);
-            tv.Text = "CRASH NO ONCREATE:\n" + ex.ToString();
-            tv.SetTextColor(Color.Red);
-            tv.TextSize = 11;
-            tv.SetPadding(20,20,20,20);
-            tv.SetBackgroundColor(Color.Black);
-            SetContentView(tv);
-        }
-    }
+        };
+        topRow.AddView(btnJogar);
+        layout.AddView(topRow);
 
-    bool HasAllFilesPermission()
-    {
-        if (Build.VERSION.SdkInt >= BuildVersionCodes.R)
-        {
-            return Android.OS.Environment.IsExternalStorageManager;
-        }
-        return true;
+        SetContentView(layout);
+        if (Build.VERSION.SdkInt >= BuildVersionCodes.R && !Android.OS.Environment.IsExternalStorageManager) RequestAllFilesPermission();
+        else ScanGames();
     }
 
     void RequestAllFilesPermission()
     {
-        if (Build.VERSION.SdkInt >= BuildVersionCodes.R)
-        {
-            try
-            {
-                var intent = new Intent(Android.Provider.Settings.ActionManageAppAllFilesAccessPermission);
-                intent.SetData(Android.Net.Uri.Parse("package:" + PackageName));
-                StartActivity(intent);
-                Toast.MakeText(this, "Ative: Permitir acesso a todos os arquivos", ToastLength.Long)?.Show();
-            }
-            catch
-            {
-                var intent = new Intent(Android.Provider.Settings.ActionManageAllFilesAccessPermission);
-                StartActivity(intent);
-            }
+        try {
+            var intent = new Intent(Android.Provider.Settings.ActionManageAppAllFilesAccessPermission);
+            intent.SetData(Android.Net.Uri.Parse("package:" + PackageName));
+            StartActivity(intent);
+        } catch {
+            StartActivity(new Intent(Android.Provider.Settings.ActionManageAllFilesAccessPermission));
         }
     }
 
     void ScanGames()
     {
-        try
-        {
-            layout.RemoveAllViews();
-            
-            var title = new TextView(this);
-            title.Text = "Jogos encontrados:";
-            title.SetTextColor(Color.White);
-            title.TextSize = 20;
-            title.Gravity = GravityFlags.Center;
-            layout.AddView(title);
+        // LIMPA SO A LISTA
+        if(layout.ChildCount > 3) layout.RemoveViews(3, layout.ChildCount - 3);
 
-            var dir = new Java.IO.File(GamesPath);
-            var files = dir.ListFiles();
+        var container = new LinearLayout(this);
+        container.Orientation = Orientation.Horizontal;
+        container.SetGravity(GravityFlags.Center);
+        container.SetPadding(0,20,0,0);
 
-            if (files == null || files.Length == 0)
-            {
-                var empty = new TextView(this);
-                empty.SetTextColor(Color.Red);
-                empty.Text = $"\nNenhum jogo em:\n{GamesPath}\n\nColoque o Links Awakening.nsp lá e clica de novo.";
-                empty.Gravity = GravityFlags.Center;
-                layout.AddView(empty);
-
-                var back = new Button(this);
-                back.Text = "Voltar";
-                back.Click += (s,e) => Recreate();
-                layout.AddView(back);
-                return;
-            }
-
-            foreach (var file in files.Where(f =>!f.IsDirectory))
-            {
-                var btn = new Button(this);
-                btn.Text = file.Name;
-                btn.SetBackgroundColor(Color.DarkGray);
-                var path = file.AbsolutePath;
-                btn.Click += (s, e) =>
-                {
-                    var intent = new Intent(this, typeof(GameActivity));
-                    intent.PutExtra("rom_path", path);
-                    StartActivity(intent);
-                };
-                layout.AddView(btn);
-            }
+        var dir = new Java.IO.File(GamesPath);
+        var files = dir.ListFiles();
+        if (files == null || files.Length == 0) {
+            var empty = new TextView(this){ Text = $"Nenhum jogo em {GamesPath}" };
+            empty.SetTextColor(Color.Red); empty.Gravity = GravityFlags.Center;
+            layout.AddView(empty);
+            return;
         }
-        catch (System.Exception ex)
-        {
-            var tv = new TextView(this);
-            tv.Text = "CRASH SCAN:\n" + ex.ToString();
-            tv.SetTextColor(Color.Red);
-            tv.SetBackgroundColor(Color.Black);
-            SetContentView(tv);
+
+        foreach (var file in files.Where(f => !f.IsDirectory)) {
+            var col = new LinearLayout(this);
+            col.Orientation = Orientation.Vertical;
+            col.SetPadding(10,10,10,10);
+            col.SetBackgroundColor(Color.DarkGray);
+
+            var name = new TextView(this){ Text = file.Name };
+            name.SetTextColor(Color.White); name.TextSize = 10; name.Gravity = GravityFlags.Center;
+            col.AddView(name);
+
+            var btn = new Button(this){ Text = "Selecionar" };
+            btn.Click += (s,e) => {
+                selectedRom = file.AbsolutePath;
+                btnJogar!.Enabled = true;
+                btnJogar.Text = $"▶ JOGAR {file.Name}";
+                Toast.MakeText(this, $"Selecionado: {file.Name}", ToastLength.Short)?.Show();
+            };
+            col.AddView(btn);
+            container.AddView(col);
         }
+        layout.AddView(container);
     }
 }
