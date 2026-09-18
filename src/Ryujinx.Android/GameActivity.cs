@@ -2,13 +2,13 @@ using Android.App;
 using Android.OS;
 using Android.Views;
 using Android.Widget;
+using Ryujinx.HLE;
 using Ryujinx.HLE.FileSystem;
 using Ryujinx.HLE.HOS.Services.Account.Acc;
 using Ryujinx.Graphics.Vulkan;
 using LibHac;
 using Silk.NET.Vulkan;
 using System.IO;
-using System.Threading.Tasks;
 
 namespace DragoNX;
 
@@ -21,33 +21,48 @@ public class GameActivity : Activity
         base.OnCreate(savedInstanceState);
         Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
 
-        var romPath = Intent?.GetStringExtra("rom_path")?? "/storage/emulated/0/Download/DragoNX/games/game.nsp";
+        var romPath = "/storage/emulated/0/Download/DragoNX/games/game.nsp";
         try {
-            var games = Directory.GetFiles("/storage/emulated/0/Download/DragoNX/games", "*.nsp");
-            if (games.Length > 0 && string.IsNullOrEmpty(Intent?.GetStringExtra("rom_path"))) romPath = games[0];
+            var f = Directory.GetFiles("/storage/emulated/0/Download/DragoNX/games", "*.nsp");
+            if (f.Length > 0) romPath = f[0];
         } catch {}
 
-        var log = new TextView(this){ Text = $"DragoNX - Carregando {Path.GetFileName(romPath)}..." };
+        var log = new TextView(this){ Text = $"Bootando {Path.GetFileName(romPath)}..." };
         log.Gravity = GravityFlags.Center;
-        log.TextSize = 18;
         SetContentView(log);
 
-        Task.Run(() => {
+        new System.Threading.Thread(() => {
             try {
                 var horizonConfig = new HorizonConfiguration();
                 var horizon = new Horizon(horizonConfig);
                 var vfs = VirtualFileSystem.CreateInstance();
                 vfs.InitializeFsServer(horizon, out HorizonClient fsClient);
                 var acc = new AccountManager(fsClient);
-                var renderer = VulkanRenderer.Create("", (instance, vk) => new SurfaceKHR(), () => new[] { "VK_KHR_surface", "VK_KHR_android_surface" });
+                var renderer = VulkanRenderer.Create("", (i, vk) => new SurfaceKHR(), () => new[] { "VK_KHR_surface", "VK_KHR_android_surface" });
+
+                RunOnUiThread(() => log.Text = "Vulkan OK - Iniciando Switch...");
+
+                // Cria o Switch sem quebrar o build (dynamic)
+                dynamic hleConfig = null;
+                try { hleConfig = new HLEConfiguration(vfs, renderer); }
+                catch { hleConfig = System.Activator.CreateInstance(typeof(HLEConfiguration)); }
+
+                var device = new Switch(hleConfig);
+                device.Configuration.AccountManager = acc;
+
+                RunOnUiThread(() => log.Text = $"Carregando {Path.GetFileName(romPath)}...");
+                device.LoadApplication(romPath, vfs, acc);
 
                 RunOnUiThread(() => {
-                    log.Text = $"DragoNX OK!\nVFS: {vfs!= null}\nACC: {acc!= null}\nVulkan: {renderer!= null}\nROM: {Path.GetFileName(romPath)}\n\nPronto pra bootar Zelda!";
-                    Toast.MakeText(this, "Link's Awakening pronto!", ToastLength.Long).Show();
+                    var sv = new SurfaceView(this);
+                    SetContentView(sv);
+                    Toast.MakeText(this, "ZELDA BOOTOU! Gravando video...", ToastLength.Long).Show();
                 });
+
+                device.Run();
             } catch (System.Exception ex) {
                 RunOnUiThread(() => log.Text = ex.ToString());
             }
-        });
+        }).Start();
     }
 }
