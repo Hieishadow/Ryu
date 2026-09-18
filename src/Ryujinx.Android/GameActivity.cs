@@ -1,10 +1,8 @@
 using Android.App;
 using Android.OS;
 using Android.Views;
-using Android.Widget;
 using System.IO;
 using System.Threading.Tasks;
-using Ryujinx.HLE;
 using Ryujinx.HLE.FileSystem;
 using Ryujinx.HLE.HOS;
 using Ryujinx.Common.Configuration;
@@ -14,6 +12,12 @@ using Ryujinx.Audio.Backends.Dummy;
 using Ryujinx.HLE.UI;
 using LibHac.Common;
 using LibHac.Tools.FsSystem;
+using Ryujinx.HLE.HOS.Services.SoftwareKeyboard;
+using Ryujinx.HLE.HOS.Services.Am.AppletOE.ApplicationProxyService.ApplicationProxy;
+using Ryujinx.HLE.HOS.Services.Am.AppletAE.AllSystemAppletProxiesService.SystemAppletProxy;
+
+// FIX AMBIGUO
+using SwitchDevice = Ryujinx.HLE.Switch;
 
 namespace DragoNX;
 
@@ -21,7 +25,7 @@ namespace DragoNX;
           ConfigurationChanges = Android.Content.PM.ConfigChanges.Orientation | Android.Content.PM.ConfigChanges.ScreenSize | Android.Content.PM.ConfigChanges.KeyboardHidden)]
 public class GameActivity : Activity
 {
-    Switch device;
+    SwitchDevice device;
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
@@ -86,17 +90,11 @@ public class GameActivity : Activity
                     debuggerSuspendOnStart: false,
                     customVSyncInterval: 60
                 ).Configure(
-                    vfs,
-                    libHacManager,
-                    contentManager,
-                    accountManager,
-                    userChannel,
-                    gpuRenderer,
-                    audioDriver,
-                    uiHandler
+                    vfs, libHacManager, contentManager, accountManager,
+                    userChannel, gpuRenderer, audioDriver, uiHandler
                 );
 
-                device = new Switch(config);
+                device = new SwitchDevice(config);
                 device.LoadNsp(finalPath);
 
                 while (true)
@@ -104,7 +102,6 @@ public class GameActivity : Activity
                     device.ProcessFrame();
                     device.PresentFrame(() => { });
                 }
-
             } catch (System.Exception ex) {
                 RunOnUiThread(() => Toast.MakeText(this, ex.ToString(), ToastLength.Long).Show());
             }
@@ -113,8 +110,19 @@ public class GameActivity : Activity
 
     class DummyHostUIHandler : IHostUIHandler
     {
+        public HostUITheme HostUITheme => HostUITheme.Dark;
         public bool HasFileExtensionChanged(string e) => false;
         public void HandleErrorMessage(string m) {}
         public void HandleInfoMessage(string m) {}
+        public bool DisplayInputDialog(SoftwareKeyboardUIArgs args, out string text) { text = ""; return false; }
+        public bool DisplayMessageDialog(string title, string msg) => false;
+        public bool DisplayMessageDialog(ControllerAppletUIArgs args) => false;
+        public bool DisplayCabinetDialog(out string path) { path = ""; return false; }
+        public bool DisplayCabinetMessageDialog() => false;
+        public bool ExecuteProgram(SwitchDevice device, ProgramSpecifierKind kind, ulong uid) => false;
+        public bool DisplayErrorAppletDialog(string title, string msg, string[] buttons, (uint Module, uint Description)? code) => false;
+        public IDynamicTextInputHandler CreateDynamicTextInputHandler() => null;
+        public bool ShowPlayerSelectDialog() => false;
+        public bool TakeScreenshot() => false;
     }
 }
