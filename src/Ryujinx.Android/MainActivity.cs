@@ -37,7 +37,7 @@ public class MainActivity : Activity
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
-        Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
+        Window?.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
 
         layout = new LinearLayout(this);
         layout.Orientation = Orientation.Vertical;
@@ -73,7 +73,7 @@ public class MainActivity : Activity
         btnJogar.Enabled = false;
         btnJogar.Click += (s, e) =>
         {
-            if (selectedRom != null)
+            if (!string.IsNullOrEmpty(selectedRom))
             {
                 var intent = new Intent(this, typeof(GameActivity));
                 intent.PutExtra("rom_path", selectedRom);
@@ -120,7 +120,8 @@ public class MainActivity : Activity
             Directory.CreateDirectory(KeysPath);
             Directory.CreateDirectory(FirmwarePath);
             
-            var internalSystem = Path.Combine(FilesDir!.AbsolutePath, "Ryujinx", "system");
+            if (FilesDir == null) return;
+            var internalSystem = Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "system");
             Directory.CreateDirectory(internalSystem);
 
             foreach (var k in new[] { "prod.keys", "title.keys" })
@@ -143,7 +144,7 @@ public class MainActivity : Activity
     void UpdateInfo()
     {
         if (layout.ChildCount < 2) return;
-        var info = (TextView)layout.GetChildAt(1);
+        if (layout.GetChildAt(1) is not TextView info) return;
         var prod = new FileInfo(Path.Combine(KeysPath, "prod.keys"));
         var title = new FileInfo(Path.Combine(KeysPath, "title.keys"));
         if (prod.Exists)
@@ -230,8 +231,11 @@ public class MainActivity : Activity
                 btn.Click += (s, e) =>
                 {
                     selectedRom = romPath;
-                    btnJogar!.Enabled = true;
-                    btnJogar.Text = $"▶ JOGAR {Path.GetFileName(romPath)}";
+                    if (btnJogar != null)
+                    {
+                        btnJogar.Enabled = true;
+                        btnJogar.Text = $"▶ JOGAR {Path.GetFileName(romPath)}";
+                    }
                 };
                 row.AddView(btn);
                 container.AddView(row);
