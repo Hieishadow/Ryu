@@ -5,4 +5,22 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <EnablePreviewFeatures>true</EnablePreviewFeatures>
   </PropertyGroup>
+
+  <!-- FIX ANDROID RELEASE - desliga otimizações que quebram reflexão/unsafe -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <Optimize>false</Optimize>
+    <DebugType>portable</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishAot>false</PublishAot>
+    <RunAOTCompilation>false</RunAOTCompilation>
+    <AndroidLinkMode>None</AndroidLinkMode>
+    <TrimMode>copy</TrimMode>
+    <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+    <IsTrimmable>false</IsTrimmable>
+    <AndroidStripILAfterAOT>false</AndroidStripILAfterAOT>
+    <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
+    <AndroidUseInterpreter>true</AndroidUseInterpreter>
+    <UseInterpreter>true</UseInterpreter>
+  </PropertyGroup>
 </Project>
