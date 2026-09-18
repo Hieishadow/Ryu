@@ -12,7 +12,6 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using VkResult = Silk.NET.Vulkan.Result;
 using SysEnv = System.Environment;
 
 namespace DragoNX;
@@ -30,11 +29,16 @@ public class GameActivity : Activity
     {
         base.OnCreate(savedInstanceState);
         Window.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
-        romPath = Intent?.GetStringExtra("rom_path")?? "/storage/emulated/0/Download/DragoNX/games/Links Awakening.nsp";
+        // FIX 1: pega do Intent e valida se existe
+        romPath = Intent?.GetStringExtra("rom_path") ?? "";
+        if(string.IsNullOrEmpty(romPath) || !File.Exists(romPath)){
+            var dir = "/storage/emulated/0/Download/DragoNX/games";
+            romPath = Directory.GetFiles(dir, "*.nsp").FirstOrDefault() ?? romPath;
+        }
 
         surfaceView = new SurfaceView(this);
         logView = new TextView(this);
-        logView.Text = $"DRAGONX #260 RENDER\n{Path.GetFileName(romPath)}\nIniciando...";
+        logView.Text = $"DRAGONX #264 FIX\n{Path.GetFileName(romPath)}\nExiste: {File.Exists(romPath)}\nIniciando...";
         logView.Gravity = GravityFlags.Center;
         logView.SetTextColor(Android.Graphics.Color.White);
         logView.SetBackgroundColor(Android.Graphics.Color.Black);
@@ -50,7 +54,7 @@ public class GameActivity : Activity
     {
         GameActivity act;
         public SurfaceCallback(GameActivity a){ act = a; }
-        unsafe delegate VkResult CreateAndroidSurfaceDelegate(Instance instance, AndroidSurfaceCreateInfoKHR* pCreateInfo, AllocationCallbacks* pAllocator, SurfaceKHR* pSurface);
+        unsafe delegate Silk.NET.Vulkan.Result CreateAndroidSurfaceDelegate(Instance instance, AndroidSurfaceCreateInfoKHR* pCreateInfo, AllocationCallbacks* pAllocator, SurfaceKHR* pSurface);
 
         public void SurfaceCreated(ISurfaceHolder holder)
         {
@@ -58,18 +62,22 @@ public class GameActivity : Activity
                 try {
                     void Log(string s){ act.RunOnUiThread(()=> act.logView.Text += "\n" + s); }
 
-                    // 1. KEYS REAL
+                    // FIX 2: prod.keys na pasta certa que o Ryujinx lê
                     string prodOrig = "/storage/emulated/0/Download/DragoNX/keys/prod.keys";
-                    string prodDest = Path.Combine(act.FilesDir.AbsolutePath, "prod.keys");
+                    string keysDir = Path.Combine(act.FilesDir.AbsolutePath, "Ryujinx", "keys");
+                    Directory.CreateDirectory(keysDir);
+                    string prodDest = Path.Combine(keysDir, "prod.keys");
                     if (!File.Exists(prodOrig)) throw new Exception("prod.keys nao achada em " + prodOrig);
                     File.Copy(prodOrig, prodDest, true);
-                    Log($"prod.keys {new FileInfo(prodDest).Length}b OK");
+                    Log($"prod.keys {new FileInfo(prodDest).Length}b OK em {prodDest}");
 
                     string jitDir = Path.Combine(act.CacheDir.AbsolutePath, "jit");
                     Directory.CreateDirectory(jitDir);
                     SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE", jitDir);
+                    SysEnv.SetEnvironmentVariable("XDG_CONFIG_HOME", act.FilesDir.AbsolutePath);
 
-                    // 2. VULKAN REAL
+                    Log($"ROM existe: {File.Exists(act.romPath)} | {new FileInfo(act.romPath).Length/1024/1024}MB");
+
                     IntPtr nativeWin = ANativeWindow_fromSurface(IntPtr.Zero, holder.Surface.Handle);
                     if (nativeWin == IntPtr.Zero) throw new Exception("ANativeWindow falhou");
 
@@ -87,7 +95,6 @@ public class GameActivity : Activity
 
                     var audio = new DummyHardwareDeviceDriver();
 
-                    // 3. HLE CONFIG SEM ENUM - via reflexao pra nao quebrar build
                     var hleType = typeof(HleConfiguration);
                     var ctor = hleType.GetConstructors().OrderByDescending(c=>c.GetParameters().Length).First();
                     var p = ctor.GetParameters();
@@ -96,36 +103,29 @@ public class GameActivity : Activity
                         var pt = p[i].ParameterType;
                         if (pt.IsEnum) args[i] = Enum.GetValues(pt).GetValue(0);
                         else if (pt == typeof(string)) args[i] = "";
-                        else if (pt == typeof(bool)) args[i] = true;
-                        else if (pt == typeof(int) || pt == typeof(long) || pt == typeof(float) || pt == typeof(double)) args[i] = Activator.CreateInstance(pt);
+                        else if (pt == typeof(bool)) args[i] = false; // leve pro SD865
+                        else if (pt.IsValueType) args[i] = Activator.CreateInstance(pt);
                         else args[i] = Activator.CreateInstance(pt, true);
                     }
                     var cfgObj = ctor.Invoke(args);
-                    var configure = hleType.GetMethod("Configure");
                     var userChannelType = hleType.GetProperty("UserChannelPersistence")!.PropertyType;
                     var userChannel = Activator.CreateInstance(userChannelType, true);
-                    var hleConf = (HleConfiguration)configure!.Invoke(cfgObj, new object?[]{ vfs, null, null, null, userChannel, gpu, audio, null })!;
+                    var hleConf = (HleConfiguration)hleType.GetMethod("Configure")!.Invoke(cfgObj, new object?[]{ vfs, null, null, null, userChannel, gpu, audio, null })!;
 
                     var device = new Ryujinx.HLE.Switch(hleConf);
 
-                    // 4. RENDER REAL
                     Log("Loading NSP...");
+                    if(!File.Exists(act.romPath)) throw new Exception($"ROM nao existe: {act.romPath}");
                     bool ok = device.LoadNsp(act.romPath);
-                    if (!ok) throw new Exception("LoadNsp falhou - NSP corrompido?");
+                    if (!ok) throw new Exception($"LoadNsp retornou false - keys invalida ou NSP corrompido");
 
-                    act.RunOnUiThread(()=> {
-                        act.logView.Visibility = ViewStates.Gone; // SOME LOGO E MOSTRA JOGO
-                    });
+                    act.RunOnUiThread(()=> act.logView.Visibility = ViewStates.Gone);
 
-                    // LOOP QUE RENDERIZA DE VERDADE
-                    while (true) {
-                        device.ProcessFrame();
-                        device.PresentFrame(()=> {});
-                    }
+                    while (true) { device.ProcessFrame(); device.PresentFrame(()=> {}); }
 
                 } catch (Exception ex) {
                     act.RunOnUiThread(()=> {
-                        act.logView.Text = $"CRASH #260 REAL:\n{ex}";
+                        act.logView.Text = $"CRASH #264:\n{ex.Message}\n\n{ex}";
                         act.logView.SetTextColor(Android.Graphics.Color.Red);
                     });
                 }
