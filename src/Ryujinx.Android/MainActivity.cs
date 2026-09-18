@@ -4,9 +4,12 @@ using Android.Content.PM;
 using Android.OS;
 using Android.Widget;
 using Android.Views;
-using Android.Graphics;
-using System.IO;
 using System.Linq;
+// FIX DO BUILD - evita ambiguidade com Android.Graphics.Path
+using Path = System.IO.Path;
+using File = System.IO.File;
+using Directory = System.IO.Directory;
+using FileInfo = System.IO.FileInfo;
 
 namespace DragoNX;
 
@@ -27,9 +30,8 @@ public class MainActivity : Activity
         Directory.CreateDirectory(GamesPath);
         Directory.CreateDirectory(KeysPath);
 
-        // FIX - copia key pro lugar interno que Ryujinx lê
         try {
-            var internalSystem = Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "system");
+            var internalSystem = Path.Combine(FilesDir!.AbsolutePath, "Ryujinx", "system");
             Directory.CreateDirectory(internalSystem);
             var srcKey = Path.Combine(KeysPath, "prod.keys");
             var dstKey = Path.Combine(internalSystem, "prod.keys");
@@ -39,17 +41,17 @@ public class MainActivity : Activity
         layout = new LinearLayout(this);
         layout.Orientation = Orientation.Vertical;
         layout.SetGravity(GravityFlags.Center);
-        layout.SetBackgroundColor(Color.Black);
+        layout.SetBackgroundColor(Android.Graphics.Color.Black);
         layout.SetPadding(40,20,40,20);
         var title = new TextView(this){ Text = "Ryubing - S20 FE Edition" };
-        title.SetTextColor(Color.White); title.TextSize = 20; title.Gravity = GravityFlags.Center;
+        title.SetTextColor(Android.Graphics.Color.White); title.TextSize = 20; title.Gravity = GravityFlags.Center;
         layout.AddView(title);
         string prodFile = KeysPath + "/prod.keys";
         bool prodOk = File.Exists(prodFile);
         var info = new TextView(this);
         info.Gravity = GravityFlags.Center; info.TextSize = 11f;
         info.Text = prodOk ? $"✓ prod.keys {new FileInfo(prodFile).Length} bytes" : $"✗ prod.keys NAO em {KeysPath}";
-        info.SetTextColor(prodOk ? Color.Green : Color.Yellow);
+        info.SetTextColor(prodOk ? Android.Graphics.Color.Green : Android.Graphics.Color.Yellow);
         layout.AddView(info);
         var topRow = new LinearLayout(this);
         topRow.Orientation = Orientation.Horizontal;
@@ -61,7 +63,7 @@ public class MainActivity : Activity
         btnScan.Click += (s,e) => ScanGames();
         topRow.AddView(btnScan);
         btnJogar = new Button(this){ Text = "▶ JOGAR" };
-        btnJogar.SetBackgroundColor(Color.Green);
+        btnJogar.SetBackgroundColor(Android.Graphics.Color.Green);
         btnJogar.Enabled = false;
         btnJogar.Click += (s,e) => {
             if(selectedRom != null){
@@ -96,7 +98,7 @@ public class MainActivity : Activity
         var files = dir.ListFiles();
         if (files == null || files.Length == 0) {
             var empty = new TextView(this){ Text = $"Nenhum jogo em {GamesPath}" };
-            empty.SetTextColor(Color.Red); empty.Gravity = GravityFlags.Center;
+            empty.SetTextColor(Android.Graphics.Color.Red); empty.Gravity = GravityFlags.Center;
             layout.AddView(empty);
             return;
         }
@@ -104,9 +106,9 @@ public class MainActivity : Activity
             var col = new LinearLayout(this);
             col.Orientation = Orientation.Vertical;
             col.SetPadding(10,10,10,10);
-            col.SetBackgroundColor(Color.DarkGray);
+            col.SetBackgroundColor(Android.Graphics.Color.DarkGray);
             var name = new TextView(this){ Text = file.Name };
-            name.SetTextColor(Color.White); name.TextSize = 10;
+            name.SetTextColor(Android.Graphics.Color.White); name.TextSize = 10;
             col.AddView(name);
             var btn = new Button(this){ Text = "Selecionar" };
             btn.Click += (s,e) => {
