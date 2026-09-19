@@ -11,7 +11,6 @@ using Ryujinx.HLE.HOS.Services.Account.Acc;
 using Ryujinx.HLE.HOS.Services.Am.AppletOE.ApplicationProxyService.ApplicationProxy.Types;
 using Ryujinx.HLE.UI;
 using Ryujinx.Common.Configuration;
-using Ryujinx.Common.Configuration.Multiplayer;
 using Ryujinx.Graphics.Vulkan;
 using Ryujinx.Audio.Backends.Dummy;
 using Silk.NET.Vulkan;
@@ -55,20 +54,16 @@ public class GameActivity : Activity
         base.OnCreate(savedInstanceState);
         Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
         romPath = Intent?.GetStringExtra("rom_path")?? "";
-
         try { File.WriteAllText(LogFile, $"=== Ryubing LOG {DateTime.Now} ===\nROM: {romPath}\n"); } catch {}
-
         if (string.IsNullOrEmpty(romPath) ||!File.Exists(romPath))
         {
             var dir = "/storage/emulated/0/Download/Ryubing/games";
             if (Directory.Exists(dir))
             {
-                var first = Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories)
-                 .FirstOrDefault(p => p.EndsWith(".nsp", StringComparison.OrdinalIgnoreCase) || p.EndsWith(".xci", StringComparison.OrdinalIgnoreCase));
+                var first = Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories).FirstOrDefault(p => p.EndsWith(".nsp", StringComparison.OrdinalIgnoreCase) || p.EndsWith(".xci", StringComparison.OrdinalIgnoreCase));
                 if (first!= null) romPath = first;
             }
         }
-
         surfaceView = new SurfaceView(this);
         logView = new TextView(this);
         logView.Text = $"RYUBING\n{Path.GetFileName(romPath)}\nExiste: {File.Exists(romPath)} {(File.Exists(romPath)? new FileInfo(romPath).Length / 1024 / 1024 : 0)}MB";
@@ -78,17 +73,14 @@ public class GameActivity : Activity
         logView.TextSize = 10;
         logView.SetPadding(20, 20, 20, 20);
         logView.MovementMethod = new Android.Text.Method.ScrollingMovementMethod();
-
         fpsView = new TextView(this) { Text = "FPS: --" };
         fpsView.SetTextColor(global::Android.Graphics.Color.Lime);
         fpsView.TextSize = 13;
         fpsView.SetPadding(20, 30, 20, 20);
-
         var root = new FrameLayout(this);
         root.AddView(surfaceView, new FrameLayout.LayoutParams(-1, -1));
         root.AddView(logView, new FrameLayout.LayoutParams(-1, -1));
         root.AddView(fpsView, new FrameLayout.LayoutParams(-2, -2) { Gravity = GravityFlags.Top | GravityFlags.Left });
-
         var btnLog = new Button(this) { Text = "Compartilhar LOG" };
         btnLog.Click += (s,e) => {
             var intent = new Android.Content.Intent(Android.Content.Intent.ActionSend);
@@ -99,17 +91,10 @@ public class GameActivity : Activity
         var btnParams = new FrameLayout.LayoutParams(-2,-2);
         btnParams.Gravity = GravityFlags.Bottom | GravityFlags.CenterHorizontal;
         root.AddView(btnLog, btnParams);
-
         SetContentView(root);
         surfaceView.Holder!.AddCallback(new SurfaceCallback(this));
     }
 
-    void Log(string m)
-    {
-        global::Android.Util.Log.Info(TAG, m);
-        try { File.AppendAllText(LogFile, DateTime.Now.ToString("HH:mm:ss") + " " + m + "\n"); } catch {}
-        RunOnUiThread(() => { if(logView!=null) logView.Text += "\n" + m; });
-    }
     void LogAppend(string m)
     {
         global::Android.Util.Log.Info(TAG, m);
@@ -178,26 +163,17 @@ public class GameActivity : Activity
             var audio = new DummyHardwareDeviceDriver();
             var hleConf = BuildHleConfigurationFIX(vfs, gpu, audio);
             LogAppend("HLE Config OK");
-
-            // FIX TIMEOUT DETECTION
             device = null;
             var switchThread = new System.Threading.Thread(() => {
-                try {
-                    device = new Ryujinx.HLE.Switch(hleConf);
-                    LogAppend("Switch criado THREAD");
-                }
+                try { device = new Ryujinx.HLE.Switch(hleConf); LogAppend("Switch criado THREAD"); }
                 catch (Exception ex) { LogAppend("ERRO Switch thread: " + ex); }
             });
             switchThread.IsBackground = true;
             switchThread.Start();
             bool finished = switchThread.Join(15000);
-            if (!finished) {
-                LogError("TIMEOUT no new Switch() - travou no Horizon");
-                return;
-            }
+            if (!finished) { LogError("TIMEOUT no new Switch() - travou no Horizon"); return; }
             if (device == null) { LogError("device null mesmo sem timeout"); return; }
             LogAppend("Switch criado");
-
             if (!device.LoadNsp(romPath)) throw new Exception("LoadNsp false");
             LogAppend("NSP OK");
             RunOnUiThread(() => { if(logView!=null) logView.Visibility = ViewStates.Gone; });
@@ -248,8 +224,6 @@ public class GameActivity : Activity
             Directory.CreateDirectory(Path.Combine(baseDir, "system", "save"));
             Directory.CreateDirectory(Path.Combine(baseDir, "bis", "system", "save"));
             Directory.CreateDirectory(Path.Combine(baseDir, "bis", "system", "saveMeta"));
-
-            // FIX: cria TODOS os system saves que o Horizon tenta montar
             for (ulong i = 0x8000000000000000; i <= 0x8000000000000035; i++) {
                 try {
                     var dir = Path.Combine(baseDir, "bis", "user", "save", i.ToString("x16"));
@@ -258,7 +232,6 @@ public class GameActivity : Activity
                     if (!File.Exists(p)) File.WriteAllBytes(p, new byte[1]);
                 } catch {}
             }
-
             var appDataType = typeof(AppDataManager);
             var initMethod = appDataType.GetMethod("Initialize", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
             if (initMethod == null) { LogAppend("AppData.Initialize nao encontrado"); return; }
@@ -326,20 +299,36 @@ public class GameActivity : Activity
         }
         if (libHac == null) throw new Exception("LibHacHorizonManager falhou");
 
+        // FIX 1: InitializeFsServer
+        try {
+            var m = libHac.GetType().GetMethod("InitializeFsServer", BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance);
+            if (m!= null) { m.Invoke(libHac, new object[]{ vfs }); LogAppend("LHM InitializeFsServer OK"); }
+            else LogAppend("LHM InitializeFsServer nao achado");
+        } catch (Exception ex) { LogAppend("LHM initFs fail: " + (ex.InnerException?.Message??ex.Message)); }
+
         object? accountManager = null;
         foreach (var c in amType.GetConstructors(CtorFlags).OrderByDescending(x => x.GetParameters().Length))
         {
             try
             {
                 var pars = c.GetParameters(); var args = new object?[pars.Length];
-                for (int i = 0; i < pars.Length; i++) { if (pars[i].ParameterType == typeof(VirtualFileSystem)) args[i] = vfs; else if (pars[i].ParameterType == typeof(string)) args[i] = AppDataManager.BaseDirPath?? ""; else if (pars[i].ParameterType.IsValueType) args[i] = Activator.CreateInstance(pars[i].ParameterType); else args[i] = null; }
+                for (int i = 0; i < pars.Length; i++) {
+                    var pt = pars[i].ParameterType;
+                    if (pt == typeof(VirtualFileSystem)) args[i] = vfs;
+                    else if (pt == typeof(string)) args[i] = AppDataManager.BaseDirPath?? "";
+                    else if (pt.Name.Contains("HorizonClient")) {
+                        args[i] = libHac.GetType().GetProperty("RyujinxClient", BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance)?.GetValue(libHac);
+                    }
+                    else if (pt.IsValueType) args[i] = Activator.CreateInstance(pt);
+                    else args[i] = null;
+                }
                 accountManager = c.Invoke(args); LogAppend($"AM OK {pars.Length}"); break;
             }
             catch (Exception ex) { LogAppend($"AM fail: {ex.InnerException?.Message?? ex.Message}"); }
         }
         if (accountManager == null) throw new Exception("AccountManager falhou");
 
-        var dummyUI = new DummyHostUIHandler();
+        var dummyUI = System.Reflection.DispatchProxy.Create<IHostUIHandler, DummyUIProxy>();
         var hleConfType = typeof(HleConfiguration);
         var ctor = hleConfType.GetConstructors(CtorFlags).OrderByDescending(c => c.GetParameters().Length).First();
         var ctorPars = ctor.GetParameters();
@@ -361,19 +350,26 @@ public class GameActivity : Activity
         return hleConf.Configure(vfs, (LibHacHorizonManager)libHac, (ContentManager)contentManager, (AccountManager)accountManager, (UserChannelPersistence)userChannel, gpu, audio, dummyUI);
     }
 
-    class DummyHostUIHandler : IHostUIHandler
+    // FIX BUILD: proxy que implementa IHostUIHandler sem precisar saber os metodos
+    class DummyUIProxy : System.Reflection.DispatchProxy
     {
-        public IHostUITheme HostUITheme => null!;
-        public bool DisplayInputDialog(SoftwareKeyboardUIArgs args, out string userText) { userText = ""; return false; }
-        public bool DisplayMessageDialog(string title, string message) => false;
-        public bool DisplayMessageDialog(ControllerAppletUIArgs args) => false;
-        public bool DisplayCabinetDialog(out string userText) { userText = ""; return false; }
-        public void DisplayCabinetMessageDialog() { }
-        public void ExecuteProgram(Switch device, ProgramSpecifyKind kind, ulong value) { }
-        public bool DisplayErrorAppletDialog(string title, string message, string[] buttonsText, (uint Module, uint Description)? errorCode = null) => false;
-        public IDynamicTextInputHandler CreateDynamicTextInputHandler() => null!;
-        public UserProfile ShowPlayerSelectDialog() => null!;
-        public void TakeScreenshot() { }
+        protected override object? Invoke(System.Reflection.MethodInfo? targetMethod, object?[]? args)
+        {
+            if (targetMethod == null) return null;
+            var rt = targetMethod.ReturnType;
+            if (args!= null) {
+                var ps = targetMethod.GetParameters();
+                for (int i=0;i<ps.Length && i<args.Length;i++) {
+                    if (ps[i].IsOut || ps[i].ParameterType.IsByRef) {
+                        if (ps[i].ParameterType.GetElementType() == typeof(string)) args[i] = "";
+                    }
+                }
+            }
+            if (rt == typeof(bool)) return false;
+            if (rt == typeof(string)) return "";
+            if (rt.IsValueType) return Activator.CreateInstance(rt);
+            return null;
+        }
     }
 
     protected override void OnDestroy() { running = false; try { emuThread?.Join(2000); } catch { } base.OnDestroy(); }
