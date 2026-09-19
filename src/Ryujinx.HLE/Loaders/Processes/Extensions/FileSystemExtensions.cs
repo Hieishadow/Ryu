@@ -21,25 +21,17 @@ namespace Ryujinx.HLE.Loaders.Processes.Extensions
         public static MetaLoader GetNpdm(this IFileSystem fileSystem)
         {
             MetaLoader metaLoader = new();
-
             try
             {
-                if (fileSystem == null ||!fileSystem.FileExists(ProcessConst.MainNpdmPath))
-                {
-                    Logger.Warning?.Print(LogClass.Loader, "NPDM file not found, using default values! (Android fallback)");
-                    metaLoader.LoadDefault();
-                }
-                else
-                {
-                    metaLoader.LoadFromFile(fileSystem);
-                }
+                // tenta carregar normal
+                metaLoader.LoadFromFile(fileSystem);
             }
             catch (Exception ex)
             {
+                // FIX ANDROID 2009-0004 - NSP base 5984MB sem main.npdm
                 Logger.Warning?.Print(LogClass.Loader, $"GetNpdm fallback: {ex.Message}, using LoadDefault");
-                try { metaLoader.LoadDefault(); } catch { }
+                metaLoader.LoadDefault();
             }
-
             return metaLoader;
         }
 
@@ -47,47 +39,49 @@ namespace Ryujinx.HLE.Loaders.Processes.Extensions
         {
             ulong programId = metaLoader.ProgramId;
             if (device.Configuration.VirtualFileSystem.ModLoader.ReplaceExefsPartition(programId, ref exeFs))
-            {
                 metaLoader = null;
-            }
+
             metaLoader??= exeFs.GetNpdm();
+
             NsoExecutable[] nsoExecutables = new NsoExecutable[ProcessConst.ExeFsPrefixes.Length];
             for (int i = 0; i < nsoExecutables.Length; i++)
             {
                 string name = ProcessConst.ExeFsPrefixes[i];
-                if (!exeFs.FileExists($"/{name}".ToU8Span())) continue;
-                Logger.Info?.Print(LogClass.Loader, $"Loading {name}...");
-                using UniqueRef<IFile> nsoFile = new();
-                exeFs.OpenFile(ref nsoFile.Ref, $"/{name}".ToU8Span(), OpenMode.Read).ThrowIfFailure();
-                nsoExecutables[i] = new NsoExecutable(nsoFile.Release().AsStorage(), name);
+                try
+                {
+                    Logger.Info?.Print(LogClass.Loader, $"Loading {name}...");
+                    using UniqueRef<IFile> nsoFile = new();
+                    exeFs.OpenFile(ref nsoFile.Ref, $"/{name}".ToU8Span(), OpenMode.Read).ThrowIfFailure();
+                    nsoExecutables[i] = new NsoExecutable(nsoFile.Release().AsStorage(), name);
+                }
+                catch { continue; } // sem FileExists - usa try que compila em qualquer LibHac
             }
-            ModLoadResult modLoadResult = device.Configuration.VirtualFileSystem.ModLoader.ApplyExefsMods(programId, nsoExecutables);
+
+            var modLoadResult = device.Configuration.VirtualFileSystem.ModLoader.ApplyExefsMods(programId, nsoExecutables);
             if (modLoadResult.Npdm!= null) metaLoader = modLoadResult.Npdm;
             nsoExecutables = nsoExecutables.Where(x => x!= null).ToArray();
             device.Configuration.VirtualFileSystem.ModLoader.ApplyNsoPatches(programId, nsoExecutables);
+
             string programName = string.Empty;
             if (!isHomebrew && programId > 0x010000000000FFFF)
             {
                 programName = nacpData.Value.Title[(int)device.System.State.DesiredTitleLanguage].NameString.ToString();
                 if (string.IsNullOrWhiteSpace(programName))
                 {
-                    foreach (ApplicationControlProperty.ApplicationTitle appTitle in nacpData.Value.Title)
+                    foreach (var appTitle in nacpData.Value.Title)
                     {
                         if (appTitle.Name[0]!= 0) continue;
                         programName = appTitle.NameString.ToString();
                     }
                 }
             }
+
             GraphicsConfig.TitleId = programId.ToString("X16");
             device.Gpu.HostInitalized.Set();
             if (!MemoryBlock.SupportsFlags(MemoryAllocationFlags.ViewCompatible))
-            {
                 device.Configuration.MemoryManagerMode = MemoryManagerMode.SoftwarePageTable;
-            }
-            ProcessResult processResult = ProcessLoaderHelper.LoadNsos(
-                device, device.System.KernelContext, metaLoader, nacpData,
-                device.System.EnablePtc, modLoadResult.Hash, true,
-                programName, programId, programIndex, null, nsoExecutables);
+
+            var processResult = ProcessLoaderHelper.LoadNsos(device, device.System.KernelContext, metaLoader, nacpData, device.System.EnablePtc, modLoadResult.Hash, true, programName, programId, programIndex, null, nsoExecutables);
             device.System.LibHacHorizonManager.ArpIReader.ApplicationId = new LibHac.ApplicationId(programId);
             return processResult;
         }
