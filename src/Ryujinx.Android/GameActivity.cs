@@ -51,31 +51,60 @@ public class GameActivity : Activity
             device=new Switch(conf);
             MyLog("Switch OK");
 
-            // LOAD COM CHECAGEM REAL DE BOOL
-            try{
-                var mLoad = device.GetType().GetMethods(All).FirstOrDefault(m=>m.Name=="LoadNsp" && m.GetParameters().Any(p=>p.ParameterType==typeof(string)));
-                MyLog($"[LOAD] method={mLoad?.Name} return={mLoad?.ReturnType.Name}");
-                object ret = mLoad.Invoke(device, new object[]{ romPath });
-                if(mLoad.ReturnType==typeof(bool)){
-                    bool ok=(bool)ret;
-                    MyLog($"[LOAD] LoadNsp bool = {ok}");
-                    if(!ok) throw new Exception("LoadNsp retornou false - KProcess.Start falhou");
-                }
-                MyLog("LoadNsp OK VERDADEIRO");
-            }catch(Exception ex){ MyLog($"[LOAD] FAIL REAL: {ex.InnerException?.Message??ex.Message}"); throw; }
+            // === LOAD NSP DIAGNOSTICO SEGURO ===
+            var loadMethods = device.GetType().GetMethods(All).Where(m=>m.Name=="LoadNsp").ToList();
+            MyLog($"[LOAD] LoadNsp encontrados: {loadMethods.Count}");
+            foreach(var m in loadMethods){
+                var ps=m.GetParameters();
+                MyLog($"[LOAD] METHOD: {m} Return={m.ReturnType.Name} Params={ps.Length}");
+                for(int i=0;i<ps.Length;i++) MyLog($"[LOAD] PARAM[{i}] type={ps[i].ParameterType.FullName} name={ps[i].Name} opt={ps[i].IsOptional}");
+            }
+            if(loadMethods.Count==0) throw new Exception("LoadNsp não encontrado");
 
-            RunOnUiThread(()=>{ logView.Visibility=ViewStates.Gone; });
-            int frame=0; MyLog("[DIAG] LOOP");
+            MethodInfo selected=null; object[] loadArgs=null;
+            foreach(var m in loadMethods){
+                var ps=m.GetParameters();
+                if(ps.Length==1 && ps[0].ParameterType==typeof(string)){ selected=m; loadArgs=new object[]{ romPath }; break; }
+                if(ps.Length==2 && ps[0].ParameterType==typeof(string) && ps[1].ParameterType==typeof(ulong)){ selected=m; loadArgs=new object[]{ romPath, (ulong)0 }; break; }
+                if(ps.Length==2 && ps[0].ParameterType==typeof(string) && ps[1].ParameterType==typeof(long)){ selected=m; loadArgs=new object[]{ romPath, (long)0 }; break; }
+            }
+            if(selected==null){ foreach(var m in loadMethods) MyLog($"[LOAD] CANDIDATO: {m}"); throw new Exception("LoadNsp assinatura não compatível"); }
+
+            MyLog($"[LOAD] INVOCANDO: {selected} com {loadArgs.Length} args");
+            object result = selected.Invoke(device, loadArgs);
+            bool loadOk = selected.ReturnType==typeof(bool)? (result is bool b && b) : true;
+            MyLog($"[LOAD] RESULTADO={result} OK={loadOk}");
+            if(!loadOk) throw new Exception("LoadNsp retornou false");
+            MyLog("[LOAD] LoadNsp OK VERDADEIRO - PROCESSO INICIADO");
+
+            // === LOOP DIAGNOSTICO ===
+            var mPF = device.GetType().GetMethod("ProcessFrame", All);
+            var mPr = device.GetType().GetMethod("PresentFrame", All);
+            MyLog($"[LOOP] ProcessFrame={mPF!=null} PresentFrame={mPr!=null} (Present será ignorado)");
+
+            RunOnUiThread(()=>{ if(logView!=null) logView.Visibility=ViewStates.Gone; });
+            int frame=0; MyLog("[DIAG] LOOP INICIADO");
             while(running){
                 try{
                     if(frame<5 || frame%60==0){
-                        var d = device.GetType().GetProperty("Device",All)?.GetValue(device)?? device;
-                        var proc = d?.GetType().GetProperty("Process",All)?.GetValue(d)?? d?.GetType().GetField("_process",All)?.GetValue(d);
-                        int tc=-1; if(proc!=null){ var th=proc.GetType().GetProperty("Threads",All)?.GetValue(proc) as System.Collections.ICollection; tc=th?.Count??-1; }
+                        object proc=null;
+                        try{
+                            var pProp = device.GetType().GetProperty("Processes",All);
+                            if(pProp!=null){
+                                var procs = pProp.GetValue(device);
+                                var actProp = procs?.GetType().GetProperty("ActiveApplication",All)?? procs?.GetType().GetProperty("Active",All);
+                                proc = actProp?.GetValue(procs);
+                            }else{
+                                var d = device.GetType().GetProperty("Device",All)?.GetValue(device)?? device;
+                                proc = d?.GetType().GetProperty("Process",All)?.GetValue(d)?? d?.GetType().GetField("_process",All)?.GetValue(d);
+                            }
+                        }catch{}
+                        int tc=-1; try{ if(proc!=null){ var th=proc.GetType().GetProperty("Threads",All)?.GetValue(proc) as System.Collections.ICollection; tc=th?.Count??-1; } }catch{}
                         MyLog($"[DIAG] frame={frame} Process={proc!=null} threads={tc}");
                     }
-                    device.ProcessFrame(); device.PresentFrame(()=>{}); frame++; Thread.Sleep(16);
-                }catch(Exception ex){ MyLog($"[FRAME {frame}] CRASH: {ex.InnerException?.Message??ex.Message}"); break; }
+                    device.ProcessFrame();
+                    frame++; Thread.Sleep(16);
+                }catch(Exception ex){ MyLog($"[FRAME {frame}] CRASH: {ex.InnerException?.ToString()??ex.ToString()}"); break; }
             }
         }catch(Exception ex){ MyLog("Emu CRASH: "+ex.ToString()); }
     }
@@ -83,7 +112,6 @@ public class GameActivity : Activity
     unsafe delegate Silk.NET.Vulkan.Result CDel(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
 
     HleConfiguration BuildHle(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio, string baseDir, string sysDir){
-        string profilesPath=Path.Combine(sysDir,"Profiles.json");
         var lhmType=typeof(LibHacHorizonManager); object lhm=null;
         foreach(var c in lhmType.GetConstructors(All)){ try{ var pr=c.GetParameters(); var ar=new object[pr.Length]; for(int k=0;k<pr.Length;k++){ if(pr[k].ParameterType==typeof(VirtualFileSystem)) ar[k]=vfs; else if(pr[k].ParameterType==typeof(string)) ar[k]=baseDir; else if(pr[k].ParameterType.IsValueType) ar[k]=Activator.CreateInstance(pr[k].ParameterType); } lhm=c.Invoke(ar); if(lhm!=null) break; }catch{} }
         try{
