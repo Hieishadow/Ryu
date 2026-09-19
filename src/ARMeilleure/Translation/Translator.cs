@@ -23,17 +23,14 @@ namespace ARMeilleure.Translation
     {
         private readonly IJitMemoryAllocator _allocator;
         private readonly ConcurrentQueue<KeyValuePair<ulong, TranslatedFunction>> _oldFuncs;
-
         public readonly JitCache JitCache;
         private readonly Ptc _ptc;
-
         internal TranslatorCache<TranslatedFunction> Functions { get; }
         public IAddressTable<ulong> FunctionTable { get; }
         internal EntryTable<uint> CountTable { get; }
         internal TranslatorStubs Stubs { get; }
         internal TranslatorQueue Queue { get; }
         internal IMemoryManager Memory { get; }
-
         private Thread[] _backgroundTranslationThreads;
         private volatile int _threadCount;
 
@@ -79,8 +76,10 @@ namespace ARMeilleure.Translation
                 }
                 _ptc.Profiler.Start();
                 _ptc.Disable();
-                int unboundedThreadCount = Math.Max(1, (Environment.ProcessorCount - 6) / 3);
-                int threadCount = Math.Min(4, unboundedThreadCount);
+                // ANDROID PATCH: max 2 threads
+                int threadCount = Math.Max(1, Math.Min(2, Environment.ProcessorCount / 2));
+                int unboundedThreadCount = threadCount;
+
                 Thread[] backgroundTranslationThreads = new Thread[threadCount];
                 for (int i = 0; i < threadCount; i++)
                 {
@@ -133,10 +132,7 @@ namespace ARMeilleure.Translation
                 Thread[] backgroundTranslationThreads = Interlocked.Exchange(ref _backgroundTranslationThreads, null);
                 if (backgroundTranslationThreads!= null)
                 {
-                    foreach (Thread thread in backgroundTranslationThreads)
-                    {
-                        thread.Join();
-                    }
+                    foreach (Thread thread in backgroundTranslationThreads) thread.Join();
                 }
                 ClearJitCache();
                 JitCache.Dispose();
@@ -172,6 +168,7 @@ namespace ARMeilleure.Translation
         {
             if (!Functions.TryGetValue(address, out TranslatedFunction func))
             {
+                // ANDROID PATCH: sempre highCq true = LinearScan
                 func = Translate(address, mode, highCq: true);
                 TranslatedFunction oldFunc = Functions.GetOrAdd(address, func.GuestSize, func);
                 if (oldFunc!= func)
@@ -198,32 +195,16 @@ namespace ARMeilleure.Translation
 
         internal TranslatedFunction Translate(ulong address, ExecutionMode mode, bool highCq, bool singleStep = false, bool pptcTranslation = false)
         {
-            ArmEmitterContext context = new(
-                Memory,
-                CountTable,
-                FunctionTable,
-                Stubs,
-                address,
-                highCq,
-                _ptc.State!= PtcState.Disabled,
-                mode: Aarch32Mode.User,
-                isSingleStep: singleStep);
-
+            ArmEmitterContext context = new(Memory, CountTable, FunctionTable, Stubs, address, highCq, _ptc.State!= PtcState.Disabled, mode: Aarch32Mode.User, isSingleStep: singleStep);
             Logger.StartPass(PassName.Decoding);
             Block[] blocks = Decoder.Decode(Memory, address, mode, highCq, singleStep? DecoderMode.SingleInstruction : DecoderMode.MultipleBlocks);
             Logger.EndPass(PassName.Decoding);
             Logger.StartPass(PassName.Translation);
             InstEmitFlowHelper.EmitCallDepthCheckAndIncrement(context, Const(address));
             EmitSynchronization(context);
-            if (blocks[0].Address!= address)
-            {
-                context.Branch(context.GetLabel(address));
-            }
+            if (blocks[0].Address!= address) context.Branch(context.GetLabel(address));
             ControlFlowGraph cfg = EmitAndGetCFG(context, blocks, out Range funcRange, out Counter<uint> counter, pptcTranslation);
-            if (cfg == null)
-            {
-                return null;
-            }
+            if (cfg == null) return null;
             ulong funcSize = funcRange.End - funcRange.Start;
             Logger.EndPass(PassName.Translation, cfg);
             Logger.StartPass(PassName.RegisterUsage);
@@ -232,10 +213,7 @@ namespace ARMeilleure.Translation
             OperandType retType = OperandType.I64;
             OperandType[] argTypes = [OperandType.I64];
             CompilerOptions options = highCq? CompilerOptions.HighCq : CompilerOptions.None;
-            if (context.HasPtc &&!singleStep)
-            {
-                options |= CompilerOptions.Relocatable;
-            }
+            if (context.HasPtc &&!singleStep) options |= CompilerOptions.Relocatable;
             CompiledFunction compiledFunc = Compiler.Compile(cfg, argTypes, retType, options, RuntimeInformation.ProcessArchitecture);
             if (context.HasPtc &&!singleStep)
             {
@@ -252,15 +230,8 @@ namespace ARMeilleure.Translation
             while (_threadCount!= 0 && Queue.TryDequeue(out RejitRequest request))
             {
                 TranslatedFunction func = Translate(request.Address, request.Mode, highCq: true);
-                Functions.AddOrUpdate(request.Address, func.GuestSize, func, (key, oldFunc) =>
-                {
-                    EnqueueForDeletion(key, oldFunc);
-                    return func;
-                });
-                if (_ptc.Profiler.Enabled)
-                {
-                    _ptc.Profiler.UpdateEntry(request.Address, request.Mode, highCq: true);
-                }
+                Functions.AddOrUpdate(request.Address, func.GuestSize, func, (key, oldFunc) => { EnqueueForDeletion(key, oldFunc); return func; });
+                if (_ptc.Profiler.Enabled) _ptc.Profiler.UpdateEntry(request.Address, request.Mode, highCq: true);
                 RegisterFunction(request.Address, func);
             }
         }
@@ -269,19 +240,10 @@ namespace ARMeilleure.Translation
         {
             public ulong Start { get; }
             public ulong End { get; }
-            public Range(ulong start, ulong end)
-            {
-                Start = start;
-                End = end;
-            }
+            public Range(ulong start, ulong end) { Start = start; End = end; }
         }
 
-        private static ControlFlowGraph EmitAndGetCFG(
-            ArmEmitterContext context,
-            Block[] blocks,
-            out Range range,
-            out Counter<uint> counter,
-            bool pptcTranslation)
+        private static ControlFlowGraph EmitAndGetCFG(ArmEmitterContext context, Block[] blocks, out Range range, out Counter<uint> counter, bool pptcTranslation)
         {
             counter = null;
             ulong rangeStart = ulong.MaxValue;
@@ -317,8 +279,7 @@ namespace ARMeilleure.Translation
                         if (isLastOp)
                         {
                             context.SyncQcFlag();
-                            if (block.Branch is { Exit: false } && block.Branch.Address <= block.Address)
-                                EmitSynchronization(context);
+                            if (block.Branch is { Exit: false } && block.Branch.Address <= block.Address) EmitSynchronization(context);
                         }
                         if (Optimizations.EnableDebugging) EmitDebugPrecisePcUpdate(context, opCode.Address);
                         Operand lblPredicateSkip = default;
@@ -353,7 +314,7 @@ namespace ARMeilleure.Translation
 
         internal static void EmitRejitCheck(ArmEmitterContext context, out Counter<uint> counter)
         {
-            const int MinsCallForRejit = 100;
+            const int MinsCallForRejit = 15; // ANDROID PATCH: era 100
             counter = new Counter<uint>(context.CountTable);
             Operand lblEnd = Label();
             Operand address =!context.HasPtc? Const(ref counter.Value) : Const(ref counter.Value, Ptc.CountTableSymbol);
@@ -413,17 +374,9 @@ namespace ARMeilleure.Translation
         {
             ClearRejitQueue(allowRequeue: false);
             List<TranslatedFunction> functions = Functions.AsList();
-            foreach (TranslatedFunction func in functions)
-            {
-                JitCache.Unmap(func.FuncPointer);
-                func.CallCounter?.Dispose();
-            }
+            foreach (TranslatedFunction func in functions) { JitCache.Unmap(func.FuncPointer); func.CallCounter?.Dispose(); }
             Functions.Clear();
-            while (_oldFuncs.TryDequeue(out KeyValuePair<ulong, TranslatedFunction> kv))
-            {
-                JitCache.Unmap(kv.Value.FuncPointer);
-                kv.Value.CallCounter?.Dispose();
-            }
+            while (_oldFuncs.TryDequeue(out KeyValuePair<ulong, TranslatedFunction> kv)) { JitCache.Unmap(kv.Value.FuncPointer); kv.Value.CallCounter?.Dispose(); }
         }
 
         private void ClearRejitQueue(bool allowRequeue)
