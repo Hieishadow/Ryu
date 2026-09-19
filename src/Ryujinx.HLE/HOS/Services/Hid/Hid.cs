@@ -4,16 +4,22 @@ using Ryujinx.HLE.HOS.Kernel.Memory;
 using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory;
 using System;
 using System.IO;
-using System.Runtime.InteropServices;
 
 namespace Ryujinx.HLE.HOS.Services.Hid
 {
     public class Hid
     {
+        private const string LogPath = "/data/user/0/com.ryubing.android/files/Ryujinx/hid_debug.log";
+
+        private static void L(string msg)
+        {
+            try { File.AppendAllText(LogPath, $"{DateTime.Now}: {msg}\n"); } catch {}
+            try { Console.WriteLine($"[HID] {msg}"); } catch {}
+            try { Android.Util.Log.Info("RYUBING_HID", msg); } catch {}
+        }
+
         private readonly Switch _device;
         private readonly SharedMemoryStorage _storage;
-        private SharedMemory _dummySharedMemory; // 1x só pra retorno
-        private bool _useLocal = true;
 
         internal const int SharedMemEntryCount = 17;
 
@@ -21,10 +27,6 @@ namespace Ryujinx.HLE.HOS.Services.Hid
         {
             get
             {
-                if (_useLocal)
-                {
-                    return ref _dummySharedMemory;
-                }
                 return ref _storage.GetRef<SharedMemory>(0);
             }
         }
@@ -38,33 +40,31 @@ namespace Ryujinx.HLE.HOS.Services.Hid
 
         static Hid()
         {
-            try
-            {
-                if (Environment.OSVersion.Platform == PlatformID.Unix) return;
-                // Checagens originais só no Windows
-                var t = typeof(SharedMemory);
-            }
-            catch { }
         }
 
         internal Hid(in Switch device, SharedMemoryStorage storage)
         {
-            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] ctor ENTER\n"); } catch {}
+            L("ctor ENTER 394 NO FIELD - internal log");
             
             _device = device;
             _storage = storage;
-            _dummySharedMemory = default;
-            
-            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] fields OK\n"); } catch {}
+
+            L("before devices");
 
             DebugPad = new DebugPadDevice(_device, true);
+            L("DebugPad OK");
             Touchscreen = new TouchDevice(_device, true);
+            L("Touchscreen OK");
             Mouse = new MouseDevice(_device, false);
+            L("Mouse OK");
             DebugMouse = new DebugMouseDevice(_device, false);
+            L("DebugMouse OK");
             Keyboard = new KeyboardDevice(_device, false);
+            L("Keyboard OK");
             Npads = new NpadDevices(_device, true);
+            L("Npads OK");
 
-            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] ctor EXIT OK\n"); } catch {}
+            L("ctor EXIT OK 394");
         }
 
         public void RefreshInputConfig(System.Collections.Generic.List<InputConfig> inputConfig) {}
