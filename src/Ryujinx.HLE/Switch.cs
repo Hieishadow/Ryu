@@ -68,15 +68,17 @@ namespace Ryujinx.HLE
                 UIHandler = Configuration.HostUIHandler;
                 
                 DebugLog("MemoryAllocationFlags");
-                MemoryAllocationFlags memoryAllocationFlags = configuration.MemoryManagerMode == MemoryManagerMode.SoftwarePageTable ? MemoryAllocationFlags.Reserve : MemoryAllocationFlags.Reserve | MemoryAllocationFlags.Mirrorable;
-                
+                // FIX ANDROID: Mirrorable quebra no Android (mmap duplo) e mata o Hid com SIGSEGV
+                MemoryAllocationFlags memoryAllocationFlags = MemoryAllocationFlags.Reserve;
+                DebugLog("MemoryAllocationFlags = Reserve ONLY (forced for Android)");
+
                 DebugLog("new DirtyHacks");
                 DirtyHacks = new DirtyHacks(Configuration.Hacks);
                 DebugLog("new CompatLayerHardwareDeviceDriver");
                 AudioDeviceDriver = new CompatLayerHardwareDeviceDriver(Configuration.AudioDeviceDriver);
                 DebugLog("new MemoryBlock " + Configuration.MemoryConfiguration.DramSize);
                 Memory = new MemoryBlock(Configuration.MemoryConfiguration.DramSize, memoryAllocationFlags);
-                DebugLog("Memory OK");
+                DebugLog("Memory OK Size=" + Memory.Size);
                 DebugLog("new GpuContext");
                 Gpu = new GpuContext(Configuration.GpuRenderer, DirtyHacks);
                 DebugLog("Gpu OK");
@@ -87,7 +89,7 @@ namespace Ryujinx.HLE
                 DebugLog("Horizon OK");
                 DebugLog("new PerformanceStatistics");
                 Statistics = new PerformanceStatistics(this);
-                DebugLog("new Hid");
+                DebugLog("new Hid - HidStorage=" + (System.HidStorage==null?"NULL":System.HidStorage.GetType().Name));
                 Hid = new Hid(this, System.HidStorage);
                 DebugLog("Hid OK");
                 DebugLog("new ProcessLoader");
