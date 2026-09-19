@@ -3,6 +3,7 @@ using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Helper;
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
+using Ryujinx.Graphics.Shader;
 using Ryujinx.Graphics.Shader.Translation;
 using Ryujinx.Graphics.Vulkan.MoltenVK;
 using Ryujinx.Graphics.Vulkan.Queries;
@@ -345,8 +346,6 @@ namespace Ryujinx.Graphics.Vulkan
             else if (Vendor != Vendor.Nvidia) { alignment = attrScalarAlignment; return true; }
             alignment = 1; return false;
         }
-
-        // === FIXES ANDROID 100% ===
         public void PreFrame()
         {
             if (!_initialized) return;
@@ -355,7 +354,6 @@ namespace Ryujinx.Graphics.Vulkan
             try { SyncManager.Cleanup(); }
             catch (Exception ex) { Console.WriteLine($"[VK] PreFrame Cleanup ignorado: {ex.Message}"); }
         }
-
         public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved) => _counters.QueueReport(type, resultHandler, divisor, hostReserved);
         public void ResetCounter(CounterType type) => _counters.QueueReset(type);
         public void SetBufferData(BufferHandle buffer, int offset, ReadOnlySpan<byte> data) => BufferManager.SetData(buffer, offset, data, _pipeline.CurrentCommandBuffer, _pipeline.EndRenderPassDelegate);
@@ -387,7 +385,6 @@ namespace Ryujinx.Graphics.Vulkan
         public void Screenshot() { try{ _window.ScreenCaptureRequested = true; }catch{} }
         public void OnScreenCaptured(ScreenCaptureImageInfo bitmap) => ScreenCaptured?.Invoke(this, bitmap);
         public bool SupportsRenderPassBarrier(PipelineStageFlags flags) => !(IsMoltenVk || IsQualcommProprietary);
-
         public unsafe void Dispose()
         {
             if (!_initialized) return;
