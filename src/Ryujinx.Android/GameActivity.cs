@@ -12,6 +12,7 @@ using Ryujinx.HLE.HOS.Services.Account.Acc;
 using Ryujinx.HLE.HOS.Services.Am.AppletOE.ApplicationProxyService.ApplicationProxy.Types;
 using Ryujinx.HLE.UI;
 using Ryujinx.Common.Configuration;
+using Ryujinx.Common.Configuration.Multiplayer;
 using Ryujinx.Graphics.Vulkan;
 using Ryujinx.Audio.Backends.Dummy;
 using Silk.NET.Vulkan;
@@ -144,7 +145,7 @@ public class GameActivity : Activity
                 act.emuThread = new Thread(act.EmulationLoop)
                 {
                     IsBackground = true,
-                    Priority = ThreadPriority.Highest,
+                    Priority = System.Threading.ThreadPriority.Highest,
                     Name = "RyujinxEmu"
                 };
 
