@@ -29,6 +29,7 @@ public class GameActivity : Activity
     const string TAG = "Ryubing";
     const BindingFlags CtorFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
     static readonly string LogFile = "/storage/emulated/0/Download/Ryubing/ryubing_log.txt";
+    static string _lastBaseDir = "";
 
     string romPath = "";
     SurfaceView surfaceView = null!;
@@ -65,6 +66,7 @@ public class GameActivity : Activity
         }
 
         surfaceView = new SurfaceView(this);
+        surfaceView.Holder!.SetFormat(AFormat.Rgba8888);
         logView = new TextView(this);
         logView.Text = $"RYUBING\n{Path.GetFileName(romPath)}\nExiste: {File.Exists(romPath)} {(File.Exists(romPath)? new FileInfo(romPath).Length / 1024 / 1024 : 0)}MB";
         logView.Gravity = GravityFlags.Left;
@@ -112,6 +114,7 @@ public class GameActivity : Activity
             LogAppend($"Iniciando {Path.GetFileName(romPath)}");
             try{ var tz=Java.Util.TimeZone.Default; LogAppend($"TimeZone: {tz.ID}"); }catch{ Java.Util.TimeZone.Default=Java.Util.TimeZone.GetTimeZone("UTC"); LogAppend("TimeZone fallback UTC"); }
             string baseDir=Path.Combine(FilesDir!.AbsolutePath,"Ryujinx");
+            _lastBaseDir = baseDir;
             string systemDir=Path.Combine(baseDir,"system"); Directory.CreateDirectory(systemDir);
             CopyKeys(baseDir,systemDir); CopyFirmware(baseDir); InitAppData(baseDir);
             string jitDir=Path.Combine(CacheDir!.AbsolutePath,"jit"); Directory.CreateDirectory(jitDir); SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE",jitDir);
@@ -141,7 +144,6 @@ public class GameActivity : Activity
     {
         try
         {
-            // LIMPA saves corrompidos de 1 byte das versões antigas
             try { Directory.Delete(Path.Combine(baseDir, "bis", "user", "save"), true); } catch {}
             try { Directory.Delete(Path.Combine(baseDir, "bis", "user", "saveMeta"), true); } catch {}
             try { Directory.Delete(Path.Combine(baseDir, "bis", "system", "save"), true); } catch {}
@@ -154,14 +156,30 @@ public class GameActivity : Activity
 
             LogAppend("Saves limpos - Horizon vai recriar");
 
-            var appDataType=typeof(AppDataManager);
-            var initMethod=appDataType.GetMethod("Initialize",BindingFlags.Static|BindingFlags.Public|BindingFlags.NonPublic);
-            if(initMethod==null){ LogAppend("AppData.Initialize nao encontrado"); return; }
-            var pms=initMethod.GetParameters();
-            if(pms.Length==1) initMethod.Invoke(null,new object[]{baseDir});
-            else if(pms.Length==2){ object mode; var enumType=pms[1].ParameterType; if(Enum.TryParse(enumType,"User",out var m1)) mode=m1!; else if(Enum.TryParse(enumType,"UserProfile",out var m2)) mode=m2!; else mode=Enum.GetValues(enumType).GetValue(0)!; initMethod.Invoke(null,new object[]{baseDir,mode}); }
-            LogAppend($"AppData Base: {AppDataManager.BaseDirPath}");
-        }catch(Exception ex){ LogAppend($"AppData init: {ex.Message}"); }
+            var appDataType = AppDomain.CurrentDomain.GetAssemblies()
+              .SelectMany(a => { try { return a.GetTypes(); } catch { return Type.EmptyTypes; } })
+              .FirstOrDefault(t => t.Name == "AppDataManager");
+
+            if (appDataType == null) { LogAppend("AppDataManager não encontrado"); return; }
+
+            var initMethod = appDataType.GetMethod("Initialize", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            if (initMethod == null) { LogAppend("AppData.Initialize não encontrado"); return; }
+
+            var pms = initMethod.GetParameters();
+            if (pms.Length == 1) initMethod.Invoke(null, new object[] { baseDir });
+            else if (pms.Length == 2)
+            {
+                object mode; var enumType = pms[1].ParameterType;
+                if (Enum.TryParse(enumType, "User", out var m1)) mode = m1!;
+                else if (Enum.TryParse(enumType, "UserProfile", out var m2)) mode = m2!;
+                else mode = Enum.GetValues(enumType).GetValue(0)!;
+                initMethod.Invoke(null, new object[] { baseDir, mode });
+            }
+
+            var basePathProp = appDataType.GetProperty("BaseDirPath", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            LogAppend($"AppData Base: {basePathProp?.GetValue(null)}");
+        }
+        catch (Exception ex) { LogAppend($"AppData init: {ex.Message}"); }
     }
 
     unsafe delegate Silk.NET.Vulkan.Result CreateAndroidSurfaceDelegate(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
@@ -170,12 +188,11 @@ public class GameActivity : Activity
     {
         var cmType=typeof(ContentManager); var ucpType=typeof(UserChannelPersistence); var lhmType=typeof(LibHacHorizonManager); var amType=typeof(AccountManager);
         LogAppend($"Tipos: CM={cmType.FullName} | UCP={ucpType.FullName} | LHM={lhmType.FullName} | AM={amType.FullName}");
-        object? contentManager=null; foreach(var c in cmType.GetConstructors(CtorFlags).OrderByDescending(x=>x.GetParameters().Length)){ try{ var pars=c.GetParameters(); var args=new object?[pars.Length]; for(int i=0;i<pars.Length;i++){ if(pars[i].ParameterType==typeof(VirtualFileSystem)) args[i]=vfs; else if(pars[i].ParameterType==typeof(string)) args[i]=AppDataManager.BaseDirPath??""; else args[i]=null; } contentManager=c.Invoke(args); LogAppend($"CM OK {pars.Length}"); break; }catch(Exception ex){ LogAppend($"CM fail: {ex.InnerException?.Message??ex.Message}"); } } if(contentManager==null) throw new Exception("ContentManager falhou");
+        object? contentManager=null; foreach(var c in cmType.GetConstructors(CtorFlags).OrderByDescending(x=>x.GetParameters().Length)){ try{ var pars=c.GetParameters(); var args=new object?[pars.Length]; for(int i=0;i<pars.Length;i++){ if(pars[i].ParameterType==typeof(VirtualFileSystem)) args[i]=vfs; else if(pars[i].ParameterType==typeof(string)) args[i]=_lastBaseDir; else args[i]=null; } contentManager=c.Invoke(args); LogAppend($"CM OK {pars.Length}"); break; }catch(Exception ex){ LogAppend($"CM fail: {ex.InnerException?.Message??ex.Message}"); } } if(contentManager==null) throw new Exception("ContentManager falhou");
         object? userChannel=null; foreach(var c in ucpType.GetConstructors(CtorFlags).OrderBy(x=>x.GetParameters().Length)){ try{ var pars=c.GetParameters(); var args=new object?[pars.Length]; for(int i=0;i<pars.Length;i++){ if(pars[i].ParameterType==typeof(bool)) args[i]=true; else if(pars[i].ParameterType.IsValueType) args[i]=Activator.CreateInstance(pars[i].ParameterType); else args[i]=null; } userChannel=c.Invoke(args); LogAppend($"UCP OK ctor {pars.Length}"); break; }catch(Exception ex){ LogAppend($"UCP fail: {ex.InnerException?.Message??ex.Message}"); } } if(userChannel==null) userChannel=Activator.CreateInstance(ucpType,true)!;
-        object? libHac=null; foreach(var c in lhmType.GetConstructors(CtorFlags).OrderByDescending(x=>x.GetParameters().Length)){ try{ var pars=c.GetParameters(); var args=new object?[pars.Length]; for(int i=0;i<pars.Length;i++){ if(pars[i].ParameterType==typeof(VirtualFileSystem)) args[i]=vfs; else if(pars[i].ParameterType==typeof(string)) args[i]=AppDataManager.BaseDirPath??""; else if(pars[i].ParameterType.IsValueType) args[i]=Activator.CreateInstance(pars[i].ParameterType); else args[i]=null; } libHac=c.Invoke(args); LogAppend($"LHM OK {pars.Length}"); break; }catch(Exception ex){ LogAppend($"LHM fail: {ex.InnerException?.Message??ex.Message}"); } } if(libHac==null) throw new Exception("LibHacHorizonManager falhou");
-        // NÃO chama InitializeFsServer aqui - ele é chamado internamente pelo Configure
-        object? accountManager=null; foreach(var c in amType.GetConstructors(CtorFlags).OrderByDescending(x=>x.GetParameters().Length)){ try{ var pars=c.GetParameters(); var args=new object?[pars.Length]; for(int i=0;i<pars.Length;i++){ var pt=pars[i].ParameterType; if(pt==typeof(VirtualFileSystem)) args[i]=vfs; else if(pt==typeof(string)) args[i]=AppDataManager.BaseDirPath??""; else if(pt.Name.Contains("HorizonClient")){ args[i]=libHac.GetType().GetProperty("RyujinxClient",BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance)?.GetValue(libHac); }else if(pt.IsValueType) args[i]=Activator.CreateInstance(pt); else args[i]=null; } accountManager=c.Invoke(args); LogAppend($"AM OK {pars.Length}"); break; }catch(Exception ex){ LogAppend($"AM fail: {ex.InnerException?.Message??ex.Message}"); } } if(accountManager==null) throw new Exception("AccountManager falhou");
-        LogAppend("Criando HleConfiguration..."); var hleConfType=typeof(HleConfiguration); var ctor=hleConfType.GetConstructors(CtorFlags).OrderByDescending(c=>c.GetParameters().Length).First(); var ctorPars=ctor.GetParameters(); var ctorArgs=new object?[ctorPars.Length]; for(int i=0;i<ctorPars.Length;i++){ var pt=ctorPars[i].ParameterType; if(pt==typeof(string)) ctorArgs[i]=ctorPars[i].Name!.ToLower().Contains("timezone")?"UTC":""; else if(pt==typeof(bool)) ctorArgs[i]=true; else if(pt==typeof(int)||pt==typeof(long)||pt==typeof(uint)||pt==typeof(ulong)) ctorArgs[i]=Convert.ChangeType(1,pt); else if(pt==typeof(float)||pt==typeof(double)) ctorArgs[i]=Convert.ChangeType(1f,pt); else if(pt.IsEnum){ var names=Enum.GetNames(pt); string pick=names.FirstOrDefault(n=>n=="AmericanEnglish"||n=="USA"||n=="None"||n=="Disabled"||n=="Switch"||n.Contains("4GiB"))??names[0]; ctorArgs[i]=Enum.Parse(pt,pick); }else if(pt.IsArray) ctorArgs[i]=Array.CreateInstance(pt.GetElementType()!,0); else if(pt.IsValueType) ctorArgs[i]=Activator.CreateInstance(pt); else ctorArgs[i]=null; } var hleConf=(HleConfiguration)ctor.Invoke(ctorArgs); LogAppend("HleConfiguration OK via reflection");
+        object? libHac=null; foreach(var c in lhmType.GetConstructors(CtorFlags).OrderByDescending(x=>x.GetParameters().Length)){ try{ var pars=c.GetParameters(); var args=new object?[pars.Length]; for(int i=0;i<pars.Length;i++){ if(pars[i].ParameterType==typeof(VirtualFileSystem)) args[i]=vfs; else if(pars[i].ParameterType==typeof(string)) args[i]=_lastBaseDir; else if(pars[i].ParameterType.IsValueType) args[i]=Activator.CreateInstance(pars[i].ParameterType); else args[i]=null; } libHac=c.Invoke(args); LogAppend($"LHM OK {pars.Length}"); break; }catch(Exception ex){ LogAppend($"LHM fail: {ex.InnerException?.Message??ex.Message}"); } } if(libHac==null) throw new Exception("LibHacHorizonManager falhou");
+        object? accountManager=null; foreach(var c in amType.GetConstructors(CtorFlags).OrderByDescending(x=>x.GetParameters().Length)){ try{ var pars=c.GetParameters(); var args=new object?[pars.Length]; for(int i=0;i<pars.Length;i++){ var pt=pars[i].ParameterType; if(pt==typeof(VirtualFileSystem)) args[i]=vfs; else if(pt==typeof(string)) args[i]=_lastBaseDir; else if(pt.Name.Contains("HorizonClient")){ args[i]=libHac.GetType().GetProperty("RyujinxClient",BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance)?.GetValue(libHac); }else if(pt.IsValueType) args[i]=Activator.CreateInstance(pt); else args[i]=null; } accountManager=c.Invoke(args); LogAppend($"AM OK {pars.Length}"); break; }catch(Exception ex){ LogAppend($"AM fail: {ex.InnerException?.Message??ex.Message}"); } } if(accountManager==null) throw new Exception("AccountManager falhou");
+        LogAppend("Criando HleConfiguration..."); var hleConfType=typeof(HleConfiguration); var ctor=hleConfType.GetConstructors(CtorFlags).OrderByDescending(c=>c.GetParameters().Length).First(); var ctorPars=ctor.GetParameters(); var ctorArgs=new object?[ctorPars.Length]; for(int i=0;i<ctorPars.Length;i++){ var pt=ctorPars[i].ParameterType; if(pt==typeof(string)) ctorArgs[i]="UTC"; else if(pt==typeof(bool)) ctorArgs[i]=true; else if(pt==typeof(int)||pt==typeof(long)||pt==typeof(uint)||pt==typeof(ulong)) ctorArgs[i]=Convert.ChangeType(1,pt); else if(pt==typeof(float)||pt==typeof(double)) ctorArgs[i]=Convert.ChangeType(1f,pt); else if(pt.IsEnum){ var names=Enum.GetNames(pt); string pick=names.FirstOrDefault(n=>n=="AmericanEnglish"||n=="USA"||n=="None"||n=="Disabled"||n=="Switch"||n.Contains("4GiB"))??names[0]; ctorArgs[i]=Enum.Parse(pt,pick); }else if(pt.IsArray) ctorArgs[i]=Array.CreateInstance(pt.GetElementType()!,0); else if(pt.IsValueType) ctorArgs[i]=Activator.CreateInstance(pt); else ctorArgs[i]=null; } var hleConf=(HleConfiguration)ctor.Invoke(ctorArgs); LogAppend("HleConfiguration OK via reflection");
         var configureMethod=hleConfType.GetMethods(BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance).FirstOrDefault(m=>m.Name=="Configure"&&m.GetParameters().Length>=7); if(configureMethod==null) throw new Exception("Configure not found");
         var confPars=configureMethod.GetParameters(); var confArgs=new object?[confPars.Length]; for(int i=0;i<confPars.Length;i++){ var pt=confPars[i].ParameterType; if(pt==typeof(VirtualFileSystem)) confArgs[i]=vfs; else if(pt==typeof(LibHacHorizonManager)) confArgs[i]=libHac; else if(pt==typeof(ContentManager)) confArgs[i]=contentManager; else if(pt==typeof(AccountManager)) confArgs[i]=accountManager; else if(pt==typeof(UserChannelPersistence)) confArgs[i]=userChannel; else if(pt.IsInstanceOfType(gpu)) confArgs[i]=gpu; else if(pt.Name.Contains("Audio")||pt.Name.Contains("HardwareDeviceDriver")) confArgs[i]=audio; else if(pt.Name.Contains("HostUI")) confArgs[i]=null; else if(pt.IsValueType) confArgs[i]=Activator.CreateInstance(pt); else confArgs[i]=null; }
         var result=configureMethod.Invoke(hleConf,confArgs) as HleConfiguration; LogAppend("Configure OK"); return result!;
