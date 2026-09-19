@@ -2,6 +2,8 @@ using LibHac.Common;
 using LibHac.Fs;
 using LibHac.Fs.Fsa;
 using LibHac.Loader;
+using LibHac.Tools.Fs;
+using LibHac.Tools.FsSystem;
 using System.Reflection;
 
 namespace Ryujinx.HLE.Loaders.Processes.Extensions
@@ -18,7 +20,6 @@ namespace Ryujinx.HLE.Loaders.Processes.Extensions
                 t.GetField("_programId", flags)?.SetValue(metaLoader, (ulong)0x0100000000000000);
                 t.GetField("_is64Bit", flags)?.SetValue(metaLoader, true);
                 t.GetField("_mainThreadStackSize", flags)?.SetValue(metaLoader, (ulong)0x100000);
-                t.GetField("_mainThreadPriority", flags)?.SetValue(metaLoader, (uint)44);
             }
             catch { }
         }
@@ -27,18 +28,14 @@ namespace Ryujinx.HLE.Loaders.Processes.Extensions
         {
             try
             {
-                if (fileSystem.FileExists(ProcessConst.MainNpdmPath))
-                {
-                    using UniqueRef<IFile> npdmFile = new();
-                    fileSystem.OpenFile(ref npdmFile.Ref, ProcessConst.MainNpdmPath, OpenMode.Read).ThrowIfFailure();
-                    var storage = npdmFile.Get.AsStorage();
-                    metaLoader.Load(storage);
-                    return;
-                }
+                using UniqueRef<IFile> npdmFile = new();
+                fileSystem.OpenFile(ref npdmFile.Ref, ProcessConst.MainNpdmPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
+                metaLoader.Load(npdmFile.Get.AsStorage());
             }
-            catch { }
-            
-            metaLoader.LoadDefault();
+            catch
+            {
+                metaLoader.LoadDefault();
+            }
         }
     }
 }
