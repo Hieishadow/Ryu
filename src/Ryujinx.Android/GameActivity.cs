@@ -77,49 +77,35 @@ public class GameActivity : Activity
             device.LoadNsp(romPath);
             MyLog("LoadNsp OK");
 
-            // CORREÇÃO CRÍTICA 1: Iniciar kernel HLE
-            try{
-                var startM = device.GetType().GetMethod("Start", All);
-                if(startM!=null){
-                    startM.Invoke(device, null);
-                    MyLog("[SWITCH] device.Start() OK - kernel HLE iniciado");
-                } else {
-                    MyLog("[SWITCH] Start() method NOT FOUND via reflection");
-                }
-            }catch(Exception ex){
-                MyLog($"[SWITCH] Start() FAIL: {ex.InnerException?.Message??ex.Message}\n{ex.InnerException?.StackTrace??ex.StackTrace}");
-                return;
-            }
-
             RunOnUiThread(()=>{ logView.Visibility=ViewStates.Gone; });
 
-            // CORREÇÃO CRÍTICA 2: Loop com try/catch e pacing
-            try{
-                int frames=0;
-                MyLog("[EMU] LOOP INICIADO - 60fps lock");
-                while(running){
-                    try{
-                        device.ProcessFrame();
-                        device.PresentFrame(()=>{});
-                        frames++;
-                        if(frames%60==0){
-                            try{
-                                var procProp = device.GetType().GetProperty("Process", All)?? device.GetType().GetField("_process",All)?.FieldType.GetProperty("Process",All);
-                                var proc = device.GetType().GetProperty("Process",All)?.GetValue(device)?? device.GetType().GetField("_process",All)?.GetValue(device);
-                                // Tenta pegar Threads
-                                var threads = (proc?.GetType().GetProperty("Threads",All)?.GetValue(proc) as System.Collections.ICollection)?.Count?? -1;
-                                MyLog($"[GUEST] frame={frames} threads={threads} - PresentFrame real");
-                            }catch(Exception exLog){ MyLog($"[GUEST] log fail: {exLog.Message}"); }
-                        }
-                        Thread.Sleep(16); // ~60fps, evita 900fps vazio
-                    }catch(Exception exInner){
-                        MyLog($"[LOOP] EXCEPTION frame {frames}: {exInner.InnerException?.Message??exInner.Message}\n{exInner.InnerException?.StackTrace??exInner.StackTrace}");
-                        Thread.Sleep(50);
-                        if(exInner.Message.Contains("Guest")) break;
+            int frame=0;
+            MyLog("[DIAG] INICIANDO LOOP DIAGNOSTICO");
+            while(running){
+                try{
+                    if(frame<5 || frame%60==0){
+                        try{
+                            var d = device.GetType().GetProperty("Device",All)?.GetValue(device);
+                            if(d==null) d = device;
+                            var proc = d?.GetType().GetProperty("Process",All)?.GetValue(d);
+                            if(proc==null) proc = d?.GetType().GetField("_process",All)?.GetValue(d);
+                            int tc=-1;
+                            if(proc!=null){
+                                var th = proc.GetType().GetProperty("Threads",All)?.GetValue(proc) as System.Collections.ICollection;
+                                tc = th?.Count?? -1;
+                            }
+                            MyLog($"[DIAG] frame={frame} Device={d!=null} Process={proc!=null} threads={tc}");
+                        }catch(Exception exD){ MyLog($"[DIAG] fail: {exD.Message}"); }
                     }
+                    device.ProcessFrame();
+                    device.PresentFrame(()=>{});
+                    frame++;
+                    if(frame==5) MyLog("[DIAG] 5 frames rodaram, loop funcionando - scheduler existe");
+                    Thread.Sleep(16);
+                }catch(Exception ex){
+                    MyLog($"[FRAME {frame}] CRASH: {ex.InnerException?.Message??ex.Message}\n{ex.InnerException?.StackTrace??ex.StackTrace}");
+                    break;
                 }
-            }catch(Exception ex){
-                MyLog($"[EMU THREAD] FATAL: {ex.ToString()}");
             }
         }catch(Exception ex){ MyLog("Emu CRASH: "+ex.ToString()); try{ typeof(VirtualFileSystem).GetField("_instance",All)?.SetValue(null,null); }catch{} }
     }
@@ -139,7 +125,7 @@ public class GameActivity : Activity
             try{ var m = methods.FirstOrDefault(x=>x.Name=="InitializeArpServer" && x.GetParameters().Length==0); m?.Invoke(lhm,null); MyLog("LHM.InitializeArpServer() OK"); }catch(Exception ex){ MyLog($"LHM.InitializeArpServer fail (ignorado): {ex.InnerException?.Message??ex.Message}"); }
             try{ var m = methods.FirstOrDefault(x=>x.Name=="InitializeBcatServer" && x.GetParameters().Length==0); m?.Invoke(lhm,null); MyLog("LHM.InitializeBcatServer() OK"); }catch(Exception ex){ MyLog($"LHM.InitializeBcatServer fail (ignorado): {ex.InnerException?.Message??ex.Message}"); }
             try{ var m = methods.FirstOrDefault(x=>x.Name=="InitializeFsServer" && x.GetParameters().Length==1); m?.Invoke(lhm,new object[]{vfs}); MyLog("LHM.InitializeFsServer(VFS) OK"); }catch(Exception ex){ MyLog($"LHM.InitializeFsServer FAIL: {ex.InnerException?.Message??ex.Message}"); }
-            try{ var m = methods.FirstOrDefault(x=>x.Name=="InitializeSystemClients" && x.GetParameters().Length==0); m?.Invoke(lhm,null); MyLog("LHM.InitializeSystemClients() OK"); }catch(Exception ex){ MyLog($"LHM.InitializeSystemClients fail (ignorado): {ex.InnerException?.Message??ex.Message}\nSTACK: {ex.InnerException?.StackTrace}"); }
+            try{ var m = methods.FirstOrDefault(x=>x.Name=="InitializeSystemClients" && x.GetParameters().Length==0); m?.Invoke(lhm,null); MyLog("LHM.InitializeSystemClients() OK"); }catch(Exception ex){ MyLog($"LHM.InitializeSystemClients fail (ignorado por enquanto): {ex.InnerException?.Message??ex.Message}"); }
             var fsAfter=fsClientProp?.GetValue(lhm);
             MyLog("LHM.FsClient AFTER init -> "+(fsAfter==null?"NULL":fsAfter.GetType().Name));
         }catch(Exception ex){ MyLog("LHM init check fail: "+ex.Message); }
