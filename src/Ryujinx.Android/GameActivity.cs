@@ -19,8 +19,9 @@ public class GameActivity : Activity
     protected override void OnCreate(Bundle savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
-        Window.AddFlags(WindowManagerFlags.Fullscreen|WindowManagerFlags.KeepScreenOn);
-        string extra = Intent.GetStringExtra("rom_path"); if(extra!=null) romPath=extra;
+        if(Window==null==false) Window.AddFlags(WindowManagerFlags.Fullscreen|WindowManagerFlags.KeepScreenOn);
+        string extra = Intent.GetStringExtra("rom_path");
+        if(extra==null==false) romPath=extra;
         if(romPath.Length==0){
             string dir="/storage/emulated/0/Download/Ryubing/games";
             if(Directory.Exists(dir)){
@@ -42,14 +43,14 @@ public class GameActivity : Activity
             if(act.nativeWindow==IntPtr.Zero) return;
             ANativeWindow_setBuffersGeometry(act.nativeWindow,rect.Width(),rect.Height(),1);
             ANativeWindow_acquire(act.nativeWindow);
-            if(act.emuThread!=null){ if(act.emuThread.IsAlive){ return; } }
+            if(act.emuThread==null==false){ if(act.emuThread.IsAlive) return; }
             act.running=true; act.emuThread=new Thread(act.EmulationLoop){ IsBackground=true }; act.emuThread.Start();
         }
         public void SurfaceChanged(ISurfaceHolder h,AFormat f,int w,int ht){
-            if(act.nativeWindow!=IntPtr.Zero){ ANativeWindow_setBuffersGeometry(act.nativeWindow,w,ht,1); }
+            if(act.nativeWindow==IntPtr.Zero==false){ ANativeWindow_setBuffersGeometry(act.nativeWindow,w,ht,1); }
         }
         public void SurfaceDestroyed(ISurfaceHolder h){
-            act.running=false; if(act.nativeWindow!=IntPtr.Zero){ ANativeWindow_release(act.nativeWindow); act.nativeWindow=IntPtr.Zero; }
+            act.running=false; if(act.nativeWindow==IntPtr.Zero==false){ ANativeWindow_release(act.nativeWindow); act.nativeWindow=IntPtr.Zero; }
         }
     }
     void EmulationLoop(){
@@ -68,6 +69,31 @@ public class GameActivity : Activity
         var ucpType=typeof(UserChannelPersistence); object ucp=Activator.CreateInstance(ucpType,true);
         var lhmType=typeof(LibHacHorizonManager); object lhm=null; foreach(var c in lhmType.GetConstructors(CtorFlags)){ try{ var pr=c.GetParameters(); var ar=new object[pr.Length]; for(int k=0;k<pr.Length;k++){ if(pr[k].ParameterType==typeof(VirtualFileSystem)) ar[k]=vfs; else if(pr[k].ParameterType==typeof(string)) ar[k]=FilesDir.AbsolutePath; else if(pr[k].ParameterType.IsValueType) ar[k]=Activator.CreateInstance(pr[k].ParameterType); } lhm=c.Invoke(ar); break; }catch{} }
         var amType=typeof(AccountManager); object am=null; object hc=null; try{ hc=lhm.GetType().GetProperty("RyujinxClient",BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance).GetValue(lhm); }catch{} foreach(var c in amType.GetConstructors(CtorFlags)){ try{ var pr=c.GetParameters(); var ar=new object[pr.Length]; for(int k=0;k<pr.Length;k++){ var pt=pr[k].ParameterType; if(pt==typeof(VirtualFileSystem)) ar[k]=vfs; else if(pt.Name.Contains("HorizonClient")) ar[k]=hc; else if(pt.IsValueType) ar[k]=Activator.CreateInstance(pt); } am=c.Invoke(ar); break; }catch{} }
-        var hleType=typeof(HleConfiguration); var ctor=hleType.GetConstructors(CtorFlags)[0]; var ps=ctor.GetParameters(); var ca=new object[ps.Length]; for(int k=0;k<ps.Length;k++){ var pt=ps[k].ParameterType; if(pt==typeof(string)) ca[k]="UTC"; else if(pt==typeof(bool)) ca[k]=true; else if(pt.IsEnum) ca[k]=Enum.GetValues(pt).GetValue(0); else if(pt.IsValueType) ca[k]=Activator.CreateInstance(pt); } var hle=(HleConfiguration)ctor.Invoke(ca); var conf=hleType.GetMethod("Configure"); var cps=conf.GetParameters(); var cargs=new object[cps.Length]; for(int k=0;k<cps.Length;k++){ var pt=cps[k].ParameterType; if(pt==typeof(VirtualFileSystem)) cargs[k]=vfs; else if(pt==typeof(LibHacHorizonManager)) cargs[k]=lhm; else if(pt==typeof(ContentManager)) cargs[k]=cm; else if(pt==typeof(AccountManager)) cargs[k]=am; else if(pt==typeof(UserChannelPersistence)) cargs[k]=ucp; else if(pt.IsInstanceOfType(gpu)) cargs[k]=gpu; else if(pt.Name.Contains("Audio")) cargs[k]=audio; } return conf.Invoke(hle,cargs) as HleConfiguration;
+        var hleType=typeof(HleConfiguration); var ctor=hleType.GetConstructors(CtorFlags)[0]; var ps=ctor.GetParameters(); var ca=new object[ps.Length]; for(int k=0;k<ps.Length;k++){ var pt=ps[k].ParameterType; if(pt==typeof(string)) ca[k]="UTC"; else if(pt==typeof(bool)) ca[k]=true; else if(pt.IsEnum) ca[k]=Enum.GetValues(pt).GetValue(0); else if(pt.IsValueType) ca[k]=Activator.CreateInstance(pt); } var hle=(HleConfiguration)ctor.Invoke(ca);
+        var conf=hleType.GetMethod("Configure"); var cps=conf.GetParameters(); var cargs=new object[cps.Length];
+        for(int k=0;k<cps.Length;k++){
+            var pt=cps[k].ParameterType;
+            if(pt==typeof(VirtualFileSystem)) cargs[k]=vfs;
+            else if(pt==typeof(LibHacHorizonManager)) cargs[k]=lhm;
+            else if(pt==typeof(ContentManager)) cargs[k]=cm;
+            else if(pt==typeof(AccountManager)) cargs[k]=am;
+            else if(pt==typeof(UserChannelPersistence)) cargs[k]=ucp;
+            else if(pt.IsInstanceOfType(gpu)) cargs[k]=gpu;
+            else if(typeof(Ryujinx.Audio.IHardwareDeviceDriver).IsAssignableFrom(pt)) cargs[k]=audio;
+            else if(pt.Name.Contains("Audio") || pt.Name.Contains("DeviceDriver") || pt.Name.Contains("Hardware")) cargs[k]=audio;
+        }
+        var cfg = conf.Invoke(hle,cargs) as HleConfiguration;
+        try{
+            foreach(var prop in cfg.GetType().GetProperties(BindingFlags.Public|BindingFlags.Instance)){
+                bool isAudio = prop.PropertyType==typeof(Ryujinx.Audio.IHardwareDeviceDriver) || prop.Name.Contains("AudioDeviceDriver");
+                if(isAudio){
+                    if(prop.CanWrite){
+                        object cur = prop.GetValue(cfg);
+                        if(cur==null) prop.SetValue(cfg, audio);
+                    }
+                }
+            }
+        }catch{}
+        return cfg;
     }
 }
