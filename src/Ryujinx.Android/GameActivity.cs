@@ -43,65 +43,56 @@ public class GameActivity : Activity
             MyLog("VFS OK");
             var audio=new DummyHardwareDeviceDriver();
             if(nativeWindow==IntPtr.Zero) return;
+
+            // VULKAN CREATE + INITIALIZE CORRETO
             gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
-            try{ var mInit = gpu.GetType().GetMethod("Initialize", All); if(mInit!=null){ if(mInit.GetParameters().Length==0) mInit.Invoke(gpu,null); else mInit.Invoke(gpu,new object[]{0}); } }catch{}
+            try{
+                var debugLevelType = typeof(VulkanRenderer).Assembly.GetTypes().FirstOrDefault(t=>t.Name=="GraphicsDebugLevel");
+                object logLevel = 0;
+                if(debugLevelType!=null){ logLevel = Enum.Parse(debugLevelType, "None"); MyLog($"[VK] logLevel={logLevel}"); }
+                var mInit = gpu.GetType().GetMethod("Initialize", All);
+                MyLog($"[VK] Initialize method found={mInit!=null}");
+                if(mInit!=null){
+                    if(mInit.GetParameters().Length==0) mInit.Invoke(gpu,null);
+                    else mInit.Invoke(gpu,new object[]{ logLevel });
+                }
+                var fInit = gpu.GetType().GetField("_initialized", All);
+                MyLog($"[VK] _initialized={fInit?.GetValue(gpu)}");
+                var window = gpu.GetType().GetProperty("Window", All)?.GetValue(gpu);
+                window?.GetType().GetMethod("SetSize", All)?.Invoke(window, new object[]{ surfaceView.Width, surfaceView.Height });
+                MyLog($"[VK] SetSize {surfaceView.Width}x{surfaceView.Height} OK");
+            }catch(Exception ex){ MyLog($"[VK] Init FAIL: {ex.InnerException?.ToString()??ex.ToString()}"); }
             MyLog("Vulkan OK");
+
             var conf=BuildHle(vfs,gpu,audio, baseDir, sysDir);
             MyLog("HLE FINAL OK");
             device=new Switch(conf);
             MyLog("Switch OK");
 
-            // === LOAD NSP DIAGNOSTICO SEGURO ===
+            // LOAD NSP COM DIAGNOSTICO E Type.Missing
             var loadMethods = device.GetType().GetMethods(All).Where(m=>m.Name=="LoadNsp").ToList();
             MyLog($"[LOAD] LoadNsp encontrados: {loadMethods.Count}");
             foreach(var m in loadMethods){
                 var ps=m.GetParameters();
-                MyLog($"[LOAD] METHOD: {m} Return={m.ReturnType.Name} Params={ps.Length}");
-                for(int i=0;i<ps.Length;i++) MyLog($"[LOAD] PARAM[{i}] type={ps[i].ParameterType.FullName} name={ps[i].Name} opt={ps[i].IsOptional}");
+                MyLog($"[LOAD] METHOD: {m} Return={m.ReturnType.Name} Params={ps.Length} opt0={ps.Length>0?ps[0].IsOptional:false} opt1={ps.Length>1?ps[1].IsOptional:false}");
             }
-            if(loadMethods.Count==0) throw new Exception("LoadNsp não encontrado");
-
-            MethodInfo selected=null; object[] loadArgs=null;
-            foreach(var m in loadMethods){
-                var ps=m.GetParameters();
-                if(ps.Length==1 && ps[0].ParameterType==typeof(string)){ selected=m; loadArgs=new object[]{ romPath }; break; }
-                if(ps.Length==2 && ps[0].ParameterType==typeof(string) && ps[1].ParameterType==typeof(ulong)){ selected=m; loadArgs=new object[]{ romPath, (ulong)0 }; break; }
-                if(ps.Length==2 && ps[0].ParameterType==typeof(string) && ps[1].ParameterType==typeof(long)){ selected=m; loadArgs=new object[]{ romPath, (long)0 }; break; }
+            MethodInfo selected = loadMethods.FirstOrDefault();
+            object result = null;
+            try{
+                MyLog("[LOAD] Tentando com Type.Missing (auto AppId)");
+                result = selected.Invoke(device, new object[]{ romPath, Type.Missing });
+            }catch{
+                MyLog("[LOAD] Missing falhou, tentando 0UL");
+                result = selected.Invoke(device, new object[]{ romPath, (ulong)0 });
             }
-            if(selected==null){ foreach(var m in loadMethods) MyLog($"[LOAD] CANDIDATO: {m}"); throw new Exception("LoadNsp assinatura não compatível"); }
+            bool ok = result is bool b? b : true;
+            MyLog($"[LOAD] RESULTADO={result} OK={ok}");
+            if(!ok) throw new Exception("LoadNsp retornou false - veja Ryubing/ryubing_log.txt");
 
-            MyLog($"[LOAD] INVOCANDO: {selected} com {loadArgs.Length} args");
-            object result = selected.Invoke(device, loadArgs);
-            bool loadOk = selected.ReturnType==typeof(bool)? (result is bool b && b) : true;
-            MyLog($"[LOAD] RESULTADO={result} OK={loadOk}");
-            if(!loadOk) throw new Exception("LoadNsp retornou false");
-            MyLog("[LOAD] LoadNsp OK VERDADEIRO - PROCESSO INICIADO");
-
-            // === LOOP DIAGNOSTICO ===
-            var mPF = device.GetType().GetMethod("ProcessFrame", All);
-            var mPr = device.GetType().GetMethod("PresentFrame", All);
-            MyLog($"[LOOP] ProcessFrame={mPF!=null} PresentFrame={mPr!=null} (Present será ignorado)");
-
-            RunOnUiThread(()=>{ if(logView!=null) logView.Visibility=ViewStates.Gone; });
+            RunOnUiThread(()=>{ logView.Visibility=ViewStates.Gone; });
             int frame=0; MyLog("[DIAG] LOOP INICIADO");
             while(running){
                 try{
-                    if(frame<5 || frame%60==0){
-                        object proc=null;
-                        try{
-                            var pProp = device.GetType().GetProperty("Processes",All);
-                            if(pProp!=null){
-                                var procs = pProp.GetValue(device);
-                                var actProp = procs?.GetType().GetProperty("ActiveApplication",All)?? procs?.GetType().GetProperty("Active",All);
-                                proc = actProp?.GetValue(procs);
-                            }else{
-                                var d = device.GetType().GetProperty("Device",All)?.GetValue(device)?? device;
-                                proc = d?.GetType().GetProperty("Process",All)?.GetValue(d)?? d?.GetType().GetField("_process",All)?.GetValue(d);
-                            }
-                        }catch{}
-                        int tc=-1; try{ if(proc!=null){ var th=proc.GetType().GetProperty("Threads",All)?.GetValue(proc) as System.Collections.ICollection; tc=th?.Count??-1; } }catch{}
-                        MyLog($"[DIAG] frame={frame} Process={proc!=null} threads={tc}");
-                    }
                     device.ProcessFrame();
                     frame++; Thread.Sleep(16);
                 }catch(Exception ex){ MyLog($"[FRAME {frame}] CRASH: {ex.InnerException?.ToString()??ex.ToString()}"); break; }
@@ -128,7 +119,7 @@ public class GameActivity : Activity
         var hleType=typeof(HleConfiguration); var hleCtor=hleType.GetConstructors(All)[0]; var hps=hleCtor.GetParameters(); var hargs=new object[hps.Length];
         for(int k=0;k<hps.Length;k++){ var pt=hps[k].ParameterType; if(pt==typeof(string)) hargs[k]="UTC"; else if(pt==typeof(bool)) hargs[k]=true; else if(pt.Name=="MemoryManagerMode"){ try{ hargs[k]=Enum.Parse(pt,"SoftwarePageTable"); MyLog("[MEM] SoftwarePageTable"); }catch{ hargs[k]=Enum.GetValues(pt).GetValue(0); } } else if(pt.IsEnum) hargs[k]=Enum.GetValues(pt).GetValue(0); else if(pt.IsValueType) hargs[k]=Activator.CreateInstance(pt); }
         var hle=(HleConfiguration)hleCtor.Invoke(hargs);
-        try{ var memProp=hleType.GetProperties(All).FirstOrDefault(p=>p.Name.Contains("MemoryAllocation")); if(memProp!=null){ var reserve=Enum.Parse(memProp.PropertyType,"Reserve"); memProp.SetValue(hle,reserve); MyLog("[MEM] Reserve (sem ONLY)"); } }catch{}
+        try{ var memProp=hleType.GetProperties(All).FirstOrDefault(p=>p.Name.Contains("MemoryAllocation")); if(memProp!=null){ var reserve=Enum.Parse(memProp.PropertyType,"Reserve"); memProp.SetValue(hle,reserve); MyLog("[MEM] Reserve"); } }catch{}
         var confM=hleType.GetMethod("Configure",All); var cps=confM.GetParameters(); var cargs=new object[cps.Length];
         for(int k=0;k<cps.Length;k++){ var pt=cps[k].ParameterType; if(pt==typeof(VirtualFileSystem)) cargs[k]=vfs; else if(pt==typeof(LibHacHorizonManager)) cargs[k]=lhm; else if(pt==typeof(ContentManager)) cargs[k]=cm; else if(pt==typeof(AccountManager)) cargs[k]=accMan; else if(pt==typeof(UserChannelPersistence)) cargs[k]=ucp; else if(pt.IsAssignableFrom(gpu.GetType())) cargs[k]=gpu; else if(pt.FullName.Contains("IRenderer")) cargs[k]=gpu; else if(typeof(IHardwareDeviceDriver).IsAssignableFrom(pt)) cargs[k]=audio; }
         return confM.Invoke(hle,cargs) as HleConfiguration;
