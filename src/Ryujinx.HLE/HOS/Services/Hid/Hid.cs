@@ -29,8 +29,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid
         {
             get
             {
-                if (_useLocal)
-                    return ref _localSharedMemory;
+                if (_useLocal) return ref _localSharedMemory;
                 return ref _storage.GetRef<SharedMemory>(0);
             }
         }
@@ -45,8 +44,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid
 
         private static void CheckTypeSizeOrThrow<T>(int expectedSize)
         {
-            if (Unsafe.SizeOf<T>()!= expectedSize)
-                throw new InvalidStructLayoutException<T>(expectedSize);
+            if (Unsafe.SizeOf<T>()!= expectedSize) throw new InvalidStructLayoutException<T>(expectedSize);
         }
 
         static Hid()
@@ -65,21 +63,22 @@ namespace Ryujinx.HLE.HOS.Services.Hid
             _device = device;
             _storage = storage;
 
-            // ANDROID: NUNCA toca no _storage, vai direto pro local
+            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] ctor ENTER\n"); } catch {}
+
             if (Environment.OSVersion.Platform == PlatformID.Unix)
             {
                 _useLocal = true;
-                _localSharedMemory = SharedMemory.Create();
-                try{ File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] Forced local fallback for Android (no storage touch) OK\n"); }catch{}
+                _localSharedMemory = default; // 0KB stack, nunca estoura
+                try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] local default OK\n"); } catch {}
             }
             else
             {
-                // PC: caminho normal
                 SharedMemory = SharedMemory.Create();
             }
 
+            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] BEFORE InitDevices\n"); } catch {}
             InitDevices();
-            try{ File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] InitDevices OK\n"); }catch{}
+            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] InitDevices OK\n"); } catch {}
         }
 
         private void InitDevices()
