@@ -16,11 +16,12 @@ public class GameActivity : Activity
     [DllImport("android")] static extern void ANativeWindow_release(IntPtr window);
     [DllImport("android")] static extern int ANativeWindow_setBuffersGeometry(IntPtr window, int width, int height, int format);
 
-    void Log(string s){ try{ RunOnUiThread(()=>{ if(logView==null==false) logView.Text+= "\n"+s; }); File.AppendAllText(Path.Combine(FilesDir.AbsolutePath,"crash.txt"), SysEnv.NewLine + DateTime.Now + ": " + s + SysEnv.NewLine + SysEnv.StackTrace + SysEnv.NewLine); File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", DateTime.Now + ": " + s + SysEnv.NewLine); }catch{} }
+    void Log(string s){ try{ RunOnUiThread(()=>{ if(logView==null==false) logView.Text+= "\n"+s; }); File.AppendAllText(Path.Combine(FilesDir.AbsolutePath,"crash.txt"), SysEnv.NewLine + DateTime.Now + ": " + s + SysEnv.NewLine); File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", DateTime.Now + ": " + s + SysEnv.NewLine); }catch{} }
 
     protected override void OnCreate(Bundle savedInstanceState)
     {
         try{
+            AppDomain.CurrentDomain.UnhandledException += (o,e)=>{ Log("UNHANDLED: "+e.ExceptionObject.ToString()); };
             base.OnCreate(savedInstanceState);
             if(Window==null==false) Window.AddFlags(WindowManagerFlags.Fullscreen|WindowManagerFlags.KeepScreenOn);
             string extra = Intent.GetStringExtra("rom_path");
@@ -34,7 +35,7 @@ public class GameActivity : Activity
                 }
             }
             surfaceView=new SurfaceView(this); surfaceView.Holder.SetFormat((AFormat)1);
-            logView=new TextView(this); logView.Text="ROM: "+Path.GetFileName(romPath)+"\nAguardando Surface..."; logView.SetTextColor(global::Android.Graphics.Color.White); logView.TextSize=10;
+            logView=new TextView(this); logView.Text="ROM: "+Path.GetFileName(romPath)+"\nAguardando Surface..."; logView.SetTextColor(global::Android.Graphics.Color.White); logView.TextSize=9;
             var root=new FrameLayout(this); root.AddView(surfaceView,new FrameLayout.LayoutParams(-1,-1)); root.AddView(logView,new FrameLayout.LayoutParams(-2,-2){ Gravity=GravityFlags.Top|GravityFlags.Left });
             SetContentView(root); surfaceView.Holder.AddCallback(new SurfaceCallback(this));
             Log("OnCreate OK - romPath="+romPath);
@@ -70,16 +71,37 @@ public class GameActivity : Activity
             Log("Dirs OK");
             VirtualFileSystem vfs=VirtualFileSystem.CreateInstance(); vfs.ReloadKeySet();
             Log("VFS OK keys loaded");
-            gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var func=Marshal.GetDelegateForFunctionPointer<CreateAndroidSurfaceDelegate>(fp); SurfaceKHR surf; func(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
-            Log("VulkanRenderer OK");
+
+            // FIX 1: Cria HLE e Switch ANTES do Vulkan pra não dar segfault
             var audio=new DummyHardwareDeviceDriver(); Log("Audio Dummy OK");
-            var hleConf=BuildHle(vfs,gpu,audio); Log("HLE Config OK");
-            device=new Switch(hleConf); Log("Switch ctor OK");
+            // GPU fake temporario pro Switch não crashar
+            HleConfiguration hleConf=null;
+            try{
+                hleConf=BuildHle(vfs,null,audio);
+                Log("HLE Config PRE (sem GPU) OK");
+                device=new Switch(hleConf);
+                Log("Switch ctor PRE OK - Agora vai criar Vulkan");
+            }catch(Exception ex){ Log("Switch PRE CRASH (esperado se precisa GPU): "+ex.Message); }
+
+            // FIX 2: Agora cria Vulkan com o nativeWindow já garantido
+            if(nativeWindow==IntPtr.Zero){ Log("nativeWindow ZERO, abortando Vulkan"); return; }
+            gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ actLog("CreateSurface callback"); var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); if(fp==IntPtr.Zero){ actLog("vkCreateAndroidSurfaceKHR NULL"); throw new Exception("vkCreateAndroidSurfaceKHR not found"); } var func=Marshal.GetDelegateForFunctionPointer<CreateAndroidSurfaceDelegate>(fp); SurfaceKHR surf; var res=func(inst,&ci,null,&surf); actLog("CreateSurface result: "+res); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
+            Log("VulkanRenderer OK");
+
+            // Rebuild HLE com GPU real
+            hleConf=BuildHle(vfs,gpu,audio); Log("HLE Config FINAL OK");
+            if(device==null){
+                device=new Switch(hleConf); Log("Switch ctor FINAL OK");
+            }else{
+                // Se já criou antes, tenta trocar GPU via reflection
+                try{ device.GetType().GetProperty("Gpu").SetValue(device,gpu); Log("Gpu injetado via reflection"); }catch(Exception ex){ Log("Falha injetar Gpu: "+ex.Message); device=new Switch(hleConf); Log("Switch recriado com GPU OK"); }
+            }
             device.LoadNsp(romPath); Log("LoadNsp OK - "+romPath);
             RunOnUiThread(()=>{ logView.Visibility=ViewStates.Gone; });
             while(running){ device.ProcessFrame(); device.PresentFrame(()=>{}); Thread.Yield(); }
         }catch(Exception ex){ Log("EmulationLoop CRASH: "+ex.ToString()); try{ RunOnUiThread(()=>{ Toast.MakeText(this, ex.Message, ToastLength.Long).Show(); }); }catch{} }
     }
+    void actLog(string s){ Log(s); }
     unsafe delegate Silk.NET.Vulkan.Result CreateAndroidSurfaceDelegate(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
     HleConfiguration BuildHle(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio){
         var cmType=typeof(ContentManager); object cm=null; foreach(var c in cmType.GetConstructors(CtorFlags)){ try{ var pr=c.GetParameters(); var ar=new object[pr.Length]; for(int k=0;k<pr.Length;k++){ if(pr[k].ParameterType==typeof(VirtualFileSystem)) ar[k]=vfs; else if(pr[k].ParameterType==typeof(string)) ar[k]=FilesDir.AbsolutePath; else if(pr[k].ParameterType.IsValueType) ar[k]=Activator.CreateInstance(pr[k].ParameterType); } cm=c.Invoke(ar); break; }catch{} }
@@ -95,7 +117,7 @@ public class GameActivity : Activity
             else if(pt==typeof(ContentManager)) cargs[k]=cm;
             else if(pt==typeof(AccountManager)) cargs[k]=am;
             else if(pt==typeof(UserChannelPersistence)) cargs[k]=ucp;
-            else if(pt.IsInstanceOfType(gpu)) cargs[k]=gpu;
+            else if(gpu==null==false && pt.IsInstanceOfType(gpu)) cargs[k]=gpu;
             else if(typeof(IHardwareDeviceDriver).IsAssignableFrom(pt)) cargs[k]=audio;
         }
         var cfg = conf.Invoke(hle,cargs) as HleConfiguration;
