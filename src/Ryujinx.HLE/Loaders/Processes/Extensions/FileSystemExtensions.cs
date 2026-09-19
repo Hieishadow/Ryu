@@ -3,6 +3,7 @@ using LibHac.Fs;
 using LibHac.Fs.Fsa;
 using LibHac.Loader;
 using LibHac.Ns;
+using LibHac.Tools.Fs;
 using LibHac.Tools.FsSystem;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Logging;
@@ -54,7 +55,7 @@ namespace Ryujinx.HLE.Loaders.Processes.Extensions
             for (int i = 0; i < nsoExecutables.Length; i++)
             {
                 string name = ProcessConst.ExeFsPrefixes[i];
-                if (!exeFs.FileExists($"/{name}")) continue;
+                if (!exeFs.FileExists($"/{name}".ToU8Span())) continue;
                 Logger.Info?.Print(LogClass.Loader, $"Loading {name}...");
                 using UniqueRef<IFile> nsoFile = new();
                 exeFs.OpenFile(ref nsoFile.Ref, $"/{name}".ToU8Span(), OpenMode.Read).ThrowIfFailure();
