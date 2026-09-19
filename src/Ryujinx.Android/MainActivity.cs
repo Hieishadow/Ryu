@@ -1,3 +1,4 @@
+#nullable disable
 using Android.App;
 using Android.Content;
 using Android.Content.PM;
@@ -17,6 +18,7 @@ namespace DragoNX;
     Name = "com.ryubing.android.MainActivity",
     Label = "Ryubing",
     Exported = true,
+    MainLauncher = true,
     Theme = "@android:style/Theme.Black.NoTitleBar.Fullscreen",
     ScreenOrientation = ScreenOrientation.Landscape,
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.KeyboardHidden)]
@@ -29,15 +31,15 @@ public class MainActivity : Activity
 
     static readonly string[] IgnoredDirs = { ".thumbnails", "System Volume Information", ".trashed", "LOST.DIR", "Android" };
 
-    LinearLayout layout = null!;
-    string? selectedRom = null;
-    Button? btnJogar;
+    LinearLayout layout;
+    string selectedRom = "";
+    Button btnJogar;
     bool permissionRequested = false;
 
-    protected override void OnCreate(Bundle? savedInstanceState)
+    protected override void OnCreate(Bundle savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
-        Window?.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
+        if(Window!=null) Window.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
 
         layout = new LinearLayout(this);
         layout.Orientation = Orientation.Vertical;
@@ -60,7 +62,7 @@ public class MainActivity : Activity
         topRow.Orientation = Orientation.Horizontal;
         topRow.SetGravity(GravityFlags.Center);
 
-        var btnPerm = new Button(this) { Text = "1 - Permissão" };
+        var btnPerm = new Button(this) { Text = "1 - Permissao" };
         btnPerm.Click += (s, e) => RequestAllFilesPermission();
         topRow.AddView(btnPerm);
 
@@ -68,20 +70,23 @@ public class MainActivity : Activity
         btnScan.Click += (s, e) => ScanGames();
         topRow.AddView(btnScan);
 
-        btnJogar = new Button(this) { Text = "▶ JOGAR" };
+        btnJogar = new Button(this) { Text = "JOGAR" };
         btnJogar.SetBackgroundColor(Android.Graphics.Color.Green);
         btnJogar.Enabled = false;
         btnJogar.Click += (s, e) =>
         {
-            if (string.IsNullOrEmpty(selectedRom) || !File.Exists(selectedRom))
+            bool empty = string.IsNullOrEmpty(selectedRom);
+            bool exists = false;
+            if(empty==false) exists = File.Exists(selectedRom);
+            if(empty || exists==false)
             {
-                Toast.MakeText(this, "ROM não encontrada", ToastLength.Short)?.Show();
+                Toast.MakeText(this, "ROM nao encontrada", ToastLength.Short).Show();
                 return;
             }
             var prod = Path.Combine(KeysPath, "prod.keys");
-            if (!File.Exists(prod))
+            if(File.Exists(prod)==false)
             {
-                Toast.MakeText(this, "prod.keys faltando!", ToastLength.Long)?.Show();
+                Toast.MakeText(this, "prod.keys faltando", ToastLength.Long).Show();
                 return;
             }
             var intent = new Intent(this, typeof(GameActivity));
@@ -103,7 +108,7 @@ public class MainActivity : Activity
             UpdateInfo();
             ScanGames();
         }
-        else if (!permissionRequested)
+        else if (permissionRequested==false)
         {
             permissionRequested = true;
             RequestAllFilesPermission();
@@ -139,7 +144,6 @@ public class MainActivity : Activity
                 if (File.Exists(src)) 
                 {
                     File.Copy(src, dst, true);
-                    Android.Util.Log.Info("Ryubing", $"Key copiada: {k}");
                 }
             }
         }
@@ -152,17 +156,23 @@ public class MainActivity : Activity
     void UpdateInfo()
     {
         if (layout.ChildCount < 2) return;
-        if (layout.GetChildAt(1) is not TextView info) return;
+        var v = layout.GetChildAt(1);
+        var info = v as TextView;
+        if (info == null) return;
         var prod = new FileInfo(Path.Combine(KeysPath, "prod.keys"));
-        var title = new FileInfo(Path.Combine(KeysPath, "title.keys"));
+        var titleKeys = new FileInfo(Path.Combine(KeysPath, "title.keys"));
         if (prod.Exists)
         {
-            info.Text = $"✓ prod.keys {prod.Length} bytes | {(title.Exists ? $"title.keys {title.Length} bytes" : "title.keys FALTANDO")}";
-            info.SetTextColor(title.Exists ? Android.Graphics.Color.Green : Android.Graphics.Color.Yellow);
+            string txt = "prod.keys " + prod.Length + " bytes | ";
+            if(titleKeys.Exists) txt += "title.keys " + titleKeys.Length + " bytes";
+            else txt += "title.keys FALTANDO";
+            info.Text = txt;
+            if(titleKeys.Exists) info.SetTextColor(Android.Graphics.Color.Green);
+            else info.SetTextColor(Android.Graphics.Color.Yellow);
         }
         else
         {
-            info.Text = $"✗ keys NAO encontradas em {KeysPath}";
+            info.Text = "keys NAO encontradas em " + KeysPath;
             info.SetTextColor(Android.Graphics.Color.Red);
         }
     }
@@ -183,20 +193,20 @@ public class MainActivity : Activity
 
     void ScanGames()
     {
-        if (!HasAllFilesPermission())
+        if (HasAllFilesPermission()==false)
         {
-            Toast.MakeText(this, "Concede a permissão primeiro", ToastLength.Long)?.Show();
+            Toast.MakeText(this, "Concede a permissao primeiro", ToastLength.Long).Show();
             return;
         }
 
         while (layout.ChildCount > 3)
             layout.RemoveViewAt(layout.ChildCount - 1);
 
-        selectedRom = null;
+        selectedRom = "";
         if (btnJogar != null)
         {
             btnJogar.Enabled = false;
-            btnJogar.Text = "▶ JOGAR";
+            btnJogar.Text = "JOGAR";
         }
 
         var container = new LinearLayout(this);
@@ -206,7 +216,7 @@ public class MainActivity : Activity
         try
         {
             var allFiles = Directory.EnumerateFiles(GamesPath, "*.*", SearchOption.AllDirectories)
-                .Where(f => !IgnoredDirs.Any(ig => f.Contains(ig, StringComparison.OrdinalIgnoreCase)))
+                .Where(f => IgnoredDirs.Any(ig => f.Contains(ig, StringComparison.OrdinalIgnoreCase))==false)
                 .Where(f => f.EndsWith(".nsp", StringComparison.OrdinalIgnoreCase) ||
                             f.EndsWith(".xci", StringComparison.OrdinalIgnoreCase) ||
                             f.EndsWith(".nsz", StringComparison.OrdinalIgnoreCase) ||
@@ -216,7 +226,7 @@ public class MainActivity : Activity
 
             if (allFiles.Count == 0)
             {
-                var empty = new TextView(this) { Text = $"Nenhum jogo em {GamesPath} (recursivo)" };
+                var empty = new TextView(this) { Text = "Nenhum jogo em " + GamesPath + " (recursivo)" };
                 empty.SetTextColor(Android.Graphics.Color.Red);
                 empty.Gravity = GravityFlags.Center;
                 layout.AddView(empty);
@@ -231,22 +241,23 @@ public class MainActivity : Activity
                 row.SetPadding(10, 8, 10, 8);
 
                 var fi = new FileInfo(romPath);
-                var name = new TextView(this) { Text = $"{Path.GetFileName(romPath)} [{fi.Length / 1024 / 1024}MB] [{Path.GetFileName(Path.GetDirectoryName(romPath))}]" };
+                var name = new TextView(this) { Text = Path.GetFileName(romPath) + " [" + (fi.Length / 1024 / 1024) + "MB] [" + Path.GetFileName(Path.GetDirectoryName(romPath)) + "]" };
                 name.SetTextColor(Android.Graphics.Color.White);
                 name.TextSize = 11;
                 name.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
                 row.AddView(name);
 
+                var localPath = romPath;
                 var btn = new Button(this) { Text = "Selecionar" };
                 btn.Click += (s, e) =>
                 {
-                    selectedRom = romPath;
+                    selectedRom = localPath;
                     if (btnJogar != null)
                     {
                         btnJogar.Enabled = true;
-                        btnJogar.Text = $"▶ JOGAR {Path.GetFileName(romPath)}";
+                        btnJogar.Text = "JOGAR " + Path.GetFileName(localPath);
                     }
-                    Toast.MakeText(this, $"Selecionado: {Path.GetFileName(romPath)}", ToastLength.Short)?.Show();
+                    Toast.MakeText(this, "Selecionado: " + Path.GetFileName(localPath), ToastLength.Short).Show();
                 };
                 row.AddView(btn);
                 container.AddView(row);
