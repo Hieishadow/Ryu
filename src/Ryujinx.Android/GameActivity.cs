@@ -16,52 +16,69 @@ public class GameActivity : Activity
     [DllImport("android")] static extern void ANativeWindow_release(IntPtr window);
     [DllImport("android")] static extern int ANativeWindow_setBuffersGeometry(IntPtr window, int width, int height, int format);
 
+    void Log(string s){ try{ RunOnUiThread(()=>{ if(logView==null==false) logView.Text+= "\n"+s; }); File.AppendAllText(Path.Combine(FilesDir.AbsolutePath,"crash.txt"), DateTime.Now+": "+s+"\n"+Environment.StackTrace+"\n"); File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", DateTime.Now+": "+s+"\n"); }catch{} }
+
     protected override void OnCreate(Bundle savedInstanceState)
     {
-        base.OnCreate(savedInstanceState);
-        if(Window==null==false) Window.AddFlags(WindowManagerFlags.Fullscreen|WindowManagerFlags.KeepScreenOn);
-        string extra = Intent.GetStringExtra("rom_path");
-        if(extra==null==false) romPath=extra;
-        if(romPath.Length==0){
-            string dir="/storage/emulated/0/Download/Ryubing/games";
-            if(Directory.Exists(dir)){
-                foreach(var p in Directory.EnumerateFiles(dir,"*.*",SearchOption.AllDirectories)){
-                    if(p.EndsWith(".nsp",StringComparison.OrdinalIgnoreCase)){ romPath=p; break; }
+        try{
+            base.OnCreate(savedInstanceState);
+            if(Window==null==false) Window.AddFlags(WindowManagerFlags.Fullscreen|WindowManagerFlags.KeepScreenOn);
+            string extra = Intent.GetStringExtra("rom_path");
+            if(extra==null==false) romPath=extra;
+            if(romPath.Length==0){
+                string dir="/storage/emulated/0/Download/Ryubing/games";
+                if(Directory.Exists(dir)){
+                    foreach(var p in Directory.EnumerateFiles(dir,"*.*",SearchOption.AllDirectories)){
+                        if(p.EndsWith(".nsp",StringComparison.OrdinalIgnoreCase)){ romPath=p; break; }
+                    }
                 }
             }
-        }
-        surfaceView=new SurfaceView(this); surfaceView.Holder.SetFormat((AFormat)1);
-        logView=new TextView(this); logView.Text=Path.GetFileName(romPath); logView.SetTextColor(global::Android.Graphics.Color.White);
-        var root=new FrameLayout(this); root.AddView(surfaceView,new FrameLayout.LayoutParams(-1,-1)); root.AddView(logView,new FrameLayout.LayoutParams(-2,-2){ Gravity=GravityFlags.Top|GravityFlags.Left });
-        SetContentView(root); surfaceView.Holder.AddCallback(new SurfaceCallback(this));
+            surfaceView=new SurfaceView(this); surfaceView.Holder.SetFormat((AFormat)1);
+            logView=new TextView(this); logView.Text="ROM: "+Path.GetFileName(romPath)+"\nAguardando Surface..."; logView.SetTextColor(global::Android.Graphics.Color.White); logView.TextSize=10;
+            var root=new FrameLayout(this); root.AddView(surfaceView,new FrameLayout.LayoutParams(-1,-1)); root.AddView(logView,new FrameLayout.LayoutParams(-2,-2){ Gravity=GravityFlags.Top|GravityFlags.Left });
+            SetContentView(root); surfaceView.Holder.AddCallback(new SurfaceCallback(this));
+            Log("OnCreate OK - romPath="+romPath);
+        }catch(Exception ex){ Log("OnCreate CRASH: "+ex.ToString()); }
     }
     class SurfaceCallback : Java.Lang.Object, ISurfaceHolderCallback {
         readonly GameActivity act; public SurfaceCallback(GameActivity a){ act=a; }
         public void SurfaceCreated(ISurfaceHolder h){
-            var rect=h.SurfaceFrame; if(rect.Width()<=0) return; if(rect.Height()<=0) return;
-            act.nativeWindow=ANativeWindow_fromSurface(global::Android.Runtime.JNIEnv.Handle,h.Surface.Handle);
-            if(act.nativeWindow==IntPtr.Zero) return;
-            ANativeWindow_setBuffersGeometry(act.nativeWindow,rect.Width(),rect.Height(),1);
-            ANativeWindow_acquire(act.nativeWindow);
-            if(act.emuThread==null==false){ if(act.emuThread.IsAlive) return; }
-            act.running=true; act.emuThread=new Thread(act.EmulationLoop){ IsBackground=true }; act.emuThread.Start();
+            try{
+                var rect=h.SurfaceFrame; if(rect.Width()<=0) return; if(rect.Height()<=0) return;
+                act.Log("SurfaceCreated "+rect.Width()+"x"+rect.Height());
+                act.nativeWindow=ANativeWindow_fromSurface(global::Android.Runtime.JNIEnv.Handle,h.Surface.Handle);
+                if(act.nativeWindow==IntPtr.Zero){ act.Log("ANativeWindow_fromSurface retornou ZERO"); return; }
+                ANativeWindow_setBuffersGeometry(act.nativeWindow,rect.Width(),rect.Height(),1);
+                ANativeWindow_acquire(act.nativeWindow);
+                if(act.emuThread==null==false){ if(act.emuThread.IsAlive) return; }
+                act.running=true; act.emuThread=new Thread(act.EmulationLoop){ IsBackground=true }; act.emuThread.Start();
+                act.Log("EmuThread Start OK");
+            }catch(Exception ex){ act.Log("SurfaceCreated CRASH: "+ex.ToString()); }
         }
         public void SurfaceChanged(ISurfaceHolder h,AFormat f,int w,int ht){
-            if(act.nativeWindow==IntPtr.Zero==false){ ANativeWindow_setBuffersGeometry(act.nativeWindow,w,ht,1); }
+            try{ if(act.nativeWindow==IntPtr.Zero==false){ ANativeWindow_setBuffersGeometry(act.nativeWindow,w,ht,1); } }catch(Exception ex){ act.Log("SurfaceChanged CRASH: "+ex.ToString()); }
         }
         public void SurfaceDestroyed(ISurfaceHolder h){
-            act.running=false; if(act.nativeWindow==IntPtr.Zero==false){ ANativeWindow_release(act.nativeWindow); act.nativeWindow=IntPtr.Zero; }
+            act.running=false; try{ if(act.nativeWindow==IntPtr.Zero==false){ ANativeWindow_release(act.nativeWindow); act.nativeWindow=IntPtr.Zero; } }catch{}
         }
     }
     void EmulationLoop(){
         try{
+            Log("EmulationLoop START");
             string baseDir=Path.Combine(FilesDir.AbsolutePath,"Ryujinx"); string systemDir=Path.Combine(baseDir,"system"); Directory.CreateDirectory(systemDir);
             string jitDir=Path.Combine(CacheDir.AbsolutePath,"jit"); Directory.CreateDirectory(jitDir); SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE",jitDir);
+            Log("Dirs OK");
             VirtualFileSystem vfs=VirtualFileSystem.CreateInstance(); vfs.ReloadKeySet();
+            Log("VFS OK keys loaded");
             gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var func=Marshal.GetDelegateForFunctionPointer<CreateAndroidSurfaceDelegate>(fp); SurfaceKHR surf; func(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
-            var audio=new DummyHardwareDeviceDriver(); var hleConf=BuildHle(vfs,gpu,audio); device=new Switch(hleConf); device.LoadNsp(romPath);
+            Log("VulkanRenderer OK");
+            var audio=new DummyHardwareDeviceDriver(); Log("Audio Dummy OK");
+            var hleConf=BuildHle(vfs,gpu,audio); Log("HLE Config OK");
+            device=new Switch(hleConf); Log("Switch ctor OK");
+            device.LoadNsp(romPath); Log("LoadNsp OK - "+romPath);
+            RunOnUiThread(()=>{ logView.Visibility=ViewStates.Gone; });
             while(running){ device.ProcessFrame(); device.PresentFrame(()=>{}); Thread.Yield(); }
-        }catch(Exception ex){ try{ File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt",ex.ToString()); }catch{} }
+        }catch(Exception ex){ Log("EmulationLoop CRASH: "+ex.ToString()); try{ RunOnUiThread(()=>{ Toast.MakeText(this, ex.Message, ToastLength.Long).Show(); }); }catch{} }
     }
     unsafe delegate Silk.NET.Vulkan.Result CreateAndroidSurfaceDelegate(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
     HleConfiguration BuildHle(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio){
