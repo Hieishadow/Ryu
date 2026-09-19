@@ -15,7 +15,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 
 namespace Ryujinx.HLE.HOS.Services.Hid
 {
@@ -23,7 +22,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid
     {
         private readonly Switch _device;
         private readonly SharedMemoryStorage _storage;
-        private SharedMemory _localSharedMemory; // Fallback Android
+        private SharedMemory _localSharedMemory;
         private bool _useLocal = false;
 
         internal ref SharedMemory SharedMemory
@@ -66,41 +65,21 @@ namespace Ryujinx.HLE.HOS.Services.Hid
             _device = device;
             _storage = storage;
 
-            try
+            // ANDROID: NUNCA toca no _storage, vai direto pro local
+            if (Environment.OSVersion.Platform == PlatformID.Unix)
             {
-                File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] Trying storage path\n");
-                // Tenta o caminho normal
-                _storage.GetRef<byte>(0) = 0; // força commit de 1 byte
-                SharedMemory = SharedMemory.Create();
-                File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] Storage path OK\n");
-            }
-            catch (Exception ex)
-            {
-                File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] Storage FAIL, using local fallback: {ex.Message}\n");
                 _useLocal = true;
                 _localSharedMemory = SharedMemory.Create();
+                try{ File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] Forced local fallback for Android (no storage touch) OK\n"); }catch{}
             }
-
-            // Se mesmo o teste acima não deu segfault mas vai dar no Create, usa local
-            // Detecção Android: sempre usa local
-            if (!_useLocal)
+            else
             {
-                try
-                {
-                    // Se chegou aqui sem exception, mas sabemos que no Android Reserve-only falha
-                    // Força uso local pra garantir
-                    if (Environment.OSVersion.Platform == PlatformID.Unix)
-                    {
-                        _useLocal = true;
-                        _localSharedMemory = SharedMemory.Create();
-                        File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] Forced local fallback for Android\n");
-                    }
-                }
-                catch {}
+                // PC: caminho normal
+                SharedMemory = SharedMemory.Create();
             }
 
             InitDevices();
-            File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] InitDevices OK\n");
+            try{ File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] InitDevices OK\n"); }catch{}
         }
 
         private void InitDevices()
