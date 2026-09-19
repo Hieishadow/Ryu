@@ -26,10 +26,38 @@ public class GameActivity : Activity
         MyLog("LHM -> "+(lhm==null?"NULL":lhm.GetType().Name));
         object hc=null; try{ var t=lhm.GetType(); foreach(var m in t.GetMembers(All)){ if(m is PropertyInfo pi && pi.PropertyType.Name.Contains("HorizonClient")){ hc=pi.GetValue(lhm); if(hc!=null) break; } if(m is FieldInfo fi && fi.FieldType.Name.Contains("HorizonClient")){ hc=fi.GetValue(lhm); if(hc!=null) break; } } if(hc==null) hc=t.GetProperty("Client",All)?.GetValue(lhm)?? t.GetField("_horizonClient",All)?.GetValue(lhm)?? t.GetField("_client",All)?.GetValue(lhm); }catch(Exception ex){ MyLog("Get HC ex: "+ex.Message); }
         MyLog("HorizonClient -> "+(hc==null?"NULL":hc.GetType().Name));
+
+        // --- FIX ACCOUNTMANAGER - CORRETO ---
         object accMan=null;
-        if(hc!=null){ try{ var amType=typeof(AccountManager); foreach(var ctor in amType.GetConstructors(All)){ var ps=ctor.GetParameters(); if(ps.Length==1 && ps[0].ParameterType.IsInstanceOfType(hc)){ accMan=ctor.Invoke(new object[]{ hc }); MyLog("AM criado via ctor(HorizonClient) OK"); break; } } }catch(Exception ex){ MyLog("AM ctor fail: "+ex.InnerException?.Message??ex.Message); } }
-        if(accMan==null){ MyLog("AM fallback UNINITIALIZED"); try{ var amType=typeof(AccountManager); accMan=System.Runtime.Serialization.FormatterServices.GetUninitializedObject(amType); var f1=amType.GetField("_horizonClient",All); if(f1!=null) f1.SetValue(accMan,hc); var f2=amType.GetField("_profiles",All); if(f2!=null) f2.SetValue(accMan,new ConcurrentDictionary<string, UserProfile>()); var f3=amType.GetField("_accountSaveDataManager",All); if(f3!=null){ var asdmType=f3.FieldType; var asdm=Activator.CreateInstance(asdmType,All,null,new object[]{ f2.GetValue(accMan) },null); f3.SetValue(accMan,asdm); } var defId=amType.GetField("DefaultUserId",All)?.GetValue(null); var addM=amType.GetMethod("AddUser",All); var openM=amType.GetMethod("OpenUser",All); if(addM!=null && openM!=null){ try{ byte[] img=new byte[0]; try{ var resType=typeof(Ryujinx.Common.EmbeddedResources); var readM=resType.GetMethod("Read",All); if(readM!=null) img=(byte[])readM.Invoke(null,new object[]{ "Ryujinx.HLE/HOS/Services/Account/Acc/DefaultUserImage.jpg" }); }catch{} addM.Invoke(accMan,new object[]{ "RyuPlayer", img, defId }); openM.Invoke(accMan,new object[]{ defId }); MyLog("AM fallback AddUser/OpenUser OK"); }catch(Exception ex){ MyLog("AM AddUser fail: "+ex.Message); } } }catch(Exception ex){ MyLog("AM uninitialized fail: "+ex.ToString()); } }
-        MyLog("AccountManager -> "+(accMan==null?"NULL":accMan.GetType().FullName));
+        if(hc!=null){
+            try{
+                var amType=typeof(AccountManager);
+                foreach(var ctor in amType.GetConstructors(All)){
+                    var ps=ctor.GetParameters();
+                    if(ps.Length>=1 && ps[0].ParameterType.IsInstanceOfType(hc)){
+                        object[] args;
+                        if(ps.Length==1) args=new object[]{ hc };
+                        else if(ps.Length==2) args=new object[]{ hc, null };
+                        else {
+                            args=new object[ps.Length];
+                            args[0]=hc;
+                            for(int i=1;i<ps.Length;i++) if(ps[i].IsOptional) args[i]=Type.Missing; else if(ps[i].ParameterType.IsValueType) args[i]=Activator.CreateInstance(ps[i].ParameterType);
+                        }
+                        accMan=ctor.Invoke(args);
+                        MyLog("AM criado via ctor(HorizonClient) OK - "+accMan.GetType().Name);
+                        break;
+                    }
+                }
+                if(accMan==null) MyLog("AM ctor não achado");
+            }catch(Exception ex){ MyLog("AM ctor fail: "+(ex.InnerException?.Message??ex.Message)+" | "+ex.ToString()); }
+        }
+        if(accMan==null){
+            MyLog("AM FALHOU CRITICO - abortando sem GetUninitializedObject");
+            throw new Exception("AccountManager não criado - ctor falhou");
+        }
+        MyLog("AccountManager -> "+accMan.GetType().FullName);
+        // --- FIM FIX ---
+
         var cmType=typeof(ContentManager); object cm=null; foreach(var c in cmType.GetConstructors(All)){ try{ var pr=c.GetParameters(); var ar=new object[pr.Length]; for(int k=0;k<pr.Length;k++){ if(pr[k].ParameterType==typeof(VirtualFileSystem)) ar[k]=vfs; else if(pr[k].ParameterType==typeof(string)) ar[k]=FilesDir.AbsolutePath; else if(pr[k].ParameterType.IsValueType) ar[k]=Activator.CreateInstance(pr[k].ParameterType); } cm=c.Invoke(ar); if(cm!=null) break; }catch{} }
         var ucpType=typeof(UserChannelPersistence); object ucp=Activator.CreateInstance(ucpType,true);
         var hleType=typeof(HleConfiguration); var hleCtor=hleType.GetConstructors(All)[0]; var hps=hleCtor.GetParameters(); var hargs=new object[hps.Length]; for(int k=0;k<hps.Length;k++){ var pt=hps[k].ParameterType; if(pt==typeof(string)) hargs[k]="UTC"; else if(pt==typeof(bool)) hargs[k]=true; else if(pt.IsEnum) hargs[k]=Enum.GetValues(pt).GetValue(0); else if(pt.IsValueType) hargs[k]=Activator.CreateInstance(pt); } var hle=(HleConfiguration)hleCtor.Invoke(hargs);
