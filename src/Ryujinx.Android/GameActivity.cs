@@ -74,7 +74,7 @@ public class GameActivity : Activity
 
         VirtualFileSystem vfs=VirtualFileSystem.CreateInstance();
         vfs.ReloadKeySet();
-        MyLog("VFS OK - Keys loaded: "+vfs.KeySet.Keys.Count);
+        MyLog("VFS OK - Keys loaded: OK"); // FIX: KeySet.Keys nao existe mais no LibHac novo
         var audio=new DummyHardwareDeviceDriver();
         if(nativeWindow==IntPtr.Zero){ MyLog("nativeWindow ZERO"); return; }
         gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
