@@ -32,8 +32,6 @@ public class GameActivity : Activity
         Directory.CreateDirectory(jitDir);
         SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE",jitDir);
         try{ Directory.SetCurrentDirectory(baseDir); SysEnv.CurrentDirectory=baseDir; MyLog("CWD -> "+baseDir); }catch(Exception ex){ MyLog("CWD fail: "+ex.Message); }
-
-        // >>> FIX ANDROID KEYS E NPDM <<<
         try{
             string[] keySources = new[]{
                 "/storage/emulated/0/Ryujinx/keys/prod.keys",
@@ -52,8 +50,7 @@ public class GameActivity : Activity
                 }
             }
             if(File.Exists(destKey)) MyLog($"prod.keys OK {new FileInfo(destKey).Length} bytes");
-            else MyLog("AVISO: prod.keys NAO encontrada! Coloque em /Download/Ryubing/keys/prod.keys");
-
+            else MyLog("AVISO: prod.keys NAO encontrada!");
             string[] npdmSources = new[]{
                 "/storage/emulated/0/Download/Ryubing/Homebrew.npdm",
                 "/storage/emulated/0/Ryujinx/Homebrew.npdm"
@@ -69,16 +66,22 @@ public class GameActivity : Activity
                 }
             }
         }catch(Exception ex){ MyLog("Copy keys/npd m fail: "+ex.Message); }
-
         try{ typeof(VirtualFileSystem).GetField("_instance",All)?.SetValue(null,null); }catch{}
-
         VirtualFileSystem vfs=VirtualFileSystem.CreateInstance();
         vfs.ReloadKeySet();
         MyLog("VFS OK - Keys loaded: OK");
         var audio=new DummyHardwareDeviceDriver();
         if(nativeWindow==IntPtr.Zero){ MyLog("nativeWindow ZERO"); return; }
         gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
-        gpu.Initialize(Ryujinx.Graphics.GAL.GraphicsDebugLevel.None);
+        try{
+            var mInit = gpu.GetType().GetMethod("Initialize", All);
+            if(mInit!=null){
+                var pars = mInit.GetParameters();
+                if(pars.Length==0) mInit.Invoke(gpu, null);
+                else mInit.Invoke(gpu, new object[]{ 0 });
+                MyLog("Vulkan Initialize() OK via reflection");
+            }
+        }catch(Exception ex){ MyLog("Vulkan Initialize fail: "+(ex.InnerException?.Message??ex.Message)); }
         MyLog("Vulkan OK "+gpu.GetType().FullName+" Initialized");
         var conf=BuildHle(vfs,gpu,audio, baseDir, sysDir);
         MyLog("HLE FINAL OK");
