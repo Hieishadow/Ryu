@@ -13,18 +13,13 @@ namespace Ryujinx.HLE.HOS.Services.Mii
     {
         private readonly bool _isTestModeEnabled = false;
         private uint _mountCounter = 0;
-
         private const ulong DatabaseTestSaveDataId = 0x8000000000000031;
         private const ulong DatabaseSaveDataId = 0x8000000000000030;
-
         private readonly U8String _databasePath = new("mii:/MiiDatabase.dat");
         private readonly U8String _mountName = new("mii");
-
         private NintendoFigurineDatabase _database;
         private bool _isDirty;
-
         private HorizonClient _horizonClient;
-
         protected ulong UpdateCounter { get; private set; }
 
         public MiiDatabaseManager()
@@ -84,162 +79,18 @@ namespace Ryujinx.HLE.HOS.Services.Mii
         {
             _horizonClient = horizonClient;
             _database.Format();
-            try { MountSave(); } catch { }
+            _mountCounter = 1;
         }
 
         private Result MountSave()
         {
-            // FIX ANDROID: se Fs for null, ignora Mii e continua
-            try
-            {
-                if (_horizonClient == null) return Result.Success;
-                if (_horizonClient.Fs == null) return Result.Success;
-                
-                if (_mountCounter != 0)
-                {
-                    _mountCounter++;
-                    return Result.Success;
-                }
-
-                ulong saveDataId = _isTestModeEnabled ? DatabaseTestSaveDataId : DatabaseSaveDataId;
-
-                Result result = _horizonClient.Fs.MountSystemSaveData(_mountName, SaveDataSpaceId.System, saveDataId);
-
-                if (result.IsFailure())
-                {
-                    if (!ResultFs.TargetNotFound.Includes(result))
-                    {
-                        return result;
-                    }
-
-                    if (_isTestModeEnabled)
-                    {
-                        result = _horizonClient.Fs.CreateSystemSaveData(saveDataId, 0x10000, 0x10000,
-                            SaveDataFlags.KeepAfterResettingSystemSaveDataWithoutUserSaveData);
-                        if (result.IsFailure()) return Result.Success; // Android fix: ignora erro
-                    }
-                    else
-                    {
-                        result = _horizonClient.Fs.CreateSystemSaveData(saveDataId, SystemProgramId.Ns.Value, 0x10000,
-                            0x10000, SaveDataFlags.KeepAfterResettingSystemSaveDataWithoutUserSaveData);
-                        if (result.IsFailure()) return Result.Success; // Android fix
-                    }
-
-                    result = _horizonClient.Fs.MountSystemSaveData(_mountName, SaveDataSpaceId.System, saveDataId);
-                    if (result.IsFailure()) return Result.Success; // Android fix
-                }
-
-                if (result == Result.Success) _mountCounter++;
-                return Result.Success;
-            }
-            catch
-            {
-                _mountCounter = 1;
-                return Result.Success;
-            }
+            _mountCounter = 1;
+            return Result.Success;
         }
 
-        public ResultCode DeleteFile()
-        {
-            try
-            {
-                ResultCode result = (ResultCode)_horizonClient.Fs.DeleteFile(_databasePath).Value;
-                _horizonClient.Fs.Commit(_mountName);
-                return result;
-            }
-            catch { return ResultCode.Success; }
-        }
-
-        public ResultCode LoadFromFile(out bool isBroken)
-        {
-            isBroken = false;
-            try
-            {
-                if (_mountCounter == 0) return ResultCode.Success;
-
-                UpdateCounter++;
-                ResetDatabase();
-
-                Result result = _horizonClient.Fs.OpenFile(out FileHandle handle, _databasePath, OpenMode.Read);
-
-                if (result.IsSuccess())
-                {
-                    result = _horizonClient.Fs.GetFileSize(out long fileSize, handle);
-                    if (result.IsSuccess())
-                    {
-                        if (fileSize == Unsafe.SizeOf<NintendoFigurineDatabase>())
-                        {
-                            result = _horizonClient.Fs.ReadFile(handle, 0, _database.AsSpan());
-                            if (result.IsSuccess())
-                            {
-                                if (_database.Verify() != ResultCode.Success)
-                                {
-                                    ResetDatabase();
-                                    isBroken = true;
-                                }
-                                else
-                                {
-                                    isBroken = _database.FixDatabase();
-                                }
-                            }
-                        }
-                        else isBroken = true;
-                    }
-                    _horizonClient.Fs.CloseFile(handle);
-                    return (ResultCode)result.Value;
-                }
-                else if (ResultFs.PathNotFound.Includes(result))
-                {
-                    return (ResultCode)ForceSaveDatabase().Value;
-                }
-                return ResultCode.Success;
-            }
-            catch
-            {
-                return ResultCode.Success;
-            }
-        }
-
-        private Result ForceSaveDatabase()
-        {
-            try
-            {
-                Result result = _horizonClient.Fs.CreateFile(_databasePath, Unsafe.SizeOf<NintendoFigurineDatabase>());
-                if (result.IsSuccess() || ResultFs.PathAlreadyExists.Includes(result))
-                {
-                    result = _horizonClient.Fs.OpenFile(out FileHandle handle, _databasePath, OpenMode.Write);
-                    if (result.IsSuccess())
-                    {
-                        result = _horizonClient.Fs.GetFileSize(out long fileSize, handle);
-                        if (result.IsSuccess())
-                        {
-                            if (fileSize != Unsafe.SizeOf<NintendoFigurineDatabase>())
-                            {
-                                _horizonClient.Fs.CloseFile(handle);
-                                result = _horizonClient.Fs.DeleteFile(_databasePath);
-                                if (result.IsSuccess())
-                                {
-                                    result = _horizonClient.Fs.CreateFile(_databasePath, Unsafe.SizeOf<NintendoFigurineDatabase>());
-                                    if (result.IsSuccess())
-                                        result = _horizonClient.Fs.OpenFile(out handle, _databasePath, OpenMode.Write);
-                                }
-                                if (result.IsFailure()) return Result.Success;
-                            }
-                            result = _horizonClient.Fs.WriteFile(handle, 0, _database.AsReadOnlySpan(), WriteOption.Flush);
-                        }
-                        _horizonClient.Fs.CloseFile(handle);
-                    }
-                }
-                if (result.IsSuccess())
-                {
-                    _isDirty = false;
-                    result = _horizonClient.Fs.Commit(_mountName);
-                }
-                return result;
-            }
-            catch { return Result.Success; }
-        }
-
+        public ResultCode DeleteFile() => ResultCode.Success;
+        public ResultCode LoadFromFile(out bool isBroken) { isBroken = false; return ResultCode.Success; }
+        private Result ForceSaveDatabase() => Result.Success;
         public DatabaseSessionMetadata CreateSessionMetadata(SpecialMiiKeyCode miiKeyCode) => new DatabaseSessionMetadata(UpdateCounter, miiKeyCode);
         public void SetInterfaceVersion(DatabaseSessionMetadata metadata, uint interfaceVersion) => metadata.InterfaceVersion = interfaceVersion;
         public bool IsUpdated(DatabaseSessionMetadata metadata)
