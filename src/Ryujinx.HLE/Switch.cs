@@ -44,56 +44,26 @@ namespace Ryujinx.HLE
 
         public Switch(HleConfiguration configuration)
         {
-            void SWLOG(string s){ try{ global::System.Console.WriteLine(s); global::System.IO.File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", global::System.DateTime.Now+": "+s+global::System.Environment.NewLine); }catch{} }
-
+            void SWLOG(string s){ try{ global::System.Console.WriteLine(s); }catch{} }
             SWLOG("[SWITCH] ctor START");
-            SWLOG("[SWITCH] GpuRenderer="+(configuration.GpuRenderer==null?"NULL":configuration.GpuRenderer.GetType().FullName));
-            SWLOG("[SWITCH] AudioDeviceDriver="+(configuration.AudioDeviceDriver==null?"NULL":configuration.AudioDeviceDriver.GetType().FullName));
-            SWLOG("[SWITCH] UserChannelPersistence="+(configuration.UserChannelPersistence==null?"NULL":"OK"));
-
             ArgumentNullException.ThrowIfNull(configuration.GpuRenderer);
             ArgumentNullException.ThrowIfNull(configuration.AudioDeviceDriver);
             ArgumentNullException.ThrowIfNull(configuration.UserChannelPersistence);
-
             Configuration = configuration;
             FileSystem = Configuration.VirtualFileSystem;
             UIHandler = Configuration.HostUIHandler;
-
             MemoryAllocationFlags memoryAllocationFlags = configuration.MemoryManagerMode == MemoryManagerMode.SoftwarePageTable ? MemoryAllocationFlags.Reserve : MemoryAllocationFlags.Reserve | MemoryAllocationFlags.Mirrorable;
-
-            SWLOG("[SWITCH] ANTES DirtyHacks");
             DirtyHacks = new DirtyHacks(Configuration.Hacks);
-            SWLOG("[SWITCH] DEPOIS DirtyHacks");
-
-            SWLOG("[SWITCH] ANTES AudioDeviceDriver");
             AudioDeviceDriver = new CompatLayerHardwareDeviceDriver(Configuration.AudioDeviceDriver);
-            SWLOG("[SWITCH] DEPOIS AudioDeviceDriver");
-
-            SWLOG("[SWITCH] ANTES MemoryBlock DramSize="+Configuration.MemoryConfiguration.DramSize);
             Memory = new MemoryBlock(Configuration.MemoryConfiguration.DramSize, memoryAllocationFlags);
-            SWLOG("[SWITCH] DEPOIS MemoryBlock");
-
-            SWLOG("[SWITCH] ANTES GpuContext");
             Gpu = new GpuContext(Configuration.GpuRenderer, DirtyHacks);
-            SWLOG("[SWITCH] DEPOIS GpuContext");
-
-            SWLOG("[SWITCH] ANTES Debugger");
             Debugger = Configuration.EnableGdbStub ? new Debugger.Debugger(this, Configuration.GdbStubPort) : null;
-            SWLOG("[SWITCH] DEPOIS Debugger");
-
-            SWLOG("[SWITCH] ANTES Horizon");
             System = new HOS.Horizon(this);
-            SWLOG("[SWITCH] DEPOIS Horizon");
-
             Statistics = new PerformanceStatistics(this);
             Hid = new Hid(this, System.HidStorage);
             Processes = new ProcessLoader(this);
             TamperMachine = new TamperMachine();
-
-            SWLOG("[SWITCH] ANTES InitializeServices");
             System.InitializeServices();
-            SWLOG("[SWITCH] DEPOIS InitializeServices");
-
             System.State.SetLanguage(Configuration.SystemLanguage);
             System.State.SetRegion(Configuration.Region);
             VSyncMode = Configuration.VSyncMode;
@@ -115,4 +85,19 @@ namespace Ryujinx.HLE
         public void UpdateVSyncInterval(){ switch(VSyncMode){ case VSyncMode.Custom: TargetVSyncInterval=CustomVSyncInterval; break; case VSyncMode.Switch: TargetVSyncInterval=60; break; case VSyncMode.Unbounded: TargetVSyncInterval=1; break; } }
         public void ToggleTurbo(){ TurboMode=!TurboMode; TickScalar=TurboMode?Configuration.TickScalar:ITickSource.RealityTickScalar; }
         public bool LoadCart(string exeFsDir, string romFsFile = null) => Processes.LoadUnpackedNca(exeFsDir, romFsFile);
-        public bool LoadXci(string xciFile, ulong applicationId = 0) => Processes.LoadXci(xciFile, application
+        public bool LoadXci(string xciFile, ulong applicationId = 0) => Processes.LoadXci(xciFile, applicationId);
+        public bool LoadNca(string ncaFile, BlitStruct<ApplicationControlProperty>? customNacpData = null) => Processes.LoadNca(ncaFile, customNacpData);
+        public bool LoadNsp(string nspFile, ulong applicationId = 0) => Processes.LoadNsp(nspFile, applicationId);
+        public bool LoadProgram(string fileName) => Processes.LoadNxo(fileName);
+        public void SetVolume(float volume) => AudioDeviceDriver.Volume = Math.Clamp(volume, 0f, 1f);
+        public float GetVolume() => AudioDeviceDriver.Volume;
+        public bool IsAudioMuted() => AudioDeviceDriver.Volume == 0;
+        public void EnableCheats() => ModLoader.EnableCheats(Processes.ActiveApplication.ProgramId, TamperMachine);
+        public bool WaitFifo() => Gpu.GPFifo.WaitForCommands();
+        public bool ConsumeFrameAvailable() => Gpu.Window.ConsumeFrameAvailable();
+        public void PresentFrame(Action swapBuffersCallback) => Gpu.Window.Present(swapBuffersCallback);
+        public void DisposeGpu() => Gpu.Dispose();
+        public void Dispose(){ GC.SuppressFinalize(this); Dispose(true); }
+        protected virtual void Dispose(bool disposing){ if(disposing){ Processes.ClearAllProcesses(); System.Dispose(); AudioDeviceDriver.Dispose(); FileSystem.Dispose(); Memory.Dispose(); Debugger?.Dispose(); TitleIDs.CurrentApplication.Value=null; Shared=null; } }
+    }
+}
