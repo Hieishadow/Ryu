@@ -26,16 +26,55 @@ public class GameActivity : Activity
         string baseDir=Path.Combine(FilesDir.AbsolutePath,"Ryujinx");
         string sysDir=Path.Combine(baseDir,"system");
         Directory.CreateDirectory(sysDir);
+        string keysDir=Path.Combine(baseDir,"keys");
+        Directory.CreateDirectory(keysDir);
         string jitDir=Path.Combine(CacheDir.AbsolutePath,"jit");
         Directory.CreateDirectory(jitDir);
         SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE",jitDir);
         try{ Directory.SetCurrentDirectory(baseDir); SysEnv.CurrentDirectory=baseDir; MyLog("CWD -> "+baseDir); }catch(Exception ex){ MyLog("CWD fail: "+ex.Message); }
 
+        // >>> FIX ANDROID KEYS E NPDM <<<
+        try{
+            string[] keySources = new[]{
+                "/storage/emulated/0/Ryujinx/keys/prod.keys",
+                "/storage/emulated/0/Download/Ryubing/keys/prod.keys",
+                "/storage/emulated/0/Download/Ryubing/prod.keys",
+                "/storage/emulated/0/Download/prod.keys"
+            };
+            string destKey = Path.Combine(keysDir,"prod.keys");
+            if(!File.Exists(destKey)){
+                foreach(var src in keySources){
+                    if(File.Exists(src)){
+                        File.Copy(src, destKey, true);
+                        MyLog($"Keys copiada de {src} -> {destKey} ({new FileInfo(destKey).Length} bytes)");
+                        break;
+                    }
+                }
+            }
+            if(File.Exists(destKey)) MyLog($"prod.keys OK {new FileInfo(destKey).Length} bytes");
+            else MyLog("AVISO: prod.keys NAO encontrada! Coloque em /Download/Ryubing/keys/prod.keys");
+
+            string[] npdmSources = new[]{
+                "/storage/emulated/0/Download/Ryubing/Homebrew.npdm",
+                "/storage/emulated/0/Ryujinx/Homebrew.npdm"
+            };
+            string destNpdm = Path.Combine(baseDir,"Homebrew.npdm");
+            if(!File.Exists(destNpdm)){
+                foreach(var src in npdmSources){
+                    if(File.Exists(src)){
+                        File.Copy(src, destNpdm, true);
+                        MyLog($"Homebrew.npdm copiado {src}");
+                        break;
+                    }
+                }
+            }
+        }catch(Exception ex){ MyLog("Copy keys/npd m fail: "+ex.Message); }
+
         try{ typeof(VirtualFileSystem).GetField("_instance",All)?.SetValue(null,null); }catch{}
 
         VirtualFileSystem vfs=VirtualFileSystem.CreateInstance();
         vfs.ReloadKeySet();
-        MyLog("VFS OK");
+        MyLog("VFS OK - Keys loaded: "+vfs.KeySet.Keys.Count);
         var audio=new DummyHardwareDeviceDriver();
         if(nativeWindow==IntPtr.Zero){ MyLog("nativeWindow ZERO"); return; }
         gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
@@ -57,16 +96,13 @@ public class GameActivity : Activity
         var lhmType=typeof(LibHacHorizonManager); object lhm=null;
         foreach(var c in lhmType.GetConstructors(All)){ try{ var pr=c.GetParameters(); var ar=new object[pr.Length]; for(int k=0;k<pr.Length;k++){ if(pr[k].ParameterType==typeof(VirtualFileSystem)) ar[k]=vfs; else if(pr[k].ParameterType==typeof(string)) ar[k]=baseDir; else if(pr[k].ParameterType.IsValueType) ar[k]=Activator.CreateInstance(pr[k].ParameterType); } lhm=c.Invoke(ar); if(lhm!=null) break; }catch{} }
         MyLog("LHM -> "+(lhm==null?"NULL":lhm.GetType().Name));
-
         try{
             var fsClientProp=lhmType.GetProperty("FsClient",All);
             var fsClientBefore=fsClientProp?.GetValue(lhm);
             MyLog("LHM.FsClient BEFORE init -> "+(fsClientBefore==null?"NULL":"OK"));
-
             foreach(var m in lhmType.GetMethods(All).Where(m=>m.Name.ToLower().Contains("init"))){
                 MyLog("LHM method: "+m.Name+"("+string.Join(",", m.GetParameters().Select(p=>p.ParameterType.Name))+")");
             }
-
             foreach(var m in lhmType.GetMethods(All)){
                 if(!m.Name.Contains("Initialize")) continue;
                 try{
@@ -75,7 +111,6 @@ public class GameActivity : Activity
                     else if(ps.Length==1 && ps[0].ParameterType==typeof(VirtualFileSystem)){ m.Invoke(lhm,new object[]{vfs}); MyLog($"LHM.{m.Name}(VFS) OK"); }
                 }catch(Exception ex){ MyLog($"LHM.{m.Name} fail: {ex.InnerException?.Message??ex.Message}"); }
             }
-
             var fsAfter=fsClientProp?.GetValue(lhm);
             MyLog("LHM.FsClient AFTER init -> "+(fsAfter==null?"NULL":fsAfter.GetType().Name));
             if(fsAfter!=null){
@@ -84,10 +119,8 @@ public class GameActivity : Activity
                 MyLog("LHM.FsClient.Fs AFTER -> "+(fs==null?"NULL":"OK"));
             }
         }catch(Exception ex){ MyLog("LHM init check fail: "+ex.Message); }
-
         object hc=null; try{ var t=lhm.GetType(); foreach(var m in t.GetMembers(All)){ if(m is PropertyInfo pi && pi.PropertyType.Name.Contains("HorizonClient")){ hc=pi.GetValue(lhm); if(hc!=null) break; } if(m is FieldInfo fi && fi.FieldType.Name.Contains("HorizonClient")){ hc=fi.GetValue(lhm); if(hc!=null) break; } } if(hc==null) hc=t.GetProperty("Client",All)?.GetValue(lhm)?? t.GetField("_horizonClient",All)?.GetValue(lhm)?? t.GetField("_client",All)?.GetValue(lhm); }catch(Exception ex){ MyLog("Get HC ex: "+ex.Message); }
         MyLog("HorizonClient -> "+(hc==null?"NULL":hc.GetType().Name));
-
         object accMan=null;
         if(hc!=null){
             try{
