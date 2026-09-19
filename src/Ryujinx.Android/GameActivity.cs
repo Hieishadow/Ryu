@@ -32,82 +32,52 @@ public class GameActivity : Activity
             string jitDir=Path.Combine(CacheDir.AbsolutePath,"jit");
             Directory.CreateDirectory(jitDir);
             SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE",jitDir);
-            try{ Directory.SetCurrentDirectory(baseDir); SysEnv.CurrentDirectory=baseDir; MyLog("CWD -> "+baseDir); }catch(Exception ex){ MyLog("CWD fail: "+ex.Message); }
+            try{ Directory.SetCurrentDirectory(baseDir); SysEnv.CurrentDirectory=baseDir; }catch{}
             try{
-                string[] keySources = new[]{
-                    "/storage/emulated/0/Ryujinx/keys/prod.keys",
-                    "/storage/emulated/0/Download/Ryubing/keys/prod.keys",
-                    "/storage/emulated/0/Download/Ryubing/prod.keys",
-                    "/storage/emulated/0/Download/prod.keys"
-                };
+                string[] keySources = new[]{ "/storage/emulated/0/Ryujinx/keys/prod.keys", "/storage/emulated/0/Download/Ryubing/keys/prod.keys", "/storage/emulated/0/Download/Ryubing/prod.keys", "/storage/emulated/0/Download/prod.keys" };
                 string destKey = Path.Combine(keysDir,"prod.keys");
-                if(!File.Exists(destKey)){
-                    foreach(var src in keySources){
-                        if(File.Exists(src)){
-                            File.Copy(src, destKey, true);
-                            MyLog($"Keys copiada de {src} -> {destKey} ({new FileInfo(destKey).Length} bytes)");
-                            break;
-                        }
-                    }
-                }
-                if(File.Exists(destKey)) MyLog($"prod.keys OK {new FileInfo(destKey).Length} bytes");
-                else MyLog("AVISO: prod.keys NAO encontrada!");
-            }catch(Exception ex){ MyLog("Copy keys fail: "+ex.Message); }
+                if(!File.Exists(destKey)){ foreach(var src in keySources){ if(File.Exists(src)){ File.Copy(src, destKey, true); MyLog($"Keys {new FileInfo(destKey).Length} bytes"); break; } } }
+            }catch{}
             try{ typeof(VirtualFileSystem).GetField("_instance",All)?.SetValue(null,null); }catch{}
-            VirtualFileSystem vfs=VirtualFileSystem.CreateInstance();
-            vfs.ReloadKeySet();
-            MyLog("VFS OK - Keys loaded: OK");
+            VirtualFileSystem vfs=VirtualFileSystem.CreateInstance(); vfs.ReloadKeySet();
+            MyLog("VFS OK");
             var audio=new DummyHardwareDeviceDriver();
-            if(nativeWindow==IntPtr.Zero){ MyLog("nativeWindow ZERO"); return; }
+            if(nativeWindow==IntPtr.Zero) return;
             gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
-            try{
-                var mInit = gpu.GetType().GetMethod("Initialize", All);
-                if(mInit!=null){
-                    var pars = mInit.GetParameters();
-                    if(pars.Length==0) mInit.Invoke(gpu, null);
-                    else mInit.Invoke(gpu, new object[]{ 0 });
-                    MyLog("Vulkan Initialize() OK via reflection");
-                }
-            }catch(Exception ex){ MyLog("Vulkan Initialize fail: "+(ex.InnerException?.Message??ex.Message)); }
-            MyLog("Vulkan OK "+gpu.GetType().FullName+" Initialized");
+            try{ var mInit = gpu.GetType().GetMethod("Initialize", All); if(mInit!=null){ if(mInit.GetParameters().Length==0) mInit.Invoke(gpu,null); else mInit.Invoke(gpu,new object[]{0}); } }catch{}
+            MyLog("Vulkan OK");
             var conf=BuildHle(vfs,gpu,audio, baseDir, sysDir);
             MyLog("HLE FINAL OK");
             device=new Switch(conf);
-            MyLog("Switch OK - DEPOIS new Switch FINAL");
-            device.LoadNsp(romPath);
-            MyLog("LoadNsp OK");
+            MyLog("Switch OK");
+
+            // LOAD COM CHECAGEM REAL DE BOOL
+            try{
+                var mLoad = device.GetType().GetMethods(All).FirstOrDefault(m=>m.Name=="LoadNsp" && m.GetParameters().Any(p=>p.ParameterType==typeof(string)));
+                MyLog($"[LOAD] method={mLoad?.Name} return={mLoad?.ReturnType.Name}");
+                object ret = mLoad.Invoke(device, new object[]{ romPath });
+                if(mLoad.ReturnType==typeof(bool)){
+                    bool ok=(bool)ret;
+                    MyLog($"[LOAD] LoadNsp bool = {ok}");
+                    if(!ok) throw new Exception("LoadNsp retornou false - KProcess.Start falhou");
+                }
+                MyLog("LoadNsp OK VERDADEIRO");
+            }catch(Exception ex){ MyLog($"[LOAD] FAIL REAL: {ex.InnerException?.Message??ex.Message}"); throw; }
 
             RunOnUiThread(()=>{ logView.Visibility=ViewStates.Gone; });
-
-            int frame=0;
-            MyLog("[DIAG] INICIANDO LOOP DIAGNOSTICO");
+            int frame=0; MyLog("[DIAG] LOOP");
             while(running){
                 try{
                     if(frame<5 || frame%60==0){
-                        try{
-                            var d = device.GetType().GetProperty("Device",All)?.GetValue(device);
-                            if(d==null) d = device;
-                            var proc = d?.GetType().GetProperty("Process",All)?.GetValue(d);
-                            if(proc==null) proc = d?.GetType().GetField("_process",All)?.GetValue(d);
-                            int tc=-1;
-                            if(proc!=null){
-                                var th = proc.GetType().GetProperty("Threads",All)?.GetValue(proc) as System.Collections.ICollection;
-                                tc = th?.Count?? -1;
-                            }
-                            MyLog($"[DIAG] frame={frame} Device={d!=null} Process={proc!=null} threads={tc}");
-                        }catch(Exception exD){ MyLog($"[DIAG] fail: {exD.Message}"); }
+                        var d = device.GetType().GetProperty("Device",All)?.GetValue(device)?? device;
+                        var proc = d?.GetType().GetProperty("Process",All)?.GetValue(d)?? d?.GetType().GetField("_process",All)?.GetValue(d);
+                        int tc=-1; if(proc!=null){ var th=proc.GetType().GetProperty("Threads",All)?.GetValue(proc) as System.Collections.ICollection; tc=th?.Count??-1; }
+                        MyLog($"[DIAG] frame={frame} Process={proc!=null} threads={tc}");
                     }
-                    device.ProcessFrame();
-                    device.PresentFrame(()=>{});
-                    frame++;
-                    if(frame==5) MyLog("[DIAG] 5 frames rodaram, loop funcionando - scheduler existe");
-                    Thread.Sleep(16);
-                }catch(Exception ex){
-                    MyLog($"[FRAME {frame}] CRASH: {ex.InnerException?.Message??ex.Message}\n{ex.InnerException?.StackTrace??ex.StackTrace}");
-                    break;
-                }
+                    device.ProcessFrame(); device.PresentFrame(()=>{}); frame++; Thread.Sleep(16);
+                }catch(Exception ex){ MyLog($"[FRAME {frame}] CRASH: {ex.InnerException?.Message??ex.Message}"); break; }
             }
-        }catch(Exception ex){ MyLog("Emu CRASH: "+ex.ToString()); try{ typeof(VirtualFileSystem).GetField("_instance",All)?.SetValue(null,null); }catch{} }
+        }catch(Exception ex){ MyLog("Emu CRASH: "+ex.ToString()); }
     }
 
     unsafe delegate Silk.NET.Vulkan.Result CDel(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
@@ -116,93 +86,21 @@ public class GameActivity : Activity
         string profilesPath=Path.Combine(sysDir,"Profiles.json");
         var lhmType=typeof(LibHacHorizonManager); object lhm=null;
         foreach(var c in lhmType.GetConstructors(All)){ try{ var pr=c.GetParameters(); var ar=new object[pr.Length]; for(int k=0;k<pr.Length;k++){ if(pr[k].ParameterType==typeof(VirtualFileSystem)) ar[k]=vfs; else if(pr[k].ParameterType==typeof(string)) ar[k]=baseDir; else if(pr[k].ParameterType.IsValueType) ar[k]=Activator.CreateInstance(pr[k].ParameterType); } lhm=c.Invoke(ar); if(lhm!=null) break; }catch{} }
-        MyLog("LHM -> "+(lhm==null?"NULL":lhm.GetType().Name));
         try{
-            var fsClientProp=lhmType.GetProperty("FsClient",All);
-            MyLog("LHM.FsClient BEFORE init -> "+(fsClientProp?.GetValue(lhm)==null?"NULL":"OK"));
             var methods = lhmType.GetMethods(All).Where(m=>m.Name.Contains("Initialize")).ToList();
-            try{ var m = methods.FirstOrDefault(x=>x.Name=="InitializeServer" && x.GetParameters().Length==0); m?.Invoke(lhm,null); MyLog("LHM.InitializeServer() OK"); }catch(Exception ex){ MyLog($"LHM.InitializeServer fail: {ex.InnerException?.Message??ex.Message}"); }
-            try{ var m = methods.FirstOrDefault(x=>x.Name=="InitializeArpServer" && x.GetParameters().Length==0); m?.Invoke(lhm,null); MyLog("LHM.InitializeArpServer() OK"); }catch(Exception ex){ MyLog($"LHM.InitializeArpServer fail (ignorado): {ex.InnerException?.Message??ex.Message}"); }
-            try{ var m = methods.FirstOrDefault(x=>x.Name=="InitializeBcatServer" && x.GetParameters().Length==0); m?.Invoke(lhm,null); MyLog("LHM.InitializeBcatServer() OK"); }catch(Exception ex){ MyLog($"LHM.InitializeBcatServer fail (ignorado): {ex.InnerException?.Message??ex.Message}"); }
-            try{ var m = methods.FirstOrDefault(x=>x.Name=="InitializeFsServer" && x.GetParameters().Length==1); m?.Invoke(lhm,new object[]{vfs}); MyLog("LHM.InitializeFsServer(VFS) OK"); }catch(Exception ex){ MyLog($"LHM.InitializeFsServer FAIL: {ex.InnerException?.Message??ex.Message}"); }
-            try{ var m = methods.FirstOrDefault(x=>x.Name=="InitializeSystemClients" && x.GetParameters().Length==0); m?.Invoke(lhm,null); MyLog("LHM.InitializeSystemClients() OK"); }catch(Exception ex){ MyLog($"LHM.InitializeSystemClients fail (ignorado por enquanto): {ex.InnerException?.Message??ex.Message}"); }
-            var fsAfter=fsClientProp?.GetValue(lhm);
-            MyLog("LHM.FsClient AFTER init -> "+(fsAfter==null?"NULL":fsAfter.GetType().Name));
-        }catch(Exception ex){ MyLog("LHM init check fail: "+ex.Message); }
-        object hc=null; try{ var t=lhm.GetType(); foreach(var m in t.GetMembers(All)){ if(m is PropertyInfo pi && pi.PropertyType.Name.Contains("HorizonClient")){ hc=pi.GetValue(lhm); if(hc!=null) break; } if(m is FieldInfo fi && fi.FieldType.Name.Contains("HorizonClient")){ hc=fi.GetValue(lhm); if(hc!=null) break; } } if(hc==null) hc=t.GetProperty("Client",All)?.GetValue(lhm)?? t.GetField("_horizonClient",All)?.GetValue(lhm)?? t.GetField("_client",All)?.GetValue(lhm); }catch(Exception ex){ MyLog("Get HC ex: "+ex.Message); }
-        MyLog("HorizonClient -> "+(hc==null?"NULL":hc.GetType().Name));
-        object accMan=null;
-        if(hc!=null){
-            try{
-                var amType=typeof(AccountManager);
-                foreach(var ctor in amType.GetConstructors(All)){
-                    var ps=ctor.GetParameters();
-                    if(ps.Length>=1 && ps[0].ParameterType.IsInstanceOfType(hc)){
-                        object[] args = ps.Length==1? new object[]{ hc } : new object[]{ hc, null };
-                        accMan=ctor.Invoke(args);
-                        MyLog("AM criado via ctor(HorizonClient) OK");
-                        break;
-                    }
-                }
-            }catch(Exception ex){
-                string msg = ex.InnerException?.Message?? ex.Message;
-                MyLog("AM ctor fail: "+msg);
-                try{
-                    var amType=typeof(AccountManager);
-                    accMan=System.Runtime.Serialization.FormatterServices.GetUninitializedObject(amType);
-                    amType.GetField("_horizonClient",All)?.SetValue(accMan,hc);
-                    var dict=new ConcurrentDictionary<string, UserProfile>();
-                    amType.GetField("_profiles",All)?.SetValue(accMan,dict);
-                    amType.GetField("_storedOpenedUsers",All)?.SetValue(accMan, new UserProfile[0]);
-                    var f_asdm=amType.GetField("_accountSaveDataManager",All);
-                    if(f_asdm!=null){
-                        var asdmType=f_asdm.FieldType;
-                        object asdm=null;
-                        try{ asdm=Activator.CreateInstance(asdmType,All,null,new object[]{ dict },null); }
-                        catch{ asdm=Activator.CreateInstance(asdmType,true); }
-                        foreach(var fi in asdmType.GetFields(All)){
-                            if(fi.FieldType==typeof(string)){
-                                try{
-                                    var v=fi.GetValue(asdm) as string;
-                                    if(v!=null && (v.Contains("Profiles") || v.Contains("/system") || v=="system")){
-                                        fi.SetValue(asdm, profilesPath);
-                                    }
-                                }catch{}
-                            }
-                        }
-                        f_asdm.SetValue(accMan,asdm);
-                    }
-                    var defId = amType.GetField("DefaultUserId",All)?.GetValue(null);
-                    if(defId!=null){
-                        byte[] img=new byte[0];
-                        try{
-                            var resType=typeof(Ryujinx.Common.EmbeddedResources);
-                            var readM=resType.GetMethod("Read",All);
-                            if(readM!=null) img=(byte[])readM.Invoke(null,new object[]{ "Ryujinx.HLE/HOS/Services/Account/Acc/DefaultUserImage.jpg" });
-                        }catch{}
-                        var upType=typeof(UserProfile);
-                        object profile=null;
-                        foreach(var c in upType.GetConstructors(All)){
-                            if(c.GetParameters().Length==3){
-                                profile=c.Invoke(new object[]{ defId, "RyuPlayer", img });
-                                break;
-                            }
-                        }
-                        if(profile!=null){
-                            dict.TryAdd(defId.ToString(), (UserProfile)profile);
-                            amType.GetProperty("LastOpenedUser",All)?.SetValue(accMan, profile);
-                            try{ upType.GetProperty("AccountState")?.SetValue(profile, 1); }catch{}
-                        }
-                    }
-                    MyLog("AM fallback PATCHED OK -> "+profilesPath);
-                }catch(Exception ex2){ MyLog("AM fallback fail: "+ex2.ToString()); accMan=null; }
-            }
-        }
-        if(accMan==null) throw new Exception("AccountManager NULL - abort");
-        MyLog("AccountManager -> "+accMan.GetType().FullName+" | Profiles: "+profilesPath);
+            methods.FirstOrDefault(x=>x.Name=="InitializeServer" && x.GetParameters().Length==0)?.Invoke(lhm,null);
+            methods.FirstOrDefault(x=>x.Name=="InitializeFsServer" && x.GetParameters().Length==1)?.Invoke(lhm,new object[]{vfs});
+            try{ methods.FirstOrDefault(x=>x.Name=="InitializeSystemClients")?.Invoke(lhm,null); }catch(Exception ex){ MyLog($"SystemClients fail ignorado: {ex.InnerException?.Message}"); }
+        }catch{}
+        object hc=null; try{ hc=lhm.GetType().GetProperty("Client",All)?.GetValue(lhm)?? lhm.GetType().GetField("_horizonClient",All)?.GetValue(lhm); }catch{}
+        var amType=typeof(AccountManager); object accMan=null;
+        try{ accMan=Activator.CreateInstance(amType,All,null,new object[]{ hc },null); }catch{ accMan=System.Runtime.Serialization.FormatterServices.GetUninitializedObject(amType); amType.GetField("_horizonClient",All)?.SetValue(accMan,hc); amType.GetField("_profiles",All)?.SetValue(accMan,new ConcurrentDictionary<string, UserProfile>()); }
         var cmType=typeof(ContentManager); object cm=null; foreach(var c in cmType.GetConstructors(All)){ try{ var pr=c.GetParameters(); var ar=new object[pr.Length]; for(int k=0;k<pr.Length;k++){ if(pr[k].ParameterType==typeof(VirtualFileSystem)) ar[k]=vfs; else if(pr[k].ParameterType==typeof(string)) ar[k]=baseDir; else if(pr[k].ParameterType.IsValueType) ar[k]=Activator.CreateInstance(pr[k].ParameterType); } cm=c.Invoke(ar); if(cm!=null) break; }catch{} }
         var ucpType=typeof(UserChannelPersistence); object ucp=Activator.CreateInstance(ucpType,true);
-        var hleType=typeof(HleConfiguration); var hleCtor=hleType.GetConstructors(All)[0]; var hps=hleCtor.GetParameters(); var hargs=new object[hps.Length]; for(int k=0;k<hps.Length;k++){ var pt=hps[k].ParameterType; if(pt==typeof(string)) hargs[k]="UTC"; else if(pt==typeof(bool)) hargs[k]=true; else if(pt.IsEnum) hargs[k]=Enum.GetValues(pt).GetValue(0); else if(pt.IsValueType) hargs[k]=Activator.CreateInstance(pt); } var hle=(HleConfiguration)hleCtor.Invoke(hargs);
+        var hleType=typeof(HleConfiguration); var hleCtor=hleType.GetConstructors(All)[0]; var hps=hleCtor.GetParameters(); var hargs=new object[hps.Length];
+        for(int k=0;k<hps.Length;k++){ var pt=hps[k].ParameterType; if(pt==typeof(string)) hargs[k]="UTC"; else if(pt==typeof(bool)) hargs[k]=true; else if(pt.Name=="MemoryManagerMode"){ try{ hargs[k]=Enum.Parse(pt,"SoftwarePageTable"); MyLog("[MEM] SoftwarePageTable"); }catch{ hargs[k]=Enum.GetValues(pt).GetValue(0); } } else if(pt.IsEnum) hargs[k]=Enum.GetValues(pt).GetValue(0); else if(pt.IsValueType) hargs[k]=Activator.CreateInstance(pt); }
+        var hle=(HleConfiguration)hleCtor.Invoke(hargs);
+        try{ var memProp=hleType.GetProperties(All).FirstOrDefault(p=>p.Name.Contains("MemoryAllocation")); if(memProp!=null){ var reserve=Enum.Parse(memProp.PropertyType,"Reserve"); memProp.SetValue(hle,reserve); MyLog("[MEM] Reserve (sem ONLY)"); } }catch{}
         var confM=hleType.GetMethod("Configure",All); var cps=confM.GetParameters(); var cargs=new object[cps.Length];
         for(int k=0;k<cps.Length;k++){ var pt=cps[k].ParameterType; if(pt==typeof(VirtualFileSystem)) cargs[k]=vfs; else if(pt==typeof(LibHacHorizonManager)) cargs[k]=lhm; else if(pt==typeof(ContentManager)) cargs[k]=cm; else if(pt==typeof(AccountManager)) cargs[k]=accMan; else if(pt==typeof(UserChannelPersistence)) cargs[k]=ucp; else if(pt.IsAssignableFrom(gpu.GetType())) cargs[k]=gpu; else if(pt.FullName.Contains("IRenderer")) cargs[k]=gpu; else if(typeof(IHardwareDeviceDriver).IsAssignableFrom(pt)) cargs[k]=audio; }
         return confM.Invoke(hle,cargs) as HleConfiguration;
