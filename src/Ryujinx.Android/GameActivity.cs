@@ -1,4 +1,5 @@
 #nullable disable
+#pragma warning disable SYSLIB0050
 using Android.App; using Android.Content.PM; using Android.OS; using Android.Views; using Android.Widget;
 using AFormat = Android.Graphics.Format; using Ryujinx.HLE; using Ryujinx.HLE.FileSystem; using Ryujinx.HLE.HOS;
 using Ryujinx.HLE.HOS.Services.Account.Acc; using Ryujinx.Graphics.Vulkan; using Ryujinx.Audio.Backends.Dummy;
@@ -28,7 +29,7 @@ public class GameActivity : Activity
         string jitDir=Path.Combine(CacheDir.AbsolutePath,"jit");
         Directory.CreateDirectory(jitDir);
         SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE",jitDir);
-        try{ Directory.SetCurrentDirectory(baseDir); Environment.CurrentDirectory=baseDir; MyLog("CWD -> "+baseDir); }catch(Exception ex){ MyLog("CWD fail: "+ex.Message); }
+        try{ Directory.SetCurrentDirectory(baseDir); SysEnv.CurrentDirectory=baseDir; MyLog("CWD -> "+baseDir); }catch(Exception ex){ MyLog("CWD fail: "+ex.Message); }
 
         VirtualFileSystem vfs=VirtualFileSystem.CreateInstance();
         vfs.ReloadKeySet();
@@ -82,7 +83,6 @@ public class GameActivity : Activity
                         var dict=new ConcurrentDictionary<string, UserProfile>();
                         amType.GetField("_profiles",All)?.SetValue(accMan,dict);
                         amType.GetField("_storedOpenedUsers",All)?.SetValue(accMan, new UserProfile[0]);
-
                         var f_asdm=amType.GetField("_accountSaveDataManager",All);
                         if(f_asdm!=null){
                             var asdmType=f_asdm.FieldType;
@@ -101,7 +101,6 @@ public class GameActivity : Activity
                             }
                             f_asdm.SetValue(accMan,asdm);
                         }
-                        // Cria usuario RyuPlayer manualmente
                         var defId = amType.GetField("DefaultUserId",All)?.GetValue(null);
                         if(defId!=null){
                             byte[] img=new byte[0];
@@ -131,7 +130,6 @@ public class GameActivity : Activity
         }
         if(accMan==null) throw new Exception("AccountManager NULL - abort");
         MyLog("AccountManager -> "+accMan.GetType().FullName+" | Profiles: "+profilesPath);
-
         var cmType=typeof(ContentManager); object cm=null; foreach(var c in cmType.GetConstructors(All)){ try{ var pr=c.GetParameters(); var ar=new object[pr.Length]; for(int k=0;k<pr.Length;k++){ if(pr[k].ParameterType==typeof(VirtualFileSystem)) ar[k]=vfs; else if(pr[k].ParameterType==typeof(string)) ar[k]=baseDir; else if(pr[k].ParameterType.IsValueType) ar[k]=Activator.CreateInstance(pr[k].ParameterType); } cm=c.Invoke(ar); if(cm!=null) break; }catch{} }
         var ucpType=typeof(UserChannelPersistence); object ucp=Activator.CreateInstance(ucpType,true);
         var hleType=typeof(HleConfiguration); var hleCtor=hleType.GetConstructors(All)[0]; var hps=hleCtor.GetParameters(); var hargs=new object[hps.Length]; for(int k=0;k<hps.Length;k++){ var pt=hps[k].ParameterType; if(pt==typeof(string)) hargs[k]="UTC"; else if(pt==typeof(bool)) hargs[k]=true; else if(pt.IsEnum) hargs[k]=Enum.GetValues(pt).GetValue(0); else if(pt.IsValueType) hargs[k]=Activator.CreateInstance(pt); } var hle=(HleConfiguration)hleCtor.Invoke(hargs);
