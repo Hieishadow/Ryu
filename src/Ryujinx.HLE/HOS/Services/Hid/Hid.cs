@@ -4,6 +4,7 @@ using Ryujinx.HLE.HOS.Kernel.Memory;
 using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory;
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 
 namespace Ryujinx.HLE.HOS.Services.Hid
 {
@@ -11,8 +12,8 @@ namespace Ryujinx.HLE.HOS.Services.Hid
     {
         private readonly Switch _device;
         private readonly SharedMemoryStorage _storage;
-        private SharedMemory _localSharedMemory;
-        private bool _useLocal = false;
+        private SharedMemory _dummySharedMemory; // 1x só pra retorno
+        private bool _useLocal = true;
 
         internal const int SharedMemEntryCount = 17;
 
@@ -20,7 +21,10 @@ namespace Ryujinx.HLE.HOS.Services.Hid
         {
             get
             {
-                if (_useLocal) return ref _localSharedMemory;
+                if (_useLocal)
+                {
+                    return ref _dummySharedMemory;
+                }
                 return ref _storage.GetRef<SharedMemory>(0);
             }
         }
@@ -34,29 +38,37 @@ namespace Ryujinx.HLE.HOS.Services.Hid
 
         static Hid()
         {
-            if (Environment.OSVersion.Platform == PlatformID.Unix) return;
+            try
+            {
+                if (Environment.OSVersion.Platform == PlatformID.Unix) return;
+                // Checagens originais só no Windows
+                var t = typeof(SharedMemory);
+            }
+            catch { }
         }
 
         internal Hid(in Switch device, SharedMemoryStorage storage)
         {
+            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] ctor ENTER\n"); } catch {}
+            
             _device = device;
             _storage = storage;
-            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] ctor ENTER\n"); } catch {}
-            _useLocal = true;
-            _localSharedMemory = default;
-            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] local default OK\n"); } catch {}
-            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] BEFORE InitDevices\n"); } catch {}
+            _dummySharedMemory = default;
+            
+            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] fields OK\n"); } catch {}
+
             DebugPad = new DebugPadDevice(_device, true);
             Touchscreen = new TouchDevice(_device, true);
             Mouse = new MouseDevice(_device, false);
             DebugMouse = new DebugMouseDevice(_device, false);
             Keyboard = new KeyboardDevice(_device, false);
             Npads = new NpadDevices(_device, true);
-            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] InitDevices OK\n"); } catch {}
+
+            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] ctor EXIT OK\n"); } catch {}
         }
 
         public void RefreshInputConfig(System.Collections.Generic.List<InputConfig> inputConfig) {}
         public ControllerKeys UpdateStickButtons(JoystickPosition leftStick, JoystickPosition rightStick) => 0;
-        internal ulong GetTimestampTicks() => 0;
+        internal ulong GetTimestampTicks() => (ulong)Environment.TickCount64;
     }
 }
