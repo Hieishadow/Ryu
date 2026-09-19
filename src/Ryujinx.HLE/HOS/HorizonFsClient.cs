@@ -19,11 +19,31 @@ namespace Ryujinx.HLE.HOS
         private readonly LibHac.Fs.FileSystemClient _fsClient;
         private readonly ConcurrentDictionary<string, LocalStorage> _mountedStorages;
 
+        private const string LogPath = "/data/user/0/com.ryubing.android/files/Ryujinx/hid_debug.log";
+        private static void L(string msg)
+        {
+            try { File.AppendAllText(LogPath, $"{DateTime.Now}: [FsClient] {msg}\n"); } catch {}
+        }
+
         public HorizonFsClient(Horizon system)
         {
-            _system = system;
+            L($"ctor ENTER system null? {system==null}");
+            L($"LHM null? {system?.LibHacHorizonManager==null}");
+            L($"LHM.FsClient null? {system?.LibHacHorizonManager?.FsClient==null}");
+            L($"LHM.FsClient.Fs null? {system?.LibHacHorizonManager?.FsClient?.Fs==null}");
+
+            _system = system ?? throw new ArgumentNullException(nameof(system));
+
+            if (_system.LibHacHorizonManager == null)
+                throw new InvalidOperationException("LibHacHorizonManager is NULL - Horizon não foi inicializado com LHM");
+            if (_system.LibHacHorizonManager.FsClient == null)
+                throw new InvalidOperationException("LibHacHorizonManager.FsClient is NULL");
+            if (_system.LibHacHorizonManager.FsClient.Fs == null)
+                throw new InvalidOperationException("LibHacHorizonManager.FsClient.Fs is NULL");
+
             _fsClient = _system.LibHacHorizonManager.FsClient.Fs;
             _mountedStorages = new();
+            L("ctor EXIT OK");
         }
 
         public void CloseFile(FileHandle handle)
@@ -79,8 +99,6 @@ namespace Ryujinx.HLE.HOS
                 }
             }
 
-            // TODO: Return correct result here, this is likely wrong.
-
             return LibHac.Fs.ResultFs.TargetNotFound.Handle().Horizon;
         }
 
@@ -94,10 +112,7 @@ namespace Ryujinx.HLE.HOS
 
         public Result QueryMountSystemDataCacheSize(out long size, ulong dataId)
         {
-            // TODO.
-
             size = 0;
-
             return Result.Success;
         }
 
