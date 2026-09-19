@@ -1,3 +1,4 @@
+#nullable disable
 using Android.App; using Android.Content.PM; using Android.OS; using Android.Views; using Android.Widget;
 using AFormat = Android.Graphics.Format; using Ryujinx.HLE; using Ryujinx.HLE.FileSystem; using Ryujinx.HLE.HOS;
 using Ryujinx.HLE.HOS.Services.Account.Acc; using Ryujinx.Graphics.Vulkan; using Ryujinx.Audio.Backends.Dummy;
@@ -11,14 +12,14 @@ public class GameActivity : Activity
 {
     const string TAG = "Ryubing"; const BindingFlags CtorFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
     static readonly string LogFile = "/storage/emulated/0/Download/Ryubing/ryubing_log.txt"; static string _lastBaseDir = "";
-    string romPath = ""; SurfaceView surfaceView = null!; TextView logView = null!; TextView fpsView = null!;
-    Thread? emuThread; volatile bool running = false; IntPtr nativeWindow = IntPtr.Zero; Switch? device; VulkanRenderer? gpu;
+    string romPath = ""; SurfaceView surfaceView; TextView logView; TextView fpsView;
+    Thread emuThread; volatile bool running = false; IntPtr nativeWindow = IntPtr.Zero; Switch device; VulkanRenderer gpu;
 
     [DllImport("android")] static extern IntPtr ANativeWindow_fromSurface(IntPtr env, IntPtr surface);
     [DllImport("android")] static extern void ANativeWindow_acquire(IntPtr window);
     [DllImport("android")] static extern void ANativeWindow_release(IntPtr window);
 
-    protected override void OnCreate(Bundle? savedInstanceState)
+    protected override void OnCreate(Bundle savedInstanceState)
     {
         try { Console.SetOut(new StringWriter()); Console.SetError(new StringWriter()); } catch {}
         try { var all = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a=>{try{return a.GetTypes();}catch{return Type.EmptyTypes;}}).ToList(); var logger = all.FirstOrDefault(t=>t.Name=="Logger"); logger?.GetMethod("ClearTargets", BindingFlags.Static|BindingFlags.Public|BindingFlags.NonPublic)?.Invoke(null,null); } catch {}
@@ -68,65 +69,27 @@ public class GameActivity : Activity
 
     HleConfiguration BuildHleConfigurationFIX(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio)
     {
-        LogAppend("=== BUILD HLE CONFIG ===");
-        var cmType = typeof(ContentManager); object? contentManager = null;
-        foreach (var c in cmType.GetConstructors(CtorFlags).OrderByDescending(x => x.GetParameters().Length))
-        {
-            try{ var pars = c.GetParameters(); var args = new object?[pars.Length]; for (int i = 0; i < pars.Length; i++){ var pt = pars[i].ParameterType; if (pt == typeof(VirtualFileSystem)) args[i] = vfs; else if (pt == typeof(string)) args[i] = _lastBaseDir; else if (pt.IsValueType) args[i] = Activator.CreateInstance(pt); else args[i] = null; } contentManager = c.Invoke(args); break; }catch{}
-        }
-        if (contentManager == null) throw new Exception("ContentManager falhou");
-        var ucpType = typeof(UserChannelPersistence); object? userChannel = null;
-        foreach (var c in ucpType.GetConstructors(CtorFlags).OrderBy(x => x.GetParameters().Length))
-        {
-            try{ var pars = c.GetParameters(); var args = new object?[pars.Length]; for (int i = 0; i < pars.Length; i++){ if (pars[i].ParameterType==typeof(bool)) args[i]=true; else if (pars[i].ParameterType.IsValueType) args[i]=Activator.CreateInstance(pars[i].ParameterType); else args[i]=null; } userChannel = c.Invoke(args); break; }catch{}
-        }
-        if (userChannel == null) userChannel = Activator.CreateInstance(ucpType, true)!;
-        var lhmType = typeof(LibHacHorizonManager); object? libHac = null;
-        foreach (var c in lhmType.GetConstructors(CtorFlags).OrderByDescending(x => x.GetParameters().Length))
-        {
-            try{ var pars = c.GetParameters(); var args = new object?[pars.Length]; for (int i = 0; i < pars.Length; i++){ if (pars[i].ParameterType==typeof(VirtualFileSystem)) args[i]=vfs; else if (pars[i].ParameterType==typeof(string)) args[i]=_lastBaseDir; else if (pars[i].ParameterType.IsValueType) args[i]=Activator.CreateInstance(pars[i].ParameterType); else args[i]=null; } libHac = c.Invoke(args); break; }catch{}
-        }
-        if (libHac == null) throw new Exception("LibHacHorizonManager falhou");
-        var amType = typeof(AccountManager); object? accountManager = null; object? horizonClient = null;
-        try{ horizonClient = libHac.GetType().GetProperty("RyujinxClient",BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance)?.GetValue(libHac); }catch{}
-        foreach (var c in amType.GetConstructors(CtorFlags).OrderByDescending(x => x.GetParameters().Length))
-        {
-            try{ var pars = c.GetParameters(); var args = new object?[pars.Length]; for (int i = 0; i < pars.Length; i++){ var pt=pars[i].ParameterType; if(pt==typeof(VirtualFileSystem)) args[i]=vfs; else if(pt==typeof(string)) args[i]=_lastBaseDir; else if(pt.Name.Contains("HorizonClient")) args[i]=horizonClient; else if(pt.IsValueType) args[i]=Activator.CreateInstance(pt); else args[i]=null; } accountManager=c.Invoke(args); break; }catch{}
-        }
-        if (accountManager==null) throw new Exception("AccountManager falhou");
-        var hleType = typeof(HleConfiguration);
-        var hleCtor = hleType.GetConstructors(CtorFlags).OrderByDescending(c=>c.GetParameters().Length).First();
-        var parameters = hleCtor.GetParameters();
-        var ctorArgs = new object?[parameters.Length];
-        for(int i=0;i<parameters.Length;i++){
-            var pt=parameters[i].ParameterType;
-            if(pt==typeof(string)) ctorArgs[i]="UTC";
-            else if(pt==typeof(bool)) ctorArgs[i]=true;
-            else if(pt==typeof(int)||pt==typeof(long)||pt==typeof(uint)||pt==typeof(ulong)) ctorArgs[i]=Convert.ChangeType(1,pt);
-            else if(pt==typeof(float)||pt==typeof(double)) ctorArgs[i]=Convert.ChangeType(1f,pt);
-            else if(pt.IsEnum){ var names=Enum.GetNames(pt); string pick=names.FirstOrDefault(n=>n=="AmericanEnglish"||n=="USA"||n=="None"||n=="Disabled"||n=="Switch"||n.Contains("4GiB"))??names[0]; ctorArgs[i]=Enum.Parse(pt,pick); }
-            else if(pt.IsArray) ctorArgs[i]=Array.CreateInstance(pt.GetElementType()!,0);
-            else if(pt.IsValueType) ctorArgs[i]=Activator.CreateInstance(pt);
-            else ctorArgs[i]=null;
-        }
+        var cmType=typeof(ContentManager); object contentManager=null;
+        foreach(var c in cmType.GetConstructors(CtorFlags).OrderByDescending(x=>x.GetParameters().Length)){ try{ var pars=c.GetParameters(); var args=new object[pars.Length]; for(int i=0;i<pars.Length;i++){ if(pars[i].ParameterType==typeof(VirtualFileSystem)) args[i]=vfs; else if(pars[i].ParameterType==typeof(string)) args[i]=_lastBaseDir; else if(pars[i].ParameterType.IsValueType) args[i]=Activator.CreateInstance(pars[i].ParameterType); else args[i]=null; } contentManager=c.Invoke(args); break; }catch{} }
+        if(contentManager==null) throw new Exception("ContentManager falhou");
+        var ucpType=typeof(UserChannelPersistence); object userChannel=null;
+        foreach(var c in ucpType.GetConstructors(CtorFlags).OrderBy(x=>x.GetParameters().Length)){ try{ var pars=c.GetParameters(); var args=new object[pars.Length]; for(int i=0;i<pars.Length;i++){ if(pars[i].ParameterType==typeof(bool)) args[i]=true; else if(pars[i].ParameterType.IsValueType) args[i]=Activator.CreateInstance(pars[i].ParameterType); else args[i]=null; } userChannel=c.Invoke(args); break; }catch{} }
+        if(userChannel==null) userChannel=Activator.CreateInstance(ucpType, true);
+        var lhmType=typeof(LibHacHorizonManager); object libHac=null;
+        foreach(var c in lhmType.GetConstructors(CtorFlags).OrderByDescending(x=>x.GetParameters().Length)){ try{ var pars=c.GetParameters(); var args=new object[pars.Length]; for(int i=0;i<pars.Length;i++){ if(pars[i].ParameterType==typeof(VirtualFileSystem)) args[i]=vfs; else if(pars[i].ParameterType==typeof(string)) args[i]=_lastBaseDir; else if(pars[i].ParameterType.IsValueType) args[i]=Activator.CreateInstance(pars[i].ParameterType); else args[i]=null; } libHac=c.Invoke(args); break; }catch{} }
+        if(libHac==null) throw new Exception("LibHacHorizonManager falhou");
+        var amType=typeof(AccountManager); object accountManager=null; object horizonClient=null;
+        try{ horizonClient=libHac.GetType().GetProperty("RyujinxClient",BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance)?.GetValue(libHac); }catch{}
+        foreach(var c in amType.GetConstructors(CtorFlags).OrderByDescending(x=>x.GetParameters().Length)){ try{ var pars=c.GetParameters(); var args=new object[pars.Length]; for(int i=0;i<pars.Length;i++){ var pt=pars[i].ParameterType; if(pt==typeof(VirtualFileSystem)) args[i]=vfs; else if(pt==typeof(string)) args[i]=_lastBaseDir; else if(pt.Name.Contains("HorizonClient")) args[i]=horizonClient; else if(pt.IsValueType) args[i]=Activator.CreateInstance(pt); else args[i]=null; } accountManager=c.Invoke(args); break; }catch{} }
+        if(accountManager==null) throw new Exception("AccountManager falhou");
+        var hleType=typeof(HleConfiguration); var hleCtor=hleType.GetConstructors(CtorFlags).OrderByDescending(c=>c.GetParameters().Length).First();
+        var parameters=hleCtor.GetParameters(); var ctorArgs=new object[parameters.Length];
+        for(int i=0;i<parameters.Length;i++){ var pt=parameters[i].ParameterType; if(pt==typeof(string)) ctorArgs[i]="UTC"; else if(pt==typeof(bool)) ctorArgs[i]=true; else if(pt==typeof(int)||pt==typeof(long)||pt==typeof(uint)||pt==typeof(ulong)) ctorArgs[i]=Convert.ChangeType(1,pt); else if(pt==typeof(float)||pt==typeof(double)) ctorArgs[i]=Convert.ChangeType(1f,pt); else if(pt.IsEnum){ var names=Enum.GetNames(pt); string pick=names.FirstOrDefault(n=>n=="AmericanEnglish"||n=="USA"||n=="None"||n=="Disabled"||n=="Switch"||n.Contains("4GiB"))??names[0]; ctorArgs[i]=Enum.Parse(pt,pick); }else if(pt.IsArray) ctorArgs[i]=Array.CreateInstance(pt.GetElementType(),0); else if(pt.IsValueType) ctorArgs[i]=Activator.CreateInstance(pt); else ctorArgs[i]=null; }
         var hleConfig=(HleConfiguration)hleCtor.Invoke(ctorArgs);
         var configureMethod=hleType.GetMethods(BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance).FirstOrDefault(m=>m.Name=="Configure"&&m.GetParameters().Length>=7);
-        if(configureMethod==null) throw new Exception("Configure not found");
-        var confPars=configureMethod.GetParameters(); var confArgs=new object?[confPars.Length];
-        for(int i=0;i<confPars.Length;i++){
-            var pt=confPars[i].ParameterType;
-            if(pt==typeof(VirtualFileSystem)) confArgs[i]=vfs;
-            else if(pt==typeof(LibHacHorizonManager)) confArgs[i]=libHac;
-            else if(pt==typeof(ContentManager)) confArgs[i]=contentManager;
-            else if(pt==typeof(AccountManager)) confArgs[i]=accountManager;
-            else if(pt==typeof(UserChannelPersistence)) confArgs[i]=userChannel;
-            else if(pt.IsInstanceOfType(gpu)) confArgs[i]=gpu;
-            else if(pt.Name.Contains("Audio")||pt.Name.Contains("HardwareDeviceDriver")) confArgs[i]=audio;
-            else if(pt.Name.Contains("HostUI")) confArgs[i]=null;
-            else if(pt.IsValueType) confArgs[i]=Activator.CreateInstance(pt);
-            else confArgs[i]=null;
-        }
-        return (configureMethod.Invoke(hleConfig,confArgs) as HleConfiguration)!;
+        var confPars=configureMethod.GetParameters(); var confArgs=new object[confPars.Length];
+        for(int i=0;i<confPars.Length;i++){ var pt=confPars[i].ParameterType; if(pt==typeof(VirtualFileSystem)) confArgs[i]=vfs; else if(pt==typeof(LibHacHorizonManager)) confArgs[i]=libHac; else if(pt==typeof(ContentManager)) confArgs[i]=contentManager; else if(pt==typeof(AccountManager)) confArgs[i]=accountManager; else if(pt==typeof(UserChannelPersistence)) confArgs[i]=userChannel; else if(pt.IsInstanceOfType(gpu)) confArgs[i]=gpu; else if(pt.Name.Contains("Audio")||pt.Name.Contains("HardwareDeviceDriver")) confArgs[i]=audio; else if(pt.Name.Contains("HostUI")) confArgs[i]=null; else if(pt.IsValueType) confArgs[i]=Activator.CreateInstance(pt); else confArgs[i]=null; }
+        return (configureMethod.Invoke(hleConfig,confArgs) as HleConfiguration);
     }
     protected override void OnDestroy(){ running=false; try{ emuThread?.Join(2000); }catch{} base.OnDestroy(); }
 }
