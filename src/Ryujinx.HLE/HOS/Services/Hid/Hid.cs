@@ -15,6 +15,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Ryujinx.HLE.HOS.Services.Hid
 {
@@ -22,7 +23,19 @@ namespace Ryujinx.HLE.HOS.Services.Hid
     {
         private readonly Switch _device;
         private readonly SharedMemoryStorage _storage;
-        internal ref SharedMemory SharedMemory => ref _storage.GetRef<SharedMemory>(0);
+        private SharedMemory _localSharedMemory; // Fallback Android
+        private bool _useLocal = false;
+
+        internal ref SharedMemory SharedMemory
+        {
+            get
+            {
+                if (_useLocal)
+                    return ref _localSharedMemory;
+                return ref _storage.GetRef<SharedMemory>(0);
+            }
+        }
+
         internal const int SharedMemEntryCount = 17;
         public DebugPadDevice DebugPad;
         public TouchDevice Touchscreen;
@@ -34,52 +47,60 @@ namespace Ryujinx.HLE.HOS.Services.Hid
         private static void CheckTypeSizeOrThrow<T>(int expectedSize)
         {
             if (Unsafe.SizeOf<T>()!= expectedSize)
-            {
                 throw new InvalidStructLayoutException<T>(expectedSize);
-            }
         }
 
         static Hid()
         {
-            try {
-                CheckTypeSizeOrThrow<RingLifo<DebugPadState>>(0x2c8);
-                CheckTypeSizeOrThrow<RingLifo<TouchScreenState>>(0x2C38);
-                CheckTypeSizeOrThrow<RingLifo<MouseState>>(0x350);
-                CheckTypeSizeOrThrow<RingLifo<DebugMouseState>>(0x350);
-                CheckTypeSizeOrThrow<RingLifo<KeyboardState>>(0x3D8);
-                CheckTypeSizeOrThrow<Array10<NpadState>>(0x32000);
-                CheckTypeSizeOrThrow<SharedMemory>(Horizon.HidSize);
-            } catch (Exception ex) {
-                try{ File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] static ctor FAIL: {ex}\n"); }catch{}
-                throw;
-            }
+            CheckTypeSizeOrThrow<RingLifo<DebugPadState>>(0x2c8);
+            CheckTypeSizeOrThrow<RingLifo<TouchScreenState>>(0x2C38);
+            CheckTypeSizeOrThrow<RingLifo<MouseState>>(0x350);
+            CheckTypeSizeOrThrow<RingLifo<DebugMouseState>>(0x350);
+            CheckTypeSizeOrThrow<RingLifo<KeyboardState>>(0x3D8);
+            CheckTypeSizeOrThrow<Array10<NpadState>>(0x32000);
+            CheckTypeSizeOrThrow<SharedMemory>(Horizon.HidSize);
         }
 
         internal Hid(in Switch device, SharedMemoryStorage storage)
         {
             _device = device;
             _storage = storage;
-            try {
-                try{ File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] BEFORE SharedMemory.Create()\n"); }catch{}
-                // No Android o _storage pode não estar comitado, força commit tocando na memória
-                try {
-                    // Toca na primeira página pra forçar commit
-                    _ = _storage.GetRef<byte>(0);
-                } catch {}
 
+            try
+            {
+                File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] Trying storage path\n");
+                // Tenta o caminho normal
+                _storage.GetRef<byte>(0) = 0; // força commit de 1 byte
                 SharedMemory = SharedMemory.Create();
-                try{ File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] AFTER SharedMemory.Create() OK\n"); }catch{}
-            } catch (Exception ex) {
-                try{ File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] SharedMemory.Create FAIL: {ex}\n"); }catch{}
-                throw;
+                File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] Storage path OK\n");
             }
-            try {
-                InitDevices();
-                try{ File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] InitDevices OK\n"); }catch{}
-            } catch (Exception ex) {
-                try{ File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] InitDevices FAIL: {ex}\n"); }catch{}
-                throw;
+            catch (Exception ex)
+            {
+                File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] Storage FAIL, using local fallback: {ex.Message}\n");
+                _useLocal = true;
+                _localSharedMemory = SharedMemory.Create();
             }
+
+            // Se mesmo o teste acima não deu segfault mas vai dar no Create, usa local
+            // Detecção Android: sempre usa local
+            if (!_useLocal)
+            {
+                try
+                {
+                    // Se chegou aqui sem exception, mas sabemos que no Android Reserve-only falha
+                    // Força uso local pra garantir
+                    if (Environment.OSVersion.Platform == PlatformID.Unix)
+                    {
+                        _useLocal = true;
+                        _localSharedMemory = SharedMemory.Create();
+                        File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] Forced local fallback for Android\n");
+                    }
+                }
+                catch {}
+            }
+
+            InitDevices();
+            File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] InitDevices OK\n");
         }
 
         private void InitDevices()
@@ -107,7 +128,6 @@ namespace Ryujinx.HLE.HOS.Services.Hid
         {
             const int StickButtonThreshold = short.MaxValue / 2;
             ControllerKeys result = 0;
-#pragma warning disable IDE0055
             result |= (leftStick.Dx < -StickButtonThreshold)? ControllerKeys.LStickLeft : result;
             result |= (leftStick.Dx > StickButtonThreshold)? ControllerKeys.LStickRight : result;
             result |= (leftStick.Dy < -StickButtonThreshold)? ControllerKeys.LStickDown : result;
@@ -116,13 +136,9 @@ namespace Ryujinx.HLE.HOS.Services.Hid
             result |= (rightStick.Dx > StickButtonThreshold)? ControllerKeys.RStickRight : result;
             result |= (rightStick.Dy < -StickButtonThreshold)? ControllerKeys.RStickDown : result;
             result |= (rightStick.Dy > StickButtonThreshold)? ControllerKeys.RStickUp : result;
-#pragma warning restore IDE0055
             return result;
         }
 
-        internal ulong GetTimestampTicks()
-        {
-            return (ulong)PerformanceCounter.ElapsedMilliseconds * 19200;
-        }
+        internal ulong GetTimestampTicks() => (ulong)PerformanceCounter.ElapsedMilliseconds * 19200;
     }
 }
