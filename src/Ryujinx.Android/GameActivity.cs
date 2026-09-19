@@ -79,14 +79,13 @@ public class GameActivity : Activity
             else if(pt==typeof(AccountManager)) cargs[k]=am;
             else if(pt==typeof(UserChannelPersistence)) cargs[k]=ucp;
             else if(pt.IsInstanceOfType(gpu)) cargs[k]=gpu;
-            else if(typeof(Ryujinx.Audio.IHardwareDeviceDriver).IsAssignableFrom(pt)) cargs[k]=audio;
-            else if(pt.Name.Contains("Audio") || pt.Name.Contains("DeviceDriver") || pt.Name.Contains("Hardware")) cargs[k]=audio;
+            else if(pt.IsInstanceOfType(audio)) cargs[k]=audio;
+            else if(pt.Name.Contains("Audio") || pt.Name.Contains("DeviceDriver") || pt.Name.Contains("Hardware") || pt.Name.Contains("IAudio")) cargs[k]=audio;
         }
         var cfg = conf.Invoke(hle,cargs) as HleConfiguration;
         try{
             foreach(var prop in cfg.GetType().GetProperties(BindingFlags.Public|BindingFlags.Instance)){
-                bool isAudio = prop.PropertyType==typeof(Ryujinx.Audio.IHardwareDeviceDriver) || prop.Name.Contains("AudioDeviceDriver");
-                if(isAudio){
+                if(prop.Name.Contains("AudioDeviceDriver")){
                     if(prop.CanWrite){
                         object cur = prop.GetValue(cfg);
                         if(cur==null) prop.SetValue(cfg, audio);
