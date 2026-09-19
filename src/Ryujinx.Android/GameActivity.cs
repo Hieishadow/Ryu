@@ -16,7 +16,7 @@ public class GameActivity : Activity
     [DllImport("android")] static extern void ANativeWindow_release(IntPtr window);
     [DllImport("android")] static extern int ANativeWindow_setBuffersGeometry(IntPtr window, int width, int height, int format);
 
-    void Log(string s){ try{ RunOnUiThread(()=>{ if(logView==null==false) logView.Text+= "\n"+s; }); File.AppendAllText(Path.Combine(FilesDir.AbsolutePath,"crash.txt"), DateTime.Now+": "+s+"\n"+Environment.StackTrace+"\n"); File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", DateTime.Now+": "+s+"\n"); }catch{} }
+    void Log(string s){ try{ RunOnUiThread(()=>{ if(logView==null==false) logView.Text+= "\n"+s; }); File.AppendAllText(Path.Combine(FilesDir.AbsolutePath,"crash.txt"), SysEnv.NewLine + DateTime.Now + ": " + s + SysEnv.NewLine + SysEnv.StackTrace + SysEnv.NewLine); File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", DateTime.Now + ": " + s + SysEnv.NewLine); }catch{} }
 
     protected override void OnCreate(Bundle savedInstanceState)
     {
