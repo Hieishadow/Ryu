@@ -73,12 +73,20 @@ public class MainActivity : Activity
         btnJogar.Enabled = false;
         btnJogar.Click += (s, e) =>
         {
-            if (!string.IsNullOrEmpty(selectedRom))
+            if (string.IsNullOrEmpty(selectedRom) || !File.Exists(selectedRom))
             {
-                var intent = new Intent(this, typeof(GameActivity));
-                intent.PutExtra("rom_path", selectedRom);
-                StartActivity(intent);
+                Toast.MakeText(this, "ROM não encontrada", ToastLength.Short)?.Show();
+                return;
             }
+            var prod = Path.Combine(KeysPath, "prod.keys");
+            if (!File.Exists(prod))
+            {
+                Toast.MakeText(this, "prod.keys faltando!", ToastLength.Long)?.Show();
+                return;
+            }
+            var intent = new Intent(this, typeof(GameActivity));
+            intent.PutExtra("rom_path", selectedRom);
+            StartActivity(intent);
         };
         topRow.AddView(btnJogar);
 
@@ -203,6 +211,7 @@ public class MainActivity : Activity
                             f.EndsWith(".xci", StringComparison.OrdinalIgnoreCase) ||
                             f.EndsWith(".nsz", StringComparison.OrdinalIgnoreCase) ||
                             f.EndsWith(".xcz", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(f => f)
                 .Take(100).ToList();
 
             if (allFiles.Count == 0)
@@ -221,7 +230,8 @@ public class MainActivity : Activity
                 row.SetGravity(GravityFlags.CenterVertical);
                 row.SetPadding(10, 8, 10, 8);
 
-                var name = new TextView(this) { Text = Path.GetFileName(romPath) + $" [{Path.GetFileName(Path.GetDirectoryName(romPath))}]" };
+                var fi = new FileInfo(romPath);
+                var name = new TextView(this) { Text = $"{Path.GetFileName(romPath)} [{fi.Length / 1024 / 1024}MB] [{Path.GetFileName(Path.GetDirectoryName(romPath))}]" };
                 name.SetTextColor(Android.Graphics.Color.White);
                 name.TextSize = 11;
                 name.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
@@ -236,6 +246,7 @@ public class MainActivity : Activity
                         btnJogar.Enabled = true;
                         btnJogar.Text = $"▶ JOGAR {Path.GetFileName(romPath)}";
                     }
+                    Toast.MakeText(this, $"Selecionado: {Path.GetFileName(romPath)}", ToastLength.Short)?.Show();
                 };
                 row.AddView(btn);
                 container.AddView(row);
