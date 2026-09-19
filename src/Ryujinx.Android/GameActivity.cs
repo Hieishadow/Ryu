@@ -16,21 +16,21 @@ public class GameActivity : Activity
     [DllImport("android")] static extern void ANativeWindow_release(IntPtr window);
     [DllImport("android")] static extern int ANativeWindow_setBuffersGeometry(IntPtr window, int width, int height, int format);
 
-    void Log(string s){ try{ RunOnUiThread(()=>{ if(logView==null==false) logView.Text+= "\n"+s; }); File.AppendAllText(Path.Combine(FilesDir.AbsolutePath,"crash.txt"), SysEnv.NewLine + DateTime.Now + ": " + s + SysEnv.NewLine); File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", DateTime.Now + ": " + s + SysEnv.NewLine); }catch{} }
+    void Log(string s){ try{ RunOnUiThread(()=>{ if(logView!=null) logView.Text+= "\n"+s; }); File.AppendAllText(Path.Combine(FilesDir.AbsolutePath,"crash.txt"), SysEnv.NewLine + DateTime.Now + ": " + s + SysEnv.NewLine); Directory.CreateDirectory("/storage/emulated/0/Download/Ryubing"); File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", DateTime.Now + ": " + s + SysEnv.NewLine); System.Diagnostics.Debug.WriteLine(s); }catch{} }
 
     protected override void OnCreate(Bundle savedInstanceState)
     {
         try{
             AppDomain.CurrentDomain.UnhandledException += (o,e)=>{ Log("UNHANDLED: "+e.ExceptionObject.ToString()); };
             base.OnCreate(savedInstanceState);
-            if(Window==null==false) Window.AddFlags(WindowManagerFlags.Fullscreen|WindowManagerFlags.KeepScreenOn);
+            if(Window!=null) Window.AddFlags(WindowManagerFlags.Fullscreen|WindowManagerFlags.KeepScreenOn);
             string extra = Intent.GetStringExtra("rom_path");
-            if(extra==null==false) romPath=extra;
+            if(extra!=null) romPath=extra;
             if(romPath.Length==0){
                 string dir="/storage/emulated/0/Download/Ryubing/games";
                 if(Directory.Exists(dir)){
                     foreach(var p in Directory.EnumerateFiles(dir,"*.*",SearchOption.AllDirectories)){
-                        if(p.EndsWith(".nsp",StringComparison.OrdinalIgnoreCase)){ romPath=p; break; }
+                        if(p.EndsWith(".nsp",StringComparison.OrdinalIgnoreCase) || p.EndsWith(".xci",StringComparison.OrdinalIgnoreCase)){ romPath=p; break; }
                     }
                 }
             }
@@ -48,19 +48,19 @@ public class GameActivity : Activity
                 var rect=h.SurfaceFrame; if(rect.Width()<=0) return; if(rect.Height()<=0) return;
                 act.Log("SurfaceCreated "+rect.Width()+"x"+rect.Height());
                 act.nativeWindow=ANativeWindow_fromSurface(global::Android.Runtime.JNIEnv.Handle,h.Surface.Handle);
-                if(act.nativeWindow==IntPtr.Zero){ act.Log("ANativeWindow_fromSurface retornou ZERO"); return; }
+                if(act.nativeWindow==IntPtr.Zero){ act.Log("ANativeWindow_fromSurface ZERO"); return; }
                 ANativeWindow_setBuffersGeometry(act.nativeWindow,rect.Width(),rect.Height(),1);
                 ANativeWindow_acquire(act.nativeWindow);
-                if(act.emuThread==null==false){ if(act.emuThread.IsAlive) return; }
+                if(act.emuThread!=null && act.emuThread.IsAlive) return;
                 act.running=true; act.emuThread=new Thread(act.EmulationLoop){ IsBackground=true }; act.emuThread.Start();
                 act.Log("EmuThread Start OK");
             }catch(Exception ex){ act.Log("SurfaceCreated CRASH: "+ex.ToString()); }
         }
         public void SurfaceChanged(ISurfaceHolder h,AFormat f,int w,int ht){
-            try{ if(act.nativeWindow==IntPtr.Zero==false){ ANativeWindow_setBuffersGeometry(act.nativeWindow,w,ht,1); } }catch(Exception ex){ act.Log("SurfaceChanged CRASH: "+ex.ToString()); }
+            try{ if(act.nativeWindow!=IntPtr.Zero){ ANativeWindow_setBuffersGeometry(act.nativeWindow,w,ht,1); } }catch(Exception ex){ act.Log("SurfaceChanged CRASH: "+ex.ToString()); }
         }
         public void SurfaceDestroyed(ISurfaceHolder h){
-            act.running=false; try{ if(act.nativeWindow==IntPtr.Zero==false){ ANativeWindow_release(act.nativeWindow); act.nativeWindow=IntPtr.Zero; } }catch{}
+            act.running=false; try{ if(act.nativeWindow!=IntPtr.Zero){ ANativeWindow_release(act.nativeWindow); act.nativeWindow=IntPtr.Zero; } }catch{}
         }
     }
     void EmulationLoop(){
@@ -68,48 +68,42 @@ public class GameActivity : Activity
             Log("EmulationLoop START");
             string baseDir=Path.Combine(FilesDir.AbsolutePath,"Ryujinx"); string systemDir=Path.Combine(baseDir,"system"); Directory.CreateDirectory(systemDir);
             string jitDir=Path.Combine(CacheDir.AbsolutePath,"jit"); Directory.CreateDirectory(jitDir); SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE",jitDir);
-            Log("Dirs OK");
-            VirtualFileSystem vfs=VirtualFileSystem.CreateInstance(); vfs.ReloadKeySet();
-            Log("VFS OK keys loaded");
-
-            // FIX 1: Cria HLE e Switch ANTES do Vulkan pra não dar segfault
+            VirtualFileSystem vfs=VirtualFileSystem.CreateInstance(); vfs.ReloadKeySet(); Log("VFS OK");
             var audio=new DummyHardwareDeviceDriver(); Log("Audio Dummy OK");
-            // GPU fake temporario pro Switch não crashar
-            HleConfiguration hleConf=null;
-            try{
-                hleConf=BuildHle(vfs,null,audio);
-                Log("HLE Config PRE (sem GPU) OK");
-                device=new Switch(hleConf);
-                Log("Switch ctor PRE OK - Agora vai criar Vulkan");
-            }catch(Exception ex){ Log("Switch PRE CRASH (esperado se precisa GPU): "+ex.Message); }
+            if(nativeWindow==IntPtr.Zero){ Log("nativeWindow ZERO abort"); return; }
 
-            // FIX 2: Agora cria Vulkan com o nativeWindow já garantido
-            if(nativeWindow==IntPtr.Zero){ Log("nativeWindow ZERO, abortando Vulkan"); return; }
-            gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ actLog("CreateSurface callback"); var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); if(fp==IntPtr.Zero){ actLog("vkCreateAndroidSurfaceKHR NULL"); throw new Exception("vkCreateAndroidSurfaceKHR not found"); } var func=Marshal.GetDelegateForFunctionPointer<CreateAndroidSurfaceDelegate>(fp); SurfaceKHR surf; var res=func(inst,&ci,null,&surf); actLog("CreateSurface result: "+res); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
-            Log("VulkanRenderer OK");
+            // CRIA VULKAN PRIMEIRO
+            gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); if(fp==IntPtr.Zero) throw new Exception("vkCreateAndroidSurfaceKHR not found"); var func=Marshal.GetDelegateForFunctionPointer<CreateAndroidSurfaceDelegate>(fp); SurfaceKHR surf; var res=func(inst,&ci,null,&surf); Log("CreateSurface result: "+res); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
+            Log("VulkanRenderer OK - "+gpu.GetType().FullName);
 
-            // Rebuild HLE com GPU real
-            hleConf=BuildHle(vfs,gpu,audio); Log("HLE Config FINAL OK");
-            if(device==null){
-                device=new Switch(hleConf); Log("Switch ctor FINAL OK");
-            }else{
-                // Se já criou antes, tenta trocar GPU via reflection
-                try{ device.GetType().GetProperty("Gpu").SetValue(device,gpu); Log("Gpu injetado via reflection"); }catch(Exception ex){ Log("Falha injetar Gpu: "+ex.Message); device=new Switch(hleConf); Log("Switch recriado com GPU OK"); }
-            }
+            var hleConf=BuildHle(vfs,gpu,audio);
+            Log("HLE Config FINAL OK - GpuRenderer="+(hleConf.GpuRenderer==null?"NULL":hleConf.GpuRenderer.GetType().FullName));
+            Log("ANTES new Switch FINAL - GpuRenderer="+(hleConf.GpuRenderer==null?"NULL":hleConf.GpuRenderer.GetType().Name));
+            device=new Switch(hleConf);
+            Log("DEPOIS new Switch FINAL OK");
+
             device.LoadNsp(romPath); Log("LoadNsp OK - "+romPath);
             RunOnUiThread(()=>{ logView.Visibility=ViewStates.Gone; });
             while(running){ device.ProcessFrame(); device.PresentFrame(()=>{}); Thread.Yield(); }
         }catch(Exception ex){ Log("EmulationLoop CRASH: "+ex.ToString()); try{ RunOnUiThread(()=>{ Toast.MakeText(this, ex.Message, ToastLength.Long).Show(); }); }catch{} }
     }
-    void actLog(string s){ Log(s); }
     unsafe delegate Silk.NET.Vulkan.Result CreateAndroidSurfaceDelegate(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
+
     HleConfiguration BuildHle(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio){
-        var cmType=typeof(ContentManager); object cm=null; foreach(var c in cmType.GetConstructors(CtorFlags)){ try{ var pr=c.GetParameters(); var ar=new object[pr.Length]; for(int k=0;k<pr.Length;k++){ if(pr[k].ParameterType==typeof(VirtualFileSystem)) ar[k]=vfs; else if(pr[k].ParameterType==typeof(string)) ar[k]=FilesDir.AbsolutePath; else if(pr[k].ParameterType.IsValueType) ar[k]=Activator.CreateInstance(pr[k].ParameterType); } cm=c.Invoke(ar); break; }catch{} }
+        var cmType=typeof(ContentManager); object cm=null;
+        foreach(var c in cmType.GetConstructors(CtorFlags)){ try{ var pr=c.GetParameters(); var ar=new object[pr.Length]; for(int k=0;k<pr.Length;k++){ if(pr[k].ParameterType==typeof(VirtualFileSystem)) ar[k]=vfs; else if(pr[k].ParameterType==typeof(string)) ar[k]=FilesDir.AbsolutePath; else if(pr[k].ParameterType.IsValueType) ar[k]=Activator.CreateInstance(pr[k].ParameterType); } cm=c.Invoke(ar); break; }catch{} }
         var ucpType=typeof(UserChannelPersistence); object ucp=Activator.CreateInstance(ucpType,true);
-        var lhmType=typeof(LibHacHorizonManager); object lhm=null; foreach(var c in lhmType.GetConstructors(CtorFlags)){ try{ var pr=c.GetParameters(); var ar=new object[pr.Length]; for(int k=0;k<pr.Length;k++){ if(pr[k].ParameterType==typeof(VirtualFileSystem)) ar[k]=vfs; else if(pr[k].ParameterType==typeof(string)) ar[k]=FilesDir.AbsolutePath; else if(pr[k].ParameterType.IsValueType) ar[k]=Activator.CreateInstance(pr[k].ParameterType); } lhm=c.Invoke(ar); break; }catch{} }
-        var amType=typeof(AccountManager); object am=null; object hc=null; try{ hc=lhm.GetType().GetProperty("RyujinxClient",BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance).GetValue(lhm); }catch{} foreach(var c in amType.GetConstructors(CtorFlags)){ try{ var pr=c.GetParameters(); var ar=new object[pr.Length]; for(int k=0;k<pr.Length;k++){ var pt=pr[k].ParameterType; if(pt==typeof(VirtualFileSystem)) ar[k]=vfs; else if(pt.Name.Contains("HorizonClient")) ar[k]=hc; else if(pt.IsValueType) ar[k]=Activator.CreateInstance(pt); } am=c.Invoke(ar); break; }catch{} }
-        var hleType=typeof(HleConfiguration); var ctor=hleType.GetConstructors(CtorFlags)[0]; var ps=ctor.GetParameters(); var ca=new object[ps.Length]; for(int k=0;k<ps.Length;k++){ var pt=ps[k].ParameterType; if(pt==typeof(string)) ca[k]="UTC"; else if(pt==typeof(bool)) ca[k]=true; else if(pt.IsEnum) ca[k]=Enum.GetValues(pt).GetValue(0); else if(pt.IsValueType) ca[k]=Activator.CreateInstance(pt); } var hle=(HleConfiguration)ctor.Invoke(ca);
+        var lhmType=typeof(LibHacHorizonManager); object lhm=null;
+        foreach(var c in lhmType.GetConstructors(CtorFlags)){ try{ var pr=c.GetParameters(); var ar=new object[pr.Length]; for(int k=0;k<pr.Length;k++){ if(pr[k].ParameterType==typeof(VirtualFileSystem)) ar[k]=vfs; else if(pr[k].ParameterType==typeof(string)) ar[k]=FilesDir.AbsolutePath; else if(pr[k].ParameterType.IsValueType) ar[k]=Activator.CreateInstance(pr[k].ParameterType); } lhm=c.Invoke(ar); break; }catch{} }
+        var amType=typeof(AccountManager); object am=null; object hc=null;
+        try{ hc=lhm.GetType().GetProperty("RyujinxClient",BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance).GetValue(lhm); }catch{}
+        foreach(var c in amType.GetConstructors(CtorFlags)){ try{ var pr=c.GetParameters(); var ar=new object[pr.Length]; for(int k=0;k<pr.Length;k++){ var pt=pr[k].ParameterType; if(pt==typeof(VirtualFileSystem)) ar[k]=vfs; else if(pt.Name.Contains("HorizonClient")) ar[k]=hc; else if(pt.IsValueType) ar[k]=Activator.CreateInstance(pt); } am=c.Invoke(ar); break; }catch{} }
+
+        var hleType=typeof(HleConfiguration); var ctor=hleType.GetConstructors(CtorFlags)[0]; var ps=ctor.GetParameters(); var ca=new object[ps.Length];
+        for(int k=0;k<ps.Length;k++){ var pt=ps[k].ParameterType; if(pt==typeof(string)) ca[k]="UTC"; else if(pt==typeof(bool)) ca[k]=true; else if(pt.IsEnum) ca[k]=Enum.GetValues(pt).GetValue(0); else if(pt.IsValueType) ca[k]=Activator.CreateInstance(pt); }
+        var hle=(HleConfiguration)ctor.Invoke(ca);
         var conf=hleType.GetMethod("Configure"); var cps=conf.GetParameters(); var cargs=new object[cps.Length];
+
         for(int k=0;k<cps.Length;k++){
             var pt=cps[k].ParameterType;
             if(pt==typeof(VirtualFileSystem)) cargs[k]=vfs;
@@ -117,20 +111,13 @@ public class GameActivity : Activity
             else if(pt==typeof(ContentManager)) cargs[k]=cm;
             else if(pt==typeof(AccountManager)) cargs[k]=am;
             else if(pt==typeof(UserChannelPersistence)) cargs[k]=ucp;
-            else if(gpu==null==false && pt.IsInstanceOfType(gpu)) cargs[k]=gpu;
+            else if(gpu!=null && pt.IsAssignableFrom(gpu.GetType())) cargs[k]=gpu;
+            else if(gpu!=null && (pt.FullName.Contains("IGpuRenderer") || pt.FullName.Contains("GpuRenderer") || pt.Name.Contains("GpuRenderer"))) { cargs[k]=gpu; Log("FORCADO GPU em ["+k+"] "+pt.FullName); }
             else if(typeof(IHardwareDeviceDriver).IsAssignableFrom(pt)) cargs[k]=audio;
+            else if(pt.FullName.Contains("Audio") && pt.IsInterface==false) { try{ cargs[k]=Activator.CreateInstance(pt); }catch{} }
+            Log("Configure["+k+"] "+pt.FullName+" -> "+(cargs[k]==null?"NULL":cargs[k].GetType().FullName));
         }
         var cfg = conf.Invoke(hle,cargs) as HleConfiguration;
-        try{
-            foreach(var prop in cfg.GetType().GetProperties(BindingFlags.Public|BindingFlags.Instance)){
-                if(prop.PropertyType==typeof(IHardwareDeviceDriver) || prop.Name.Contains("AudioDeviceDriver")){
-                    if(prop.CanWrite){
-                        object cur = prop.GetValue(cfg);
-                        if(cur==null) prop.SetValue(cfg, audio);
-                    }
-                }
-            }
-        }catch{}
         return cfg;
     }
 }
