@@ -44,7 +44,7 @@ namespace Ryujinx.HLE
 
         public Switch(HleConfiguration configuration)
         {
-            void SWLOG(string s){ try{ Console.WriteLine(s); System.IO.File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", DateTime.Now+": "+s+Environment.NewLine); }catch{} }
+            void SWLOG(string s){ try{ global::System.Console.WriteLine(s); global::System.IO.File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", global::System.DateTime.Now+": "+s+global::System.Environment.NewLine); }catch{} }
 
             SWLOG("[SWITCH] ctor START");
             SWLOG("[SWITCH] GpuRenderer="+(configuration.GpuRenderer==null?"NULL":configuration.GpuRenderer.GetType().FullName));
@@ -115,19 +115,4 @@ namespace Ryujinx.HLE
         public void UpdateVSyncInterval(){ switch(VSyncMode){ case VSyncMode.Custom: TargetVSyncInterval=CustomVSyncInterval; break; case VSyncMode.Switch: TargetVSyncInterval=60; break; case VSyncMode.Unbounded: TargetVSyncInterval=1; break; } }
         public void ToggleTurbo(){ TurboMode=!TurboMode; TickScalar=TurboMode?Configuration.TickScalar:ITickSource.RealityTickScalar; }
         public bool LoadCart(string exeFsDir, string romFsFile = null) => Processes.LoadUnpackedNca(exeFsDir, romFsFile);
-        public bool LoadXci(string xciFile, ulong applicationId = 0) => Processes.LoadXci(xciFile, applicationId);
-        public bool LoadNca(string ncaFile, BlitStruct<ApplicationControlProperty>? customNacpData = null) => Processes.LoadNca(ncaFile, customNacpData);
-        public bool LoadNsp(string nspFile, ulong applicationId = 0) => Processes.LoadNsp(nspFile, applicationId);
-        public bool LoadProgram(string fileName) => Processes.LoadNxo(fileName);
-        public void SetVolume(float volume) => AudioDeviceDriver.Volume = Math.Clamp(volume, 0f, 1f);
-        public float GetVolume() => AudioDeviceDriver.Volume;
-        public bool IsAudioMuted() => AudioDeviceDriver.Volume == 0;
-        public void EnableCheats() => ModLoader.EnableCheats(Processes.ActiveApplication.ProgramId, TamperMachine);
-        public bool WaitFifo() => Gpu.GPFifo.WaitForCommands();
-        public bool ConsumeFrameAvailable() => Gpu.Window.ConsumeFrameAvailable();
-        public void PresentFrame(Action swapBuffersCallback) => Gpu.Window.Present(swapBuffersCallback);
-        public void DisposeGpu() => Gpu.Dispose();
-        public void Dispose(){ GC.SuppressFinalize(this); Dispose(true); }
-        protected virtual void Dispose(bool disposing){ if(disposing){ Processes.ClearAllProcesses(); System.Dispose(); AudioDeviceDriver.Dispose(); FileSystem.Dispose(); Memory.Dispose(); Debugger?.Dispose(); TitleIDs.CurrentApplication.Value=null; Shared=null; } }
-    }
-}
+        public bool LoadXci(string xciFile, ulong applicationId = 0) => Processes.LoadXci(xciFile, application
