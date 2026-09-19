@@ -14,6 +14,7 @@ using Ryujinx.HLE.Loaders.Processes;
 using Ryujinx.HLE.UI;
 using Ryujinx.Memory;
 using System;
+using System.IO;
 
 namespace Ryujinx.HLE
 {
@@ -42,41 +43,79 @@ namespace Ryujinx.HLE
         public bool IsFrameAvailable => Gpu.Window.IsFrameAvailable;
         public DirtyHacks DirtyHacks { get; }
 
+        private static void DebugLog(string message)
+        {
+            Console.WriteLine($"[SWITCH] {message}");
+            try{ File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [SWITCH] {message}\n"); }catch{}
+        }
+
         public Switch(HleConfiguration configuration)
         {
-            void SWLOG(string s){ try{ global::System.Console.WriteLine(s); }catch{} }
-            SWLOG("[SWITCH] ctor START");
-            ArgumentNullException.ThrowIfNull(configuration.GpuRenderer);
-            ArgumentNullException.ThrowIfNull(configuration.AudioDeviceDriver);
-            ArgumentNullException.ThrowIfNull(configuration.UserChannelPersistence);
-            Configuration = configuration;
-            FileSystem = Configuration.VirtualFileSystem;
-            UIHandler = Configuration.HostUIHandler;
-            MemoryAllocationFlags memoryAllocationFlags = configuration.MemoryManagerMode == MemoryManagerMode.SoftwarePageTable ? MemoryAllocationFlags.Reserve : MemoryAllocationFlags.Reserve | MemoryAllocationFlags.Mirrorable;
-            DirtyHacks = new DirtyHacks(Configuration.Hacks);
-            AudioDeviceDriver = new CompatLayerHardwareDeviceDriver(Configuration.AudioDeviceDriver);
-            Memory = new MemoryBlock(Configuration.MemoryConfiguration.DramSize, memoryAllocationFlags);
-            Gpu = new GpuContext(Configuration.GpuRenderer, DirtyHacks);
-            Debugger = Configuration.EnableGdbStub ? new Debugger.Debugger(this, Configuration.GdbStubPort) : null;
-            System = new HOS.Horizon(this);
-            Statistics = new PerformanceStatistics(this);
-            Hid = new Hid(this, System.HidStorage);
-            Processes = new ProcessLoader(this);
-            TamperMachine = new TamperMachine();
-            System.InitializeServices();
-            System.State.SetLanguage(Configuration.SystemLanguage);
-            System.State.SetRegion(Configuration.Region);
-            VSyncMode = Configuration.VSyncMode;
-            CustomVSyncInterval = Configuration.CustomVSyncInterval;
-            TickScalar = TurboMode ? Configuration.TickScalar : ITickSource.RealityTickScalar;
-            System.State.DockedMode = Configuration.EnableDockedMode;
-            System.PerformanceState.PerformanceMode = System.State.DockedMode ? PerformanceMode.Boost : PerformanceMode.Default;
-            System.EnablePtc = Configuration.EnablePtc;
-            System.FsIntegrityCheckLevel = Configuration.FsIntegrityCheckLevel;
-            System.GlobalAccessLogMode = Configuration.FsGlobalAccessLogMode;
-            UpdateVSyncInterval();
-            Shared = this;
-            SWLOG("[SWITCH] ctor END OK");
+            DebugLog("ctor START");
+            try{
+                DebugLog("Check GpuRenderer");
+                ArgumentNullException.ThrowIfNull(configuration.GpuRenderer);
+                DebugLog("Check AudioDeviceDriver");
+                ArgumentNullException.ThrowIfNull(configuration.AudioDeviceDriver);
+                DebugLog("Check UserChannelPersistence");
+                ArgumentNullException.ThrowIfNull(configuration.UserChannelPersistence);
+                
+                DebugLog("Configuration = configuration");
+                Configuration = configuration;
+                DebugLog("FileSystem = VFS");
+                FileSystem = Configuration.VirtualFileSystem;
+                DebugLog("UIHandler = HostUIHandler");
+                UIHandler = Configuration.HostUIHandler;
+                
+                DebugLog("MemoryAllocationFlags");
+                MemoryAllocationFlags memoryAllocationFlags = configuration.MemoryManagerMode == MemoryManagerMode.SoftwarePageTable ? MemoryAllocationFlags.Reserve : MemoryAllocationFlags.Reserve | MemoryAllocationFlags.Mirrorable;
+                
+                DebugLog("new DirtyHacks");
+                DirtyHacks = new DirtyHacks(Configuration.Hacks);
+                DebugLog("new CompatLayerHardwareDeviceDriver");
+                AudioDeviceDriver = new CompatLayerHardwareDeviceDriver(Configuration.AudioDeviceDriver);
+                DebugLog("new MemoryBlock " + Configuration.MemoryConfiguration.DramSize);
+                Memory = new MemoryBlock(Configuration.MemoryConfiguration.DramSize, memoryAllocationFlags);
+                DebugLog("Memory OK");
+                DebugLog("new GpuContext");
+                Gpu = new GpuContext(Configuration.GpuRenderer, DirtyHacks);
+                DebugLog("Gpu OK");
+                DebugLog("new Debugger");
+                Debugger = Configuration.EnableGdbStub ? new Debugger.Debugger(this, Configuration.GdbStubPort) : null;
+                DebugLog("new Horizon(this)");
+                System = new HOS.Horizon(this);
+                DebugLog("Horizon OK");
+                DebugLog("new PerformanceStatistics");
+                Statistics = new PerformanceStatistics(this);
+                DebugLog("new Hid");
+                Hid = new Hid(this, System.HidStorage);
+                DebugLog("Hid OK");
+                DebugLog("new ProcessLoader");
+                Processes = new ProcessLoader(this);
+                DebugLog("new TamperMachine");
+                TamperMachine = new TamperMachine();
+                DebugLog("ANTES InitializeServices - ESSA É A QUE CRASHA");
+                System.InitializeServices();
+                DebugLog("DEPOIS InitializeServices OK");
+                
+                DebugLog("SetLanguage/Region");
+                System.State.SetLanguage(Configuration.SystemLanguage);
+                System.State.SetRegion(Configuration.Region);
+                VSyncMode = Configuration.VSyncMode;
+                CustomVSyncInterval = Configuration.CustomVSyncInterval;
+                TickScalar = TurboMode ? Configuration.TickScalar : ITickSource.RealityTickScalar;
+                System.State.DockedMode = Configuration.EnableDockedMode;
+                System.PerformanceState.PerformanceMode = System.State.DockedMode ? PerformanceMode.Boost : PerformanceMode.Default;
+                System.EnablePtc = Configuration.EnablePtc;
+                System.FsIntegrityCheckLevel = Configuration.FsIntegrityCheckLevel;
+                System.GlobalAccessLogMode = Configuration.FsGlobalAccessLogMode;
+                UpdateVSyncInterval();
+                Shared = this;
+                DebugLog("ctor END OK");
+            }catch(Exception ex){
+                DebugLog("CTOR CRASH: " + ex.ToString());
+                throw;
+            }
         }
 
         public void ProcessFrame(){ Gpu.ProcessShaderCacheQueue(); Gpu.Renderer.PreFrame(); Gpu.GPFifo.DispatchCalls(); }
