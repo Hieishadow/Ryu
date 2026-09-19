@@ -1,3 +1,4 @@
+using LibHac;
 using LibHac.Common;
 using LibHac.Fs;
 using LibHac.Fs.Fsa;
@@ -81,29 +82,37 @@ namespace Ryujinx.HLE.Loaders.Processes
 
         public bool LoadXci(string path, ulong applicationId)
         {
-            FileStream stream = new(path, FileMode.Open, FileAccess.Read);
-            Xci xci = new(_device.Configuration.VirtualFileSystem.KeySet, stream.AsStorage());
-            if (!xci.HasPartition(XciPartitionType.Secure))
+            try
             {
-                Logger.Error?.Print(LogClass.Loader, "Unable to load XCI: Could not find XCI Secure partition");
-                return false;
-            }
-            (bool success, ProcessResult processResult) = xci.OpenPartition(XciPartitionType.Secure).TryLoad(_device, path, applicationId, out string errorMessage);
-            if (!success)
-            {
-                Logger.Error?.Print(LogClass.Loader, errorMessage, nameof(PartitionFileSystemExtensions.TryLoad));
-                return false;
-            }
-            if (processResult.ProcessId!= 0 && _processesByPid.TryAdd(processResult.ProcessId, processResult))
-            {
-                if (processResult.Start(_device))
+                FileStream stream = new(path, FileMode.Open, FileAccess.Read);
+                Xci xci = new(_device.Configuration.VirtualFileSystem.KeySet, stream.AsStorage());
+                if (!xci.HasPartition(XciPartitionType.Secure))
                 {
-                    _latestPid = processResult.ProcessId;
-                    TitleIDs.CurrentApplication.Value = processResult.ProgramIdText;
-                    return true;
+                    Logger.Error?.Print(LogClass.Loader, "Unable to load XCI: Could not find XCI Secure partition");
+                    return false;
                 }
+                (bool success, ProcessResult processResult) = xci.OpenPartition(XciPartitionType.Secure).TryLoad(_device, path, applicationId, out string errorMessage);
+                if (!success)
+                {
+                    Logger.Error?.Print(LogClass.Loader, errorMessage, nameof(PartitionFileSystemExtensions.TryLoad));
+                    return false;
+                }
+                if (processResult.ProcessId!= 0 && _processesByPid.TryAdd(processResult.ProcessId, processResult))
+                {
+                    if (processResult.Start(_device))
+                    {
+                        _latestPid = processResult.ProcessId;
+                        TitleIDs.CurrentApplication.Value = processResult.ProgramIdText;
+                        return true;
+                    }
+                }
+                return false;
             }
-            return false;
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Loader, $"LoadXci exception: {ex}");
+                return false;
+            }
         }
 
         public bool LoadNsp(string path, ulong applicationId)
@@ -123,14 +132,25 @@ namespace Ryujinx.HLE.Loaders.Processes
                 (bool success, ProcessResult processResult) = partitionFileSystem.TryLoad(_device, path, applicationId, out string errorMessage);
                 if (processResult.ProcessId == 0)
                 {
-                    Logger.Warning?.Print(LogClass.Loader, "NSP is ExeFS, loading as homebrew");
+                    Logger.Warning?.Print(LogClass.Loader, "NSP is ExeFS, loading as homebrew - FIX 2009-0004");
                     try
                     {
-                        processResult = partitionFileSystem.Load(_device, new BlitStruct<ApplicationControlProperty>(1), partitionFileSystem.GetNpdm(), 0, true);
+                        var npdm = partitionFileSystem.GetNpdm();
+                        processResult = partitionFileSystem.Load(_device, new BlitStruct<ApplicationControlProperty>(1), npdm, 0, true);
                     }
                     catch (Exception ex)
                     {
-                        Logger.Error?.Print(LogClass.Loader, $"ExeFS load fail: {ex}");
+                        Logger.Warning?.Print(LogClass.Loader, $"GetNpdm failed, using LoadDefault: {ex.Message}");
+                        try
+                        {
+                            var meta = new LibHac.Loader.MetaLoader();
+                            meta.LoadDefault();
+                            processResult = partitionFileSystem.Load(_device, new BlitStruct<ApplicationControlProperty>(1), meta, 0, true);
+                        }
+                        catch (Exception ex2)
+                        {
+                            Logger.Error?.Print(LogClass.Loader, $"ExeFS load fail: {ex2}");
+                        }
                     }
                 }
                 if (processResult.ProcessId!= 0 && _processesByPid.TryAdd(processResult.ProcessId, processResult))
