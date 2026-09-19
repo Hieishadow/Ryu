@@ -51,21 +51,7 @@ public class GameActivity : Activity
             }
             if(File.Exists(destKey)) MyLog($"prod.keys OK {new FileInfo(destKey).Length} bytes");
             else MyLog("AVISO: prod.keys NAO encontrada!");
-            string[] npdmSources = new[]{
-                "/storage/emulated/0/Download/Ryubing/Homebrew.npdm",
-                "/storage/emulated/0/Ryujinx/Homebrew.npdm"
-            };
-            string destNpdm = Path.Combine(baseDir,"Homebrew.npdm");
-            if(!File.Exists(destNpdm)){
-                foreach(var src in npdmSources){
-                    if(File.Exists(src)){
-                        File.Copy(src, destNpdm, true);
-                        MyLog($"Homebrew.npdm copiado {src}");
-                        break;
-                    }
-                }
-            }
-        }catch(Exception ex){ MyLog("Copy keys/npd m fail: "+ex.Message); }
+        }catch(Exception ex){ MyLog("Copy keys fail: "+ex.Message); }
         try{ typeof(VirtualFileSystem).GetField("_instance",All)?.SetValue(null,null); }catch{}
         VirtualFileSystem vfs=VirtualFileSystem.CreateInstance();
         vfs.ReloadKeySet();
@@ -88,9 +74,16 @@ public class GameActivity : Activity
         device=new Switch(conf);
         MyLog("Switch OK - DEPOIS new Switch FINAL");
         device.LoadNsp(romPath);
-        MyLog("LoadNsp OK");
+        MyLog("LoadNsp OK - Iniciando frames...");
         RunOnUiThread(()=>{ logView.Visibility=ViewStates.Gone; });
-        while(running){ device.ProcessFrame(); device.PresentFrame(()=>{}); Thread.Yield(); }
+        int frames=0;
+        while(running){
+            device.ProcessFrame();
+            device.PresentFrame(()=>{});
+            frames++;
+            if(frames%60==0) MyLog($"PresentFrame OK - {frames} frames");
+            Thread.Yield();
+        }
     }catch(Exception ex){ MyLog("Emu CRASH: "+ex.ToString()); try{ typeof(VirtualFileSystem).GetField("_instance",All)?.SetValue(null,null); }catch{} } }
 
     unsafe delegate Silk.NET.Vulkan.Result CDel(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
@@ -102,27 +95,28 @@ public class GameActivity : Activity
         MyLog("LHM -> "+(lhm==null?"NULL":lhm.GetType().Name));
         try{
             var fsClientProp=lhmType.GetProperty("FsClient",All);
-            var fsClientBefore=fsClientProp?.GetValue(lhm);
-            MyLog("LHM.FsClient BEFORE init -> "+(fsClientBefore==null?"NULL":"OK"));
-            foreach(var m in lhmType.GetMethods(All).Where(m=>m.Name.ToLower().Contains("init"))){
-                MyLog("LHM method: "+m.Name+"("+string.Join(",", m.GetParameters().Select(p=>p.ParameterType.Name))+")");
-            }
-            foreach(var m in lhmType.GetMethods(All)){
-                if(!m.Name.Contains("Initialize")) continue;
-                try{
-                    var ps=m.GetParameters();
-                    if(ps.Length==0){ m.Invoke(lhm,null); MyLog($"LHM.{m.Name}() OK"); }
-                    else if(ps.Length==1 && ps[0].ParameterType==typeof(VirtualFileSystem)){ m.Invoke(lhm,new object[]{vfs}); MyLog($"LHM.{m.Name}(VFS) OK"); }
-                }catch(Exception ex){ MyLog($"LHM.{m.Name} fail: {ex.InnerException?.Message??ex.Message}"); }
-            }
+            MyLog("LHM.FsClient BEFORE init -> "+(fsClientProp?.GetValue(lhm)==null?"NULL":"OK"));
+
+            // Inicialização na ordem correta com ignore
+            var methods = lhmType.GetMethods(All).Where(m=>m.Name.Contains("Initialize")).ToList();
+
+            // 1. Server
+            try{ var m = methods.FirstOrDefault(x=>x.Name=="InitializeServer" && x.GetParameters().Length==0); m?.Invoke(lhm,null); MyLog("LHM.InitializeServer() OK"); }catch(Exception ex){ MyLog($"LHM.InitializeServer fail: {ex.InnerException?.Message??ex.Message}"); }
+            // 2. Arp
+            try{ var m = methods.FirstOrDefault(x=>x.Name=="InitializeArpServer" && x.GetParameters().Length==0); m?.Invoke(lhm,null); MyLog("LHM.InitializeArpServer() OK"); }catch(Exception ex){ MyLog($"LHM.InitializeArpServer fail (ignorado): {ex.InnerException?.Message??ex.Message}"); }
+            // 3. Bcat - IGNORADO (não precisa pro Zelda)
+            try{ var m = methods.FirstOrDefault(x=>x.Name=="InitializeBcatServer" && x.GetParameters().Length==0); m?.Invoke(lhm,null); MyLog("LHM.InitializeBcatServer() OK"); }catch(Exception ex){ MyLog($"LHM.InitializeBcatServer fail (ignorado): {ex.InnerException?.Message??ex.Message}"); }
+            // 4. Fs - OBRIGATÓRIO
+            try{ var m = methods.FirstOrDefault(x=>x.Name=="InitializeFsServer" && x.GetParameters().Length==1); m?.Invoke(lhm,new object[]{vfs}); MyLog("LHM.InitializeFsServer(VFS) OK"); }catch(Exception ex){ MyLog($"LHM.InitializeFsServer FAIL: {ex.InnerException?.Message??ex.Message}"); }
+            // 5. SystemClients - TENTA MAS NÃO TRAVA SE FALHAR
+            try{ var m = methods.FirstOrDefault(x=>x.Name=="InitializeSystemClients" && x.GetParameters().Length==0); m?.Invoke(lhm,null); MyLog("LHM.InitializeSystemClients() OK"); }catch(Exception ex){ MyLog($"LHM.InitializeSystemClients fail (ignorado): {ex.InnerException?.Message??ex.Message}"); }
+            // 6. ApplicationClient se existir
+            try{ var m = methods.FirstOrDefault(x=>x.Name=="InitializeApplicationClient"); if(m!=null) MyLog($"LHM has {m.Name} - skip (feito no Switch ctor)"); }catch{}
+
             var fsAfter=fsClientProp?.GetValue(lhm);
             MyLog("LHM.FsClient AFTER init -> "+(fsAfter==null?"NULL":fsAfter.GetType().Name));
-            if(fsAfter!=null){
-                var fsProp=fsAfter.GetType().GetProperty("Fs",All);
-                var fs=fsProp?.GetValue(fsAfter);
-                MyLog("LHM.FsClient.Fs AFTER -> "+(fs==null?"NULL":"OK"));
-            }
         }catch(Exception ex){ MyLog("LHM init check fail: "+ex.Message); }
+
         object hc=null; try{ var t=lhm.GetType(); foreach(var m in t.GetMembers(All)){ if(m is PropertyInfo pi && pi.PropertyType.Name.Contains("HorizonClient")){ hc=pi.GetValue(lhm); if(hc!=null) break; } if(m is FieldInfo fi && fi.FieldType.Name.Contains("HorizonClient")){ hc=fi.GetValue(lhm); if(hc!=null) break; } } if(hc==null) hc=t.GetProperty("Client",All)?.GetValue(lhm)?? t.GetField("_horizonClient",All)?.GetValue(lhm)?? t.GetField("_client",All)?.GetValue(lhm); }catch(Exception ex){ MyLog("Get HC ex: "+ex.Message); }
         MyLog("HorizonClient -> "+(hc==null?"NULL":hc.GetType().Name));
         object accMan=null;
@@ -141,58 +135,55 @@ public class GameActivity : Activity
             }catch(Exception ex){
                 string msg = ex.InnerException?.Message?? ex.Message;
                 MyLog("AM ctor fail: "+msg);
-                if(msg.Contains("/system") || msg.Contains("Profiles.json") || msg.Contains("Read-only")){
-                    MyLog("AM tentando fallback PATCHED sem /system");
-                    try{
-                        var amType=typeof(AccountManager);
-                        accMan=System.Runtime.Serialization.FormatterServices.GetUninitializedObject(amType);
-                        amType.GetField("_horizonClient",All)?.SetValue(accMan,hc);
-                        var dict=new ConcurrentDictionary<string, UserProfile>();
-                        amType.GetField("_profiles",All)?.SetValue(accMan,dict);
-                        amType.GetField("_storedOpenedUsers",All)?.SetValue(accMan, new UserProfile[0]);
-                        var f_asdm=amType.GetField("_accountSaveDataManager",All);
-                        if(f_asdm!=null){
-                            var asdmType=f_asdm.FieldType;
-                            object asdm=null;
-                            try{ asdm=Activator.CreateInstance(asdmType,All,null,new object[]{ dict },null); }
-                            catch{ asdm=Activator.CreateInstance(asdmType,true); }
-                            foreach(var fi in asdmType.GetFields(All)){
-                                if(fi.FieldType==typeof(string)){
-                                    try{
-                                        var v=fi.GetValue(asdm) as string;
-                                        if(v!=null && (v.Contains("Profiles") || v.Contains("/system") || v=="system")){
-                                            fi.SetValue(asdm, profilesPath);
-                                        }
-                                    }catch{}
-                                }
-                            }
-                            f_asdm.SetValue(accMan,asdm);
-                        }
-                        var defId = amType.GetField("DefaultUserId",All)?.GetValue(null);
-                        if(defId!=null){
-                            byte[] img=new byte[0];
-                            try{
-                                var resType=typeof(Ryujinx.Common.EmbeddedResources);
-                                var readM=resType.GetMethod("Read",All);
-                                if(readM!=null) img=(byte[])readM.Invoke(null,new object[]{ "Ryujinx.HLE/HOS/Services/Account/Acc/DefaultUserImage.jpg" });
-                            }catch{}
-                            var upType=typeof(UserProfile);
-                            object profile=null;
-                            foreach(var c in upType.GetConstructors(All)){
-                                if(c.GetParameters().Length==3){
-                                    profile=c.Invoke(new object[]{ defId, "RyuPlayer", img });
-                                    break;
-                                }
-                            }
-                            if(profile!=null){
-                                dict.TryAdd(defId.ToString(), (UserProfile)profile);
-                                amType.GetProperty("LastOpenedUser",All)?.SetValue(accMan, profile);
-                                try{ upType.GetProperty("AccountState")?.SetValue(profile, 1); }catch{}
+                try{
+                    var amType=typeof(AccountManager);
+                    accMan=System.Runtime.Serialization.FormatterServices.GetUninitializedObject(amType);
+                    amType.GetField("_horizonClient",All)?.SetValue(accMan,hc);
+                    var dict=new ConcurrentDictionary<string, UserProfile>();
+                    amType.GetField("_profiles",All)?.SetValue(accMan,dict);
+                    amType.GetField("_storedOpenedUsers",All)?.SetValue(accMan, new UserProfile[0]);
+                    var f_asdm=amType.GetField("_accountSaveDataManager",All);
+                    if(f_asdm!=null){
+                        var asdmType=f_asdm.FieldType;
+                        object asdm=null;
+                        try{ asdm=Activator.CreateInstance(asdmType,All,null,new object[]{ dict },null); }
+                        catch{ asdm=Activator.CreateInstance(asdmType,true); }
+                        foreach(var fi in asdmType.GetFields(All)){
+                            if(fi.FieldType==typeof(string)){
+                                try{
+                                    var v=fi.GetValue(asdm) as string;
+                                    if(v!=null && (v.Contains("Profiles") || v.Contains("/system") || v=="system")){
+                                        fi.SetValue(asdm, profilesPath);
+                                    }
+                                }catch{}
                             }
                         }
-                        MyLog("AM fallback PATCHED OK -> "+profilesPath);
-                    }catch(Exception ex2){ MyLog("AM fallback fail: "+ex2.ToString()); accMan=null; }
-                }
+                        f_asdm.SetValue(accMan,asdm);
+                    }
+                    var defId = amType.GetField("DefaultUserId",All)?.GetValue(null);
+                    if(defId!=null){
+                        byte[] img=new byte[0];
+                        try{
+                            var resType=typeof(Ryujinx.Common.EmbeddedResources);
+                            var readM=resType.GetMethod("Read",All);
+                            if(readM!=null) img=(byte[])readM.Invoke(null,new object[]{ "Ryujinx.HLE/HOS/Services/Account/Acc/DefaultUserImage.jpg" });
+                        }catch{}
+                        var upType=typeof(UserProfile);
+                        object profile=null;
+                        foreach(var c in upType.GetConstructors(All)){
+                            if(c.GetParameters().Length==3){
+                                profile=c.Invoke(new object[]{ defId, "RyuPlayer", img });
+                                break;
+                            }
+                        }
+                        if(profile!=null){
+                            dict.TryAdd(defId.ToString(), (UserProfile)profile);
+                            amType.GetProperty("LastOpenedUser",All)?.SetValue(accMan, profile);
+                            try{ upType.GetProperty("AccountState")?.SetValue(profile, 1); }catch{}
+                        }
+                    }
+                    MyLog("AM fallback PATCHED OK -> "+profilesPath);
+                }catch(Exception ex2){ MyLog("AM fallback fail: "+ex2.ToString()); accMan=null; }
             }
         }
         if(accMan==null) throw new Exception("AccountManager NULL - abort");
