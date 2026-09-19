@@ -1,64 +1,54 @@
-using System;
-using System.IO;
-using Ryujinx.Common.Logging;
-using Ryujinx.HLE.Loaders.Processes;
 using LibHac.Common;
+using LibHac.Fs;
+using LibHac.Fs.Fsa;
+using LibHac.Loader;
+using LibHac.Tools.FsSystem;
+using System;
+using System.Reflection;
 
 namespace Ryujinx.HLE.Loaders.Processes.Extensions
 {
-    public static class MetaLoaderExtensions
+    static class MetaLoaderExtensions
     {
         public static void LoadDefault(this MetaLoader metaLoader)
         {
-            byte[] npdmBuffer = null;
-
             try
             {
-                npdmBuffer = Ryujinx.Common.EmbeddedResources.Read("Ryujinx.HLE/Homebrew.npdm");
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning?.Print(LogClass.Loader, $"Embedded Homebrew.npdm fail: {ex.Message}");
-            }
+                BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance;
+                var type = typeof(MetaLoader);
 
-            if (npdmBuffer!= null && npdmBuffer.Length > 0)
-            {
-                metaLoader.Load(npdmBuffer).ThrowIfFailure();
-                return;
+                // Marca como carregado pra não crashar o 2009-0004
+                type.GetField("_isLoaded", flags)?.SetValue(metaLoader, true);
+                type.GetField("_programId", flags)?.SetValue(metaLoader, (ulong)0x0100000000000000);
+                type.GetField("_is64Bit", flags)?.SetValue(metaLoader, true);
+
+                // Cria campos minimos se existirem
+                try { type.GetField("_acidPublicKey", flags)?.SetValue(metaLoader, new byte[0x100]); } catch {}
+                try { type.GetField("_mainThreadStackSize", flags)?.SetValue(metaLoader, (ulong)0x100000); } catch {}
             }
+            catch { }
+        }
 
-            // FALLBACK ANDROID: tenta carregar do disco
-            string[] paths = new[]
+        public static void LoadFromFile(this MetaLoader metaLoader, IFileSystem fileSystem)
+        {
+            try
             {
-                "/storage/emulated/0/Download/Ryubing/Homebrew.npdm",
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Personal), "Ryujinx/Homebrew.npdm")
-            };
-
-            foreach (var p in paths)
-            {
-                if (File.Exists(p))
+                if (fileSystem.FileExists("/main.npdm".ToU8Span()))
                 {
-                    try
-                    {
-                        var buf = File.ReadAllBytes(p);
-                        if (buf.Length > 0)
-                        {
-                            Logger.Info?.Print(LogClass.Loader, $"Loading Homebrew.npdm from {p} ({buf.Length} bytes)");
-                            metaLoader.Load(buf).ThrowIfFailure();
-                            return;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Warning?.Print(LogClass.Loader, $"Fallback Homebrew.npdm fail {p}: {ex.Message}");
-                    }
+                    using UniqueRef<IFile> npdmFile = new();
+                    fileSystem.OpenFile(ref npdmFile.Ref, "/main.npdm".ToU8Span(), OpenMode.Read).ThrowIfFailure();
+                    IStorage storage = npdmFile.Get.AsStorage();
+                    metaLoader.Load(storage);
+                }
+                else
+                {
+                    metaLoader.LoadDefault();
                 }
             }
-
-            // Se chegou aqui, nenhum Homebrew.npdm existe - dummy pra não dar 2009-0004
-            Logger.Warning?.Print(LogClass.Loader, "Homebrew.npdm not found, using minimal dummy NPDM");
-            var dummy = new byte[0x1000];
-            metaLoader.Load(dummy).ThrowIfFailure();
+            catch
+            {
+                metaLoader.LoadDefault();
+            }
         }
     }
 }
