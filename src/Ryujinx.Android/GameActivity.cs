@@ -32,6 +32,7 @@ public class GameActivity : Activity
 {
     const string TAG = "Ryubing";
     const BindingFlags CtorFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+    static readonly string LogFile = "/storage/emulated/0/Download/Ryubing/ryubing_log.txt";
 
     string romPath = "";
     SurfaceView surfaceView = null!;
@@ -55,6 +56,9 @@ public class GameActivity : Activity
         base.OnCreate(savedInstanceState);
         Window!.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
         romPath = Intent?.GetStringExtra("rom_path")?? "";
+
+        try { File.WriteAllText(LogFile, $"=== Ryubing LOG {DateTime.Now} ===\nROM: {romPath}\n"); } catch {}
+
         if (string.IsNullOrEmpty(romPath) ||!File.Exists(romPath))
         {
             var dir = "/storage/emulated/0/Download/Ryubing/games";
@@ -65,26 +69,54 @@ public class GameActivity : Activity
                 if (first!= null) romPath = first;
             }
         }
+
         surfaceView = new SurfaceView(this);
         logView = new TextView(this);
         logView.Text = $"RYUBING\n{Path.GetFileName(romPath)}\nExiste: {File.Exists(romPath)} {(File.Exists(romPath)? new FileInfo(romPath).Length / 1024 / 1024 : 0)}MB";
-        logView.Gravity = GravityFlags.Center;
+        logView.Gravity = GravityFlags.Left;
         logView.SetTextColor(global::Android.Graphics.Color.White);
         logView.SetBackgroundColor(global::Android.Graphics.Color.Black);
+        logView.TextSize = 10;
+        logView.SetPadding(20, 20, 20, 20);
+        logView.MovementMethod = new Android.Text.Method.ScrollingMovementMethod();
+
         fpsView = new TextView(this) { Text = "FPS: --" };
         fpsView.SetTextColor(global::Android.Graphics.Color.Lime);
         fpsView.TextSize = 13;
         fpsView.SetPadding(20, 30, 20, 20);
+
         var root = new FrameLayout(this);
         root.AddView(surfaceView, new FrameLayout.LayoutParams(-1, -1));
         root.AddView(logView, new FrameLayout.LayoutParams(-1, -1));
-        root.AddView(fpsView, new FrameLayout.LayoutParams(-2, -2));
+        root.AddView(fpsView, new FrameLayout.LayoutParams(-2, -2) { Gravity = GravityFlags.Top | GravityFlags.Left });
+
+        var btnLog = new Button(this) { Text = "Compartilhar LOG" };
+        btnLog.Click += (s,e) => {
+            var intent = new Android.Content.Intent(Android.Content.Intent.ActionSend);
+            intent.PutExtra(Android.Content.Intent.ExtraText, logView.Text);
+            intent.SetType("text/plain");
+            StartActivity(Android.Content.Intent.CreateChooser(intent, "Log Ryubing"));
+        };
+        var btnParams = new FrameLayout.LayoutParams(-2,-2);
+        btnParams.Gravity = GravityFlags.Bottom | GravityFlags.CenterHorizontal;
+        root.AddView(btnLog, btnParams);
+
         SetContentView(root);
         surfaceView.Holder!.AddCallback(new SurfaceCallback(this));
     }
 
-    void Log(string m) { global::Android.Util.Log.Info(TAG, m); RunOnUiThread(() => logView.Text += "\n" + m); }
-    void LogError(string m) { global::Android.Util.Log.Error(TAG, m); RunOnUiThread(() => { logView.Text += "\n" + m; logView.SetTextColor(global::Android.Graphics.Color.Red); }); }
+    void Log(string m)
+    {
+        global::Android.Util.Log.Info(TAG, m);
+        try { File.AppendAllText(LogFile, DateTime.Now.ToString("HH:mm:ss") + " " + m + "\n"); } catch {}
+        RunOnUiThread(() => logView.Text += "\n" + m);
+    }
+    void LogError(string m)
+    {
+        global::Android.Util.Log.Error(TAG, m);
+        try { File.AppendAllText(LogFile, DateTime.Now.ToString("HH:mm:ss") + " ERRO: " + m + "\n"); } catch {}
+        RunOnUiThread(() => { logView.Text += "\nERRO: " + m; logView.SetTextColor(global::Android.Graphics.Color.Red); });
+    }
 
     class SurfaceCallback : Java.Lang.Object, ISurfaceHolderCallback
     {
@@ -92,6 +124,8 @@ public class GameActivity : Activity
         public SurfaceCallback(GameActivity a) => act = a;
         public void SurfaceCreated(ISurfaceHolder h)
         {
+            var rect = h.SurfaceFrame;
+            if (rect.Width() <= 0 || rect.Height() <= 0) return;
             act.nativeWindow = ANativeWindow_fromSurface(global::Android.Runtime.JNIEnv.Handle, h.Surface!.Handle);
             if (act.nativeWindow == IntPtr.Zero) { act.LogError("ANativeWindow Zero!"); return; }
             ANativeWindow_acquire(act.nativeWindow);
@@ -144,7 +178,7 @@ public class GameActivity : Activity
             Log("NSP OK");
             RunOnUiThread(() => logView.Visibility = ViewStates.Gone);
             var sw = System.Diagnostics.Stopwatch.StartNew(); int frames = 0;
-            while (running) { device.ProcessFrame(); device.PresentFrame(() => { }); frames++; if (sw.ElapsedMilliseconds >= 1000) { int f = frames; frames = 0; sw.Restart(); RunOnUiThread(() => fpsView.Text = $"FPS: {f}"); } }
+            while (running) { device.ProcessFrame(); device.PresentFrame(() => { Thread.Sleep(1); }); frames++; if (sw.ElapsedMilliseconds >= 1000) { int f = frames; frames = 0; sw.Restart(); RunOnUiThread(() => fpsView.Text = $"FPS: {f}"); } }
         }
         catch (Exception ex) { LogError($"ERRO:\n{ex.Message}\n{ex}"); }
         finally { try { device?.Dispose(); } catch { } try { gpu?.Dispose(); } catch { } }
@@ -207,12 +241,10 @@ public class GameActivity : Activity
 
     HleConfiguration BuildHleConfigurationFIX(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio)
     {
-        // Usa typeof direto - já garante Ryujinx.HLE, não Android.Accounts
         var cmType = typeof(ContentManager);
         var ucpType = typeof(UserChannelPersistence);
         var lhmType = typeof(LibHacHorizonManager);
         var amType = typeof(AccountManager);
-
         Log($"Tipos: CM={cmType.FullName} | UCP={ucpType.FullName} | LHM={lhmType.FullName} | AM={amType.FullName}");
 
         object? contentManager = null;
@@ -221,43 +253,26 @@ public class GameActivity : Activity
             try
             {
                 var pars = c.GetParameters(); var args = new object?[pars.Length];
-                for (int i = 0; i < pars.Length; i++)
-                {
-                    if (pars[i].ParameterType == typeof(VirtualFileSystem)) args[i] = vfs;
-                    else if (pars[i].ParameterType == typeof(string)) args[i] = AppDataManager.BaseDirPath?? "";
-                    else args[i] = null;
-                }
-                contentManager = c.Invoke(args);
-                Log($"CM OK {pars.Length}");
-                break;
+                for (int i = 0; i < pars.Length; i++) { if (pars[i].ParameterType == typeof(VirtualFileSystem)) args[i] = vfs; else if (pars[i].ParameterType == typeof(string)) args[i] = AppDataManager.BaseDirPath?? ""; else args[i] = null; }
+                contentManager = c.Invoke(args); Log($"CM OK {pars.Length}"); break;
             }
             catch (Exception ex) { Log($"CM fail: {ex.InnerException?.Message?? ex.Message}"); }
         }
-        if (contentManager == null)
-            throw new Exception("ContentManager falhou. Ctors=" + string.Join(" | ", cmType.GetConstructors(CtorFlags).Select(c => c.ToString())));
+        if (contentManager == null) throw new Exception("ContentManager falhou. Ctors=" + string.Join(" | ", cmType.GetConstructors(CtorFlags).Select(c => c.ToString())));
 
         object? userChannel = null;
         foreach (var c in ucpType.GetConstructors(CtorFlags).OrderBy(x => x.GetParameters().Length))
         {
             try
             {
-                var pars = c.GetParameters();
-                var args = new object?[pars.Length];
-                for (int i = 0; i < pars.Length; i++)
-                {
-                    if (pars[i].ParameterType == typeof(bool)) args[i] = true;
-                    else if (pars[i].ParameterType.IsValueType) args[i] = Activator.CreateInstance(pars[i].ParameterType);
-                    else args[i] = null;
-                }
-                userChannel = c.Invoke(args);
-                Log($"UCP OK ctor {pars.Length}");
-                break;
+                var pars = c.GetParameters(); var args = new object?[pars.Length];
+                for (int i = 0; i < pars.Length; i++) { if (pars[i].ParameterType == typeof(bool)) args[i] = true; else if (pars[i].ParameterType.IsValueType) args[i] = Activator.CreateInstance(pars[i].ParameterType); else args[i] = null; }
+                userChannel = c.Invoke(args); Log($"UCP OK ctor {pars.Length}"); break;
             }
             catch (Exception ex) { Log($"UCP fail: {ex.InnerException?.Message?? ex.Message}"); }
         }
         if (userChannel == null) userChannel = Activator.CreateInstance(ucpType, true)!;
-        if (userChannel == null)
-            throw new Exception("UserChannelPersistence falhou. Ctors=" + string.Join(" | ", ucpType.GetConstructors(CtorFlags).Select(c => c.ToString())));
+        if (userChannel == null) throw new Exception("UserChannelPersistence falhou.");
 
         object? libHac = null;
         foreach (var c in lhmType.GetConstructors(CtorFlags).OrderByDescending(x => x.GetParameters().Length))
@@ -265,21 +280,12 @@ public class GameActivity : Activity
             try
             {
                 var pars = c.GetParameters(); var args = new object?[pars.Length];
-                for (int i = 0; i < pars.Length; i++)
-                {
-                    if (pars[i].ParameterType == typeof(VirtualFileSystem)) args[i] = vfs;
-                    else if (pars[i].ParameterType == typeof(string)) args[i] = AppDataManager.BaseDirPath?? "";
-                    else if (pars[i].ParameterType.IsValueType) args[i] = Activator.CreateInstance(pars[i].ParameterType);
-                    else args[i] = null;
-                }
-                libHac = c.Invoke(args);
-                Log($"LHM OK {pars.Length}");
-                break;
+                for (int i = 0; i < pars.Length; i++) { if (pars[i].ParameterType == typeof(VirtualFileSystem)) args[i] = vfs; else if (pars[i].ParameterType == typeof(string)) args[i] = AppDataManager.BaseDirPath?? ""; else if (pars[i].ParameterType.IsValueType) args[i] = Activator.CreateInstance(pars[i].ParameterType); else args[i] = null; }
+                libHac = c.Invoke(args); Log($"LHM OK {pars.Length}"); break;
             }
             catch (Exception ex) { Log($"LHM fail: {ex.InnerException?.Message?? ex.Message}"); }
         }
-        if (libHac == null)
-            throw new Exception("LibHacHorizonManager falhou. Ctors=" + string.Join(" | ", lhmType.GetConstructors(CtorFlags).Select(c => c.ToString())));
+        if (libHac == null) throw new Exception("LibHacHorizonManager falhou.");
 
         object? accountManager = null;
         foreach (var c in amType.GetConstructors(CtorFlags).OrderByDescending(x => x.GetParameters().Length))
@@ -287,34 +293,18 @@ public class GameActivity : Activity
             try
             {
                 var pars = c.GetParameters(); var args = new object?[pars.Length];
-                for (int i = 0; i < pars.Length; i++)
-                {
-                    if (pars[i].ParameterType == typeof(VirtualFileSystem)) args[i] = vfs;
-                    else if (pars[i].ParameterType == typeof(string)) args[i] = AppDataManager.BaseDirPath?? "";
-                    else if (pars[i].ParameterType.IsValueType) args[i] = Activator.CreateInstance(pars[i].ParameterType);
-                    else args[i] = null;
-                }
-                accountManager = c.Invoke(args);
-                Log($"AM OK {pars.Length} {amType.FullName}");
-                break;
+                for (int i = 0; i < pars.Length; i++) { if (pars[i].ParameterType == typeof(VirtualFileSystem)) args[i] = vfs; else if (pars[i].ParameterType == typeof(string)) args[i] = AppDataManager.BaseDirPath?? ""; else if (pars[i].ParameterType.IsValueType) args[i] = Activator.CreateInstance(pars[i].ParameterType); else args[i] = null; }
+                accountManager = c.Invoke(args); Log($"AM OK {pars.Length} {amType.FullName}"); break;
             }
             catch (Exception ex) { Log($"AM fail: {ex.InnerException?.Message?? ex.Message}"); }
         }
-
-        // Fallback extra com construtor simples
         if (accountManager == null)
         {
-            Log("AccountManager: tentando construtor com apenas VFS...");
+            Log("AM tentando construtor simples VFS...");
             var simpleCtor = amType.GetConstructor(CtorFlags, null, new[] { typeof(VirtualFileSystem) }, null);
-            if (simpleCtor!= null)
-            {
-                try { accountManager = simpleCtor.Invoke(new object[] { vfs }); Log("AccountManager criado com construtor simples"); }
-                catch (Exception ex) { Log($"AM simple fail: {ex.InnerException?.Message?? ex.Message}"); }
-            }
+            if (simpleCtor!= null) { try { accountManager = simpleCtor.Invoke(new object[] { vfs }); Log("AM OK simples"); } catch (Exception ex) { Log($"AM simple fail: {ex.InnerException?.Message?? ex.Message}"); } }
         }
-
-        if (accountManager == null)
-            throw new Exception("AccountManager falhou. FullName=" + amType.FullName + " | Ctors=" + string.Join(" | ", amType.GetConstructors(CtorFlags).Select(c => c.ToString())));
+        if (accountManager == null) throw new Exception("AccountManager falhou. FullName=" + amType.FullName + " | Ctors=" + string.Join(" | ", amType.GetConstructors(CtorFlags).Select(c => c.ToString())));
 
         var dummyUI = new DummyHostUIHandler();
         var hleConfType = typeof(HleConfiguration);
@@ -328,12 +318,7 @@ public class GameActivity : Activity
             else if (pt == typeof(bool)) ctorArgs[i] = true;
             else if (pt == typeof(int) || pt == typeof(long) || pt == typeof(uint) || pt == typeof(ulong)) ctorArgs[i] = Convert.ChangeType(1, pt);
             else if (pt == typeof(float) || pt == typeof(double)) ctorArgs[i] = Convert.ChangeType(1f, pt);
-            else if (pt.IsEnum)
-            {
-                var names = Enum.GetNames(pt);
-                string pick = names.FirstOrDefault(n => n == "AmericanEnglish" || n == "USA" || n == "None" || n == "Disabled" || n == "Switch" || n.Contains("4GiB"))?? names[0];
-                ctorArgs[i] = Enum.Parse(pt, pick);
-            }
+            else if (pt.IsEnum) { var names = Enum.GetNames(pt); string pick = names.FirstOrDefault(n => n == "AmericanEnglish" || n == "USA" || n == "None" || n == "Disabled" || n == "Switch" || n.Contains("4GiB"))?? names[0]; ctorArgs[i] = Enum.Parse(pt, pick); }
             else if (pt.IsArray) ctorArgs[i] = Array.CreateInstance(pt.GetElementType()!, 0);
             else if (pt.IsValueType) ctorArgs[i] = Activator.CreateInstance(pt);
             else ctorArgs[i] = null;
