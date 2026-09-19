@@ -15,7 +15,6 @@ namespace Ryujinx.HLE.HOS.Services.Hid
         {
             try { File.AppendAllText(LogPath, $"{DateTime.Now}: {msg}\n"); } catch {}
             try { Console.WriteLine($"[HID] {msg}"); } catch {}
-            try { Android.Util.Log.Info("RYUBING_HID", msg); } catch {}
         }
 
         private readonly Switch _device;
@@ -38,13 +37,11 @@ namespace Ryujinx.HLE.HOS.Services.Hid
         public KeyboardDevice Keyboard;
         public NpadDevices Npads;
 
-        static Hid()
-        {
-        }
+        static Hid() {}
 
         internal Hid(in Switch device, SharedMemoryStorage storage)
         {
-            L("ctor ENTER 394 NO FIELD - internal log");
+            L("ctor ENTER 395 NO FIELD");
             
             _device = device;
             _storage = storage;
@@ -64,7 +61,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid
             Npads = new NpadDevices(_device, true);
             L("Npads OK");
 
-            L("ctor EXIT OK 394");
+            L("ctor EXIT OK 395");
         }
 
         public void RefreshInputConfig(System.Collections.Generic.List<InputConfig> inputConfig) {}
