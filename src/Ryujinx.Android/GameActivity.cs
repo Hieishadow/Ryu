@@ -65,7 +65,7 @@ public class GameActivity : Activity
             if (Directory.Exists(dir))
             {
                 var first = Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories)
-                   .FirstOrDefault(p => p.EndsWith(".nsp", StringComparison.OrdinalIgnoreCase) || p.EndsWith(".xci", StringComparison.OrdinalIgnoreCase));
+                  .FirstOrDefault(p => p.EndsWith(".nsp", StringComparison.OrdinalIgnoreCase) || p.EndsWith(".xci", StringComparison.OrdinalIgnoreCase));
                 if (first!= null) romPath = first;
             }
         }
@@ -109,13 +109,13 @@ public class GameActivity : Activity
     {
         global::Android.Util.Log.Info(TAG, m);
         try { File.AppendAllText(LogFile, DateTime.Now.ToString("HH:mm:ss") + " " + m + "\n"); } catch {}
-        RunOnUiThread(() => logView.Text += "\n" + m);
+        RunOnUiThread(() => { if(logView!=null) logView.Text += "\n" + m; });
     }
     void LogError(string m)
     {
         global::Android.Util.Log.Error(TAG, m);
         try { File.AppendAllText(LogFile, DateTime.Now.ToString("HH:mm:ss") + " ERRO: " + m + "\n"); } catch {}
-        RunOnUiThread(() => { logView.Text += "\nERRO: " + m; logView.SetTextColor(global::Android.Graphics.Color.Red); });
+        RunOnUiThread(() => { if(logView!=null) { logView.Text += "\nERRO: " + m; logView.SetTextColor(global::Android.Graphics.Color.Red); } });
     }
 
     class SurfaceCallback : Java.Lang.Object, ISurfaceHolderCallback
@@ -149,8 +149,9 @@ public class GameActivity : Activity
             string baseDir = Path.Combine(FilesDir!.AbsolutePath, "Ryujinx");
             string systemDir = Path.Combine(baseDir, "system");
             Directory.CreateDirectory(systemDir);
-            Directory.CreateDirectory(Path.Combine(baseDir, "bis", "user", "save", "8000000000000010"));
-            CopyKeys(baseDir, systemDir); CopyFirmware(baseDir); InitAppData(baseDir);
+            CopyKeys(baseDir, systemDir);
+            CopyFirmware(baseDir);
+            InitAppData(baseDir);
             string jitDir = Path.Combine(CacheDir!.AbsolutePath, "jit");
             Directory.CreateDirectory(jitDir);
             SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE", jitDir);
@@ -176,9 +177,9 @@ public class GameActivity : Activity
             Log("Switch criado");
             if (!device.LoadNsp(romPath)) throw new Exception("LoadNsp false");
             Log("NSP OK");
-            RunOnUiThread(() => logView.Visibility = ViewStates.Gone);
+            RunOnUiThread(() => { if(logView!=null) logView.Visibility = ViewStates.Gone; });
             var sw = System.Diagnostics.Stopwatch.StartNew(); int frames = 0;
-            while (running) { device.ProcessFrame(); device.PresentFrame(() => { Thread.Sleep(1); }); frames++; if (sw.ElapsedMilliseconds >= 1000) { int f = frames; frames = 0; sw.Restart(); RunOnUiThread(() => fpsView.Text = $"FPS: {f}"); } }
+            while (running) { device.ProcessFrame(); device.PresentFrame(() => { Thread.Sleep(1); }); frames++; if (sw.ElapsedMilliseconds >= 1000) { int f = frames; frames = 0; sw.Restart(); RunOnUiThread(() => { if(fpsView!=null) fpsView.Text = $"FPS: {f}"; }); } }
         }
         catch (Exception ex) { LogError($"ERRO:\n{ex.Message}\n{ex}"); }
         finally { try { device?.Dispose(); } catch { } try { gpu?.Dispose(); } catch { } }
@@ -219,6 +220,25 @@ public class GameActivity : Activity
     {
         try
         {
+            // FIX Mii crash - cria todos os saves do sistema
+            string[] systemSaves = new[] {
+                "8000000000000010", // Mii - era esse que crashava!
+                "8000000000000034",
+                "8000000000000032",
+                "8000000000000020",
+                "8000000000000030",
+                "8000000000000036",
+                "8000000000000040"
+            };
+            foreach (var id in systemSaves)
+            {
+                Directory.CreateDirectory(Path.Combine(baseDir, "bis", "user", "save", id));
+            }
+            Directory.CreateDirectory(Path.Combine(baseDir, "bis", "user", "saveMeta"));
+            Directory.CreateDirectory(Path.Combine(baseDir, "system", "save"));
+            Directory.CreateDirectory(Path.Combine(baseDir, "bis", "system", "save"));
+            Directory.CreateDirectory(Path.Combine(baseDir, "bis", "system", "saveMeta"));
+
             var appDataType = typeof(AppDataManager);
             var initMethod = appDataType.GetMethod("Initialize", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
             if (initMethod == null) { Log("AppData.Initialize nao encontrado"); return; }
