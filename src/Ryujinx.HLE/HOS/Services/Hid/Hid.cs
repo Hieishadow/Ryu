@@ -11,7 +11,9 @@ using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.Keyboard;
 using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.Mouse;
 using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.Npad;
 using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.TouchScreen;
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Runtime.CompilerServices;
 
 namespace Ryujinx.HLE.HOS.Services.Hid
@@ -19,13 +21,9 @@ namespace Ryujinx.HLE.HOS.Services.Hid
     public class Hid
     {
         private readonly Switch _device;
-
         private readonly SharedMemoryStorage _storage;
-
         internal ref SharedMemory SharedMemory => ref _storage.GetRef<SharedMemory>(0);
-
         internal const int SharedMemEntryCount = 17;
-
         public DebugPadDevice DebugPad;
         public TouchDevice Touchscreen;
         public MouseDevice Mouse;
@@ -35,7 +33,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid
 
         private static void CheckTypeSizeOrThrow<T>(int expectedSize)
         {
-            if (Unsafe.SizeOf<T>() != expectedSize)
+            if (Unsafe.SizeOf<T>()!= expectedSize)
             {
                 throw new InvalidStructLayoutException<T>(expectedSize);
             }
@@ -43,23 +41,45 @@ namespace Ryujinx.HLE.HOS.Services.Hid
 
         static Hid()
         {
-            CheckTypeSizeOrThrow<RingLifo<DebugPadState>>(0x2c8);
-            CheckTypeSizeOrThrow<RingLifo<TouchScreenState>>(0x2C38);
-            CheckTypeSizeOrThrow<RingLifo<MouseState>>(0x350);
-            CheckTypeSizeOrThrow<RingLifo<DebugMouseState>>(0x350);
-            CheckTypeSizeOrThrow<RingLifo<KeyboardState>>(0x3D8);
-            CheckTypeSizeOrThrow<Array10<NpadState>>(0x32000);
-            CheckTypeSizeOrThrow<SharedMemory>(Horizon.HidSize);
+            try {
+                CheckTypeSizeOrThrow<RingLifo<DebugPadState>>(0x2c8);
+                CheckTypeSizeOrThrow<RingLifo<TouchScreenState>>(0x2C38);
+                CheckTypeSizeOrThrow<RingLifo<MouseState>>(0x350);
+                CheckTypeSizeOrThrow<RingLifo<DebugMouseState>>(0x350);
+                CheckTypeSizeOrThrow<RingLifo<KeyboardState>>(0x3D8);
+                CheckTypeSizeOrThrow<Array10<NpadState>>(0x32000);
+                CheckTypeSizeOrThrow<SharedMemory>(Horizon.HidSize);
+            } catch (Exception ex) {
+                try{ File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] static ctor FAIL: {ex}\n"); }catch{}
+                throw;
+            }
         }
 
         internal Hid(in Switch device, SharedMemoryStorage storage)
         {
             _device = device;
             _storage = storage;
+            try {
+                try{ File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] BEFORE SharedMemory.Create()\n"); }catch{}
+                // No Android o _storage pode não estar comitado, força commit tocando na memória
+                try {
+                    // Toca na primeira página pra forçar commit
+                    _ = _storage.GetRef<byte>(0);
+                } catch {}
 
-            SharedMemory = SharedMemory.Create();
-
-            InitDevices();
+                SharedMemory = SharedMemory.Create();
+                try{ File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] AFTER SharedMemory.Create() OK\n"); }catch{}
+            } catch (Exception ex) {
+                try{ File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] SharedMemory.Create FAIL: {ex}\n"); }catch{}
+                throw;
+            }
+            try {
+                InitDevices();
+                try{ File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] InitDevices OK\n"); }catch{}
+            } catch (Exception ex) {
+                try{ File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] InitDevices FAIL: {ex}\n"); }catch{}
+                throw;
+            }
         }
 
         private void InitDevices()
@@ -75,13 +95,11 @@ namespace Ryujinx.HLE.HOS.Services.Hid
         public void RefreshInputConfig(List<InputConfig> inputConfig)
         {
             ControllerConfig[] npadConfig = new ControllerConfig[inputConfig.Count];
-
             for (int i = 0; i < npadConfig.Length; ++i)
             {
                 npadConfig[i].Player = (PlayerIndex)inputConfig[i].PlayerIndex;
                 npadConfig[i].Type = (ControllerType)inputConfig[i].ControllerType;
             }
-
             _device.Hid.Npads.Configure(npadConfig);
         }
 
@@ -89,19 +107,16 @@ namespace Ryujinx.HLE.HOS.Services.Hid
         {
             const int StickButtonThreshold = short.MaxValue / 2;
             ControllerKeys result = 0;
-
-#pragma warning disable IDE0055 // Disable formatting
-            result |= (leftStick.Dx < -StickButtonThreshold) ? ControllerKeys.LStickLeft  : result;
-            result |= (leftStick.Dx > StickButtonThreshold)  ? ControllerKeys.LStickRight : result;
-            result |= (leftStick.Dy < -StickButtonThreshold) ? ControllerKeys.LStickDown  : result;
-            result |= (leftStick.Dy > StickButtonThreshold)  ? ControllerKeys.LStickUp    : result;
-
-            result |= (rightStick.Dx < -StickButtonThreshold) ? ControllerKeys.RStickLeft  : result;
-            result |= (rightStick.Dx > StickButtonThreshold)  ? ControllerKeys.RStickRight : result;
-            result |= (rightStick.Dy < -StickButtonThreshold) ? ControllerKeys.RStickDown  : result;
-            result |= (rightStick.Dy > StickButtonThreshold)  ? ControllerKeys.RStickUp    : result;
+#pragma warning disable IDE0055
+            result |= (leftStick.Dx < -StickButtonThreshold)? ControllerKeys.LStickLeft : result;
+            result |= (leftStick.Dx > StickButtonThreshold)? ControllerKeys.LStickRight : result;
+            result |= (leftStick.Dy < -StickButtonThreshold)? ControllerKeys.LStickDown : result;
+            result |= (leftStick.Dy > StickButtonThreshold)? ControllerKeys.LStickUp : result;
+            result |= (rightStick.Dx < -StickButtonThreshold)? ControllerKeys.RStickLeft : result;
+            result |= (rightStick.Dx > StickButtonThreshold)? ControllerKeys.RStickRight : result;
+            result |= (rightStick.Dy < -StickButtonThreshold)? ControllerKeys.RStickDown : result;
+            result |= (rightStick.Dy > StickButtonThreshold)? ControllerKeys.RStickUp : result;
 #pragma warning restore IDE0055
-
             return result;
         }
 
