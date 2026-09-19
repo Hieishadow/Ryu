@@ -31,6 +31,9 @@ public class GameActivity : Activity
         SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE",jitDir);
         try{ Directory.SetCurrentDirectory(baseDir); SysEnv.CurrentDirectory=baseDir; MyLog("CWD -> "+baseDir); }catch(Exception ex){ MyLog("CWD fail: "+ex.Message); }
 
+        // Reset VFS se sobrou de crash anterior
+        try{ typeof(VirtualFileSystem).GetField("_instance",All)?.SetValue(null,null); }catch{}
+
         VirtualFileSystem vfs=VirtualFileSystem.CreateInstance();
         vfs.ReloadKeySet();
         MyLog("VFS OK");
@@ -39,14 +42,15 @@ public class GameActivity : Activity
         gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
         MyLog("Vulkan OK "+gpu.GetType().FullName);
         var conf=BuildHle(vfs,gpu,audio, baseDir, sysDir);
-        MyLog("HLE FINAL OK");
+        MyLog("HLE FINAL OK - LHM.FsClient="+(conf.LibHacHorizonManager?.FsClient==null?"NULL":"OK")+" Fs="+(conf.LibHacHorizonManager?.FsClient?.Fs==null?"NULL":"OK"));
+        if(conf.LibHacHorizonManager?.FsClient?.Fs==null) throw new Exception("LHM.FsClient.Fs ainda NULL - init falhou");
         device=new Switch(conf);
         MyLog("Switch OK - DEPOIS new Switch FINAL");
         device.LoadNsp(romPath);
         MyLog("LoadNsp OK");
         RunOnUiThread(()=>{ logView.Visibility=ViewStates.Gone; });
         while(running){ device.ProcessFrame(); device.PresentFrame(()=>{}); Thread.Yield(); }
-    }catch(Exception ex){ MyLog("Emu CRASH: "+ex.ToString()); } }
+    }catch(Exception ex){ MyLog("Emu CRASH: "+ex.ToString()); try{ typeof(VirtualFileSystem).GetField("_instance",All)?.SetValue(null,null); }catch{} } }
 
     unsafe delegate Silk.NET.Vulkan.Result CDel(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
 
@@ -55,6 +59,38 @@ public class GameActivity : Activity
         var lhmType=typeof(LibHacHorizonManager); object lhm=null;
         foreach(var c in lhmType.GetConstructors(All)){ try{ var pr=c.GetParameters(); var ar=new object[pr.Length]; for(int k=0;k<pr.Length;k++){ if(pr[k].ParameterType==typeof(VirtualFileSystem)) ar[k]=vfs; else if(pr[k].ParameterType==typeof(string)) ar[k]=baseDir; else if(pr[k].ParameterType.IsValueType) ar[k]=Activator.CreateInstance(pr[k].ParameterType); } lhm=c.Invoke(ar); if(lhm!=null) break; }catch{} }
         MyLog("LHM -> "+(lhm==null?"NULL":lhm.GetType().Name));
+
+        // --- FIX: Inicializa o LibHacHorizonManager ---
+        try{
+            // Tenta InitializeFs, InitializeFileSystem, etc
+            var methods = lhmType.GetMethods(All).Where(m=>m.Name.ToLower().Contains("initial")).ToList();
+            foreach(var m in methods) MyLog("LHM method: "+m.Name+"("+string.Join(",", m.GetParameters().Select(p=>p.ParameterType.Name))+")");
+
+            object client = null;
+            // Procura método que retorna HorizonClient ou cria FsClient
+            var createMethods = lhmType.GetMethods(All).Where(m=>m.Name.Contains("Create") || m.Name.Contains("Initialize")).ToList();
+            foreach(var m in createMethods){
+                try{
+                    var ps=m.GetParameters();
+                    object[] args=new object[ps.Length];
+                    bool ok=true;
+                    for(int i=0;i<ps.Length;i++){
+                        if(ps[i].ParameterType==typeof(VirtualFileSystem)) args[i]=vfs;
+                        else if(ps[i].ParameterType==typeof(string)) args[i]=baseDir;
+                        else if(ps[i].ParameterType.IsValueType) args[i]=Activator.CreateInstance(ps[i].ParameterType);
+                        else ok=false;
+                    }
+                    if(!ok) continue;
+                    var res=m.Invoke(lhm,args);
+                    MyLog($"LHM.{m.Name}() invoked OK -> {res?.GetType().Name}");
+                    if(res!=null && res.GetType().Name.Contains("Client")) client=res;
+                }catch(Exception ex){ MyLog($"LHM.{m.Name} fail: {ex.InnerException?.Message??ex.Message}"); }
+            }
+            var fsClientProp=lhmType.GetProperty("FsClient",All)?? lhmType.GetProperty("FileSystemClient",All);
+            var fsClient=fsClientProp?.GetValue(lhm);
+            MyLog("LHM.FsClient after init -> "+(fsClient==null?"NULL":fsClient.GetType().Name+" Fs="+(fsClient.GetType().GetProperty("Fs",All)?.GetValue(fsClient)!=null?"OK":"NULL")));
+        }catch(Exception ex){ MyLog("LHM init fail: "+ex.ToString()); }
+
         object hc=null; try{ var t=lhm.GetType(); foreach(var m in t.GetMembers(All)){ if(m is PropertyInfo pi && pi.PropertyType.Name.Contains("HorizonClient")){ hc=pi.GetValue(lhm); if(hc!=null) break; } if(m is FieldInfo fi && fi.FieldType.Name.Contains("HorizonClient")){ hc=fi.GetValue(lhm); if(hc!=null) break; } } if(hc==null) hc=t.GetProperty("Client",All)?.GetValue(lhm)?? t.GetField("_horizonClient",All)?.GetValue(lhm)?? t.GetField("_client",All)?.GetValue(lhm); }catch(Exception ex){ MyLog("Get HC ex: "+ex.Message); }
         MyLog("HorizonClient -> "+(hc==null?"NULL":hc.GetType().Name));
 
