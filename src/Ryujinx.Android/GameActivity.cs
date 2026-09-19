@@ -47,6 +47,14 @@ public class GameActivity : Activity
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
+        // FIX 1: Mata o console colorido ANTES de qualquer coisa do Ryujinx
+        try { Console.SetOut(new StringWriter()); Console.SetError(new StringWriter()); } catch {}
+        try {
+            var all = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a=>{try{return a.GetTypes();}catch{return Type.EmptyTypes;}}).ToList();
+            var logger = all.FirstOrDefault(t=>t.Name=="Logger");
+            logger?.GetMethod("ClearTargets", BindingFlags.Static|BindingFlags.Public|BindingFlags.NonPublic)?.Invoke(null,null);
+        } catch {}
+
         base.OnCreate(savedInstanceState);
         AppDomain.CurrentDomain.UnhandledException += (s,e)=>{ try{ File.AppendAllText(LogFile,"UNHANDLED: "+e.ExceptionObject+"\n"); }catch{} };
         Android.Runtime.AndroidEnvironment.UnhandledExceptionRaiser += (s,e)=>{ try{ File.AppendAllText(LogFile,"ANDROID UNHANDLED: "+e.Exception+"\n"); }catch{}; e.Handled = true; };
@@ -111,6 +119,21 @@ public class GameActivity : Activity
     {
         try
         {
+            // FIX 2: Limpa logger de novo no inicio da thread de emulação
+            try { Console.SetOut(new StringWriter()); Console.SetError(new StringWriter()); } catch {}
+            try {
+                var all = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a=>{try{return a.GetTypes();}catch{return Type.EmptyTypes;}}).ToList();
+                var logger = all.FirstOrDefault(t=>t.Name=="Logger");
+                var field = logger?.GetFields(BindingFlags.Static|BindingFlags.NonPublic|BindingFlags.Public).FirstOrDefault(f=>f.FieldType.Name.Contains("List"));
+                (field?.GetValue(null) as System.Collections.IList)?.Clear();
+                logger?.GetMethod("ClearTargets", BindingFlags.Static|BindingFlags.Public|BindingFlags.NonPublic)?.Invoke(null,null);
+                var cTarget = all.FirstOrDefault(t=>t.Name=="ConsoleLogTarget");
+                if(cTarget!=null){
+                    var p = cTarget.GetProperty("EnableColor", BindingFlags.Static|BindingFlags.Public|BindingFlags.NonPublic);
+                    try{ p?.SetValue(null,false); }catch{}
+                }
+            } catch {}
+
             LogAppend($"Iniciando {Path.GetFileName(romPath)}");
             try{ var tz=Java.Util.TimeZone.Default; LogAppend($"TimeZone: {tz.ID}"); }catch{ Java.Util.TimeZone.Default=Java.Util.TimeZone.GetTimeZone("UTC"); LogAppend("TimeZone fallback UTC"); }
             string baseDir=Path.Combine(FilesDir!.AbsolutePath,"Ryujinx");
@@ -147,24 +170,16 @@ public class GameActivity : Activity
             try { Directory.Delete(Path.Combine(baseDir, "bis", "user", "save"), true); } catch {}
             try { Directory.Delete(Path.Combine(baseDir, "bis", "user", "saveMeta"), true); } catch {}
             try { Directory.Delete(Path.Combine(baseDir, "bis", "system", "save"), true); } catch {}
-
             Directory.CreateDirectory(Path.Combine(baseDir, "bis", "user", "save"));
             Directory.CreateDirectory(Path.Combine(baseDir, "bis", "user", "saveMeta"));
             Directory.CreateDirectory(Path.Combine(baseDir, "system", "save"));
             Directory.CreateDirectory(Path.Combine(baseDir, "bis", "system", "save"));
             Directory.CreateDirectory(Path.Combine(baseDir, "bis", "system", "saveMeta"));
-
             LogAppend("Saves limpos - Horizon vai recriar");
-
-            var appDataType = AppDomain.CurrentDomain.GetAssemblies()
-              .SelectMany(a => { try { return a.GetTypes(); } catch { return Type.EmptyTypes; } })
-              .FirstOrDefault(t => t.Name == "AppDataManager");
-
+            var appDataType = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a => { try { return a.GetTypes(); } catch { return Type.EmptyTypes; } }).FirstOrDefault(t => t.Name == "AppDataManager");
             if (appDataType == null) { LogAppend("AppDataManager não encontrado"); return; }
-
             var initMethod = appDataType.GetMethod("Initialize", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
             if (initMethod == null) { LogAppend("AppData.Initialize não encontrado"); return; }
-
             var pms = initMethod.GetParameters();
             if (pms.Length == 1) initMethod.Invoke(null, new object[] { baseDir });
             else if (pms.Length == 2)
@@ -175,7 +190,6 @@ public class GameActivity : Activity
                 else mode = Enum.GetValues(enumType).GetValue(0)!;
                 initMethod.Invoke(null, new object[] { baseDir, mode });
             }
-
             var basePathProp = appDataType.GetProperty("BaseDirPath", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
             LogAppend($"AppData Base: {basePathProp?.GetValue(null)}");
         }
