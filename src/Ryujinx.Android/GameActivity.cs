@@ -2,8 +2,8 @@
 using Android.App; using Android.Content.PM; using Android.OS; using Android.Views; using Android.Widget;
 using AFormat = Android.Graphics.Format; using Ryujinx.HLE; using Ryujinx.HLE.FileSystem; using Ryujinx.HLE.HOS;
 using Ryujinx.HLE.HOS.Services.Account.Acc; using Ryujinx.Graphics.Vulkan; using Ryujinx.Audio.Backends.Dummy;
-using Silk.NET.Vulkan; using System; using System.IO; using System.Reflection; using System.Runtime.InteropServices;
-using System.Threading; using SysEnv = System.Environment; using Switch = Ryujinx.HLE.Switch;
+using Ryujinx.Audio.Integration; using Silk.NET.Vulkan; using System; using System.IO; using System.Reflection;
+using System.Runtime.InteropServices; using System.Threading; using SysEnv = System.Environment; using Switch = Ryujinx.HLE.Switch;
 
 namespace DragoNX;
 [Activity(Name="com.ryubing.android.GameActivity", Label="Ryubing", Theme="@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation=ScreenOrientation.Landscape, ConfigurationChanges=ConfigChanges.Orientation|ConfigChanges.ScreenSize|ConfigChanges.KeyboardHidden, Exported=false, MainLauncher=false)]
@@ -79,13 +79,12 @@ public class GameActivity : Activity
             else if(pt==typeof(AccountManager)) cargs[k]=am;
             else if(pt==typeof(UserChannelPersistence)) cargs[k]=ucp;
             else if(pt.IsInstanceOfType(gpu)) cargs[k]=gpu;
-            else if(pt.IsInstanceOfType(audio)) cargs[k]=audio;
-            else if(pt.Name.Contains("Audio") || pt.Name.Contains("DeviceDriver") || pt.Name.Contains("Hardware") || pt.Name.Contains("IAudio")) cargs[k]=audio;
+            else if(typeof(IHardwareDeviceDriver).IsAssignableFrom(pt)) cargs[k]=audio;
         }
         var cfg = conf.Invoke(hle,cargs) as HleConfiguration;
         try{
             foreach(var prop in cfg.GetType().GetProperties(BindingFlags.Public|BindingFlags.Instance)){
-                if(prop.Name.Contains("AudioDeviceDriver")){
+                if(prop.PropertyType==typeof(IHardwareDeviceDriver) || prop.Name.Contains("AudioDeviceDriver")){
                     if(prop.CanWrite){
                         object cur = prop.GetValue(cfg);
                         if(cur==null) prop.SetValue(cfg, audio);
