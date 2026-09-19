@@ -2,15 +2,7 @@ using Ryujinx.Common.Configuration.Hid;
 using Ryujinx.Common.Memory;
 using Ryujinx.HLE.HOS.Kernel.Memory;
 using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory;
-using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.Common;
-using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.DebugMouse;
-using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.DebugPad;
-using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.Keyboard;
-using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.Mouse;
-using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.Npad;
-using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.TouchScreen;
 using System;
-using System.Collections.Generic;
 using System.IO;
 
 namespace Ryujinx.HLE.HOS.Services.Hid
@@ -21,6 +13,8 @@ namespace Ryujinx.HLE.HOS.Services.Hid
         private readonly SharedMemoryStorage _storage;
         private SharedMemory _localSharedMemory;
         private bool _useLocal = false;
+
+        internal const int SharedMemEntryCount = 17;
 
         internal ref SharedMemory SharedMemory
         {
@@ -40,7 +34,6 @@ namespace Ryujinx.HLE.HOS.Services.Hid
 
         static Hid()
         {
-            // ANDROID: desliga check, senão crasha antes do ctor
             if (Environment.OSVersion.Platform == PlatformID.Unix) return;
         }
 
@@ -48,14 +41,10 @@ namespace Ryujinx.HLE.HOS.Services.Hid
         {
             _device = device;
             _storage = storage;
-
             try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] ctor ENTER\n"); } catch {}
-
             _useLocal = true;
             _localSharedMemory = default;
-
             try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] local default OK\n"); } catch {}
-
             try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] BEFORE InitDevices\n"); } catch {}
             DebugPad = new DebugPadDevice(_device, true);
             Touchscreen = new TouchDevice(_device, true);
@@ -66,7 +55,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid
             try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now}: [HID] InitDevices OK\n"); } catch {}
         }
 
-        public void RefreshInputConfig(List<InputConfig> inputConfig) {}
+        public void RefreshInputConfig(System.Collections.Generic.List<InputConfig> inputConfig) {}
         public ControllerKeys UpdateStickButtons(JoystickPosition leftStick, JoystickPosition rightStick) => 0;
         internal ulong GetTimestampTicks() => 0;
     }
