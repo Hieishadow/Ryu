@@ -1007,9 +1007,9 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         public void PreFrame()
-        {
-            SyncManager.Cleanup();
-        }
+{
+    SyncManager?.Cleanup();
+}
 
         public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
         {
