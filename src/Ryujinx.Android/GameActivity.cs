@@ -34,20 +34,15 @@ public class GameActivity : Activity
             SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE",jitDir);
             try{ Directory.SetCurrentDirectory(baseDir); SysEnv.CurrentDirectory=baseDir; }catch{}
 
-            // LIMPEZA AUTOMATICA - sem precisar acessar /data
-            try{
-                foreach(var f in Directory.GetFiles(keysDir)) File.Delete(f);
-                MyLog("Limpeza keys interna OK");
-            }catch(Exception ex){ MyLog($"Limpeza FAIL {ex.Message}"); }
+            try{ foreach(var f in Directory.GetFiles(keysDir)) File.Delete(f); MyLog("Limpeza keys interna OK"); }catch(Exception ex){ MyLog($"Limpeza FAIL {ex.Message}"); }
 
             try{
                 string[] prodSources = new[]{ "/storage/emulated/0/Ryujinx/keys/prod.keys", "/storage/emulated/0/Download/Ryubing/keys/prod.keys", "/storage/emulated/0/Download/Ryubing/prod.keys", "/storage/emulated/0/Download/prod.keys" };
                 string destProd = Path.Combine(keysDir,"prod.keys");
                 foreach(var src in prodSources){
                     if(File.Exists(src)){
-                        var len=new FileInfo(src).Length;
                         File.Copy(src, destProd, true);
-                        MyLog($"Keys copiado {src} size={len}");
+                        MyLog($"Keys copiado {src} size={new FileInfo(src).Length}");
                         break;
                     }
                 }
@@ -57,8 +52,29 @@ public class GameActivity : Activity
             try{ typeof(VirtualFileSystem).GetField("_instance",All)?.SetValue(null,null); }catch{}
             VirtualFileSystem vfs=VirtualFileSystem.CreateInstance();
             vfs.ReloadKeySet(); vfs.ReloadKeySet();
-            MyLog($"VFS OK prodCount={vfs.KeySet.Current.ProdKeys.Count} titleCount={vfs.KeySet.Current.TitleKeys.Count}");
-            if(vfs.KeySet.Current.ProdKeys.Count==0) throw new Exception("prod.keys com 0 keys - formato invalido");
+
+            // DIAGNOSTICO COMPATIVEL - SEM.Current
+            try{
+                var ks = vfs.KeySet;
+                object cur = ks;
+                try{
+                    var pCur = ks.GetType().GetProperty("Current", All);
+                    if(pCur!=null) cur = pCur.GetValue(ks)?? ks;
+                }catch{}
+                int prodCount = 0; int titleCount = 0;
+                try{
+                    var prodProp = cur.GetType().GetProperty("ProdKeys", All)?? cur.GetType().GetProperty("prod_keys", All);
+                    var prodObj = prodProp?.GetValue(cur);
+                    if(prodObj!=null) prodCount = (int)(prodObj.GetType().GetProperty("Count")?.GetValue(prodObj)?? 0);
+                }catch{}
+                try{
+                    var titleProp = cur.GetType().GetProperty("TitleKeys", All)?? cur.GetType().GetProperty("title_keys", All);
+                    var titleObj = titleProp?.GetValue(cur);
+                    if(titleObj!=null) titleCount = (int)(titleObj.GetType().GetProperty("Count")?.GetValue(titleObj)?? 0);
+                }catch{}
+                MyLog($"VFS OK prodCount={prodCount} titleCount={titleCount}");
+                if(prodCount==0) throw new Exception("prod.keys com 0 keys - formato invalido ou binario");
+            }catch(Exception ex){ MyLog($"[KEYS] FAIL {ex.Message}"); throw; }
 
             var audio=new DummyHardwareDeviceDriver();
             if(nativeWindow==IntPtr.Zero) return;
