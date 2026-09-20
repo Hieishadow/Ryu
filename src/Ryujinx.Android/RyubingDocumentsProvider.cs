@@ -7,78 +7,70 @@ using System.IO;
 
 namespace Ryujinx.Android;
 
-[ContentProvider(new string[]{"com.ryubing.android.documents"}, 
+[ContentProvider(new string[]{"com.ryubing.android.documents"},
     Name="com.ryubing.android.RyubingDocumentsProvider",
-    Exported=true,
-    GrantUriPermissions=true,
-    Permission="android.permission.MANAGE_DOCUMENTS")]
+    Exported=true, GrantUriPermissions=true)]
 public class RyubingDocumentsProvider : DocumentsProvider
 {
     public override bool OnCreate() => true;
 
-    public override ICursor QueryRoots(string[] projection){
-        var result = new MatrixCursor(projection?? new[]{"root_id","flags","icon","title","document_id","available_bytes"});
-        var row = result.NewRow();
-        row.Add("root_id", "ryubing_root");
-        row.Add("flags", (int)(DocumentsContract.Root.FlagSupportsRecents | DocumentsContract.Root.FlagLocalOnly));
-        row.Add("icon", 0);
-        row.Add("title", "Ryubing");
-        row.Add("document_id", "ryubing:/");
-        row.Add("available_bytes", 10000000000L);
-        result.AddRow(row);
-        return result;
+    public override ICursor QueryRoots(string[] projection)
+    {
+        var c = new MatrixCursor(projection?? new[]{"root_id","flags","title","document_id","available_bytes"});
+        // NET10: não usa mais FlagSupportsRecents obsoleto, usa RootFlags direto
+        var row = c.NewRow();
+        row.Add("ryubing_root");
+        row.Add((int)(RootFlags.SupportsRecents | RootFlags.LocalOnly | RootFlags.SupportsIsChild));
+        row.Add("Ryubing");
+        row.Add("ryubing:/");
+        row.Add(10000000000L);
+        return c;
     }
 
-    public override ICursor QueryDocument(string docId, string[] projection){
-        var cursor = new MatrixCursor(projection?? new[]{"document_id","mime_type","display_name","flags","size","last_modified"});
-        var row = cursor.NewRow();
+    public override ICursor QueryDocument(string docId, string[] projection)
+    {
+        var c = new MatrixCursor(projection?? new[]{"document_id","mime_type","display_name","flags","size","last_modified"});
         string path = DocIdToPath(docId);
         bool isDir = Directory.Exists(path);
-        row.Add("document_id", docId);
-        row.Add("mime_type", isDir? DocumentsContract.Document.MimeTypeDir : "application/octet-stream");
-        row.Add("display_name", isDir? new DirectoryInfo(path).Name : Path.GetFileName(path));
-        row.Add("flags", (int)(DocumentsContract.Document.FlagSupportsWrite | DocumentsContract.Document.FlagSupportsDelete | DocumentsContract.Document.FlagSupportsThumbnail));
-        row.Add("size", isDir? 0 : (File.Exists(path)? new FileInfo(path).Length:0));
-        row.Add("last_modified", Java.Lang.JavaSystem.CurrentTimeMillis());
-        cursor.AddRow(row);
-        return cursor;
+        var row = c.NewRow();
+        row.Add(docId);
+        row.Add(isDir? DocumentsContract.Document.MimeTypeDir : "application/octet-stream");
+        row.Add(isDir? new DirectoryInfo(path).Name : Path.GetFileName(path));
+        row.Add((int)(DocumentFlags.SupportsWrite | DocumentFlags.SupportsDelete));
+        row.Add(isDir? 0L : (File.Exists(path)? new FileInfo(path).Length : 0L));
+        row.Add(Java.Lang.JavaSystem.CurrentTimeMillis());
+        return c;
     }
 
-    public override ICursor QueryChildDocuments(string parentDocumentId, string[] projection, string sortOrder){
-        var cursor = new MatrixCursor(projection?? new[]{"document_id","mime_type","display_name","flags","size","last_modified"});
-        string parentPath = DocIdToPath(parentDocumentId);
-        if(!Directory.Exists(parentPath)) return cursor;
-        foreach(var dir in Directory.GetDirectories(parentPath)){
-            var row = cursor.NewRow();
-            row.Add("document_id", "ryubing:"+dir);
-            row.Add("mime_type", DocumentsContract.Document.MimeTypeDir);
-            row.Add("display_name", Path.GetFileName(dir));
-            row.Add("flags", 0);
-            row.Add("size", 0);
-            row.Add("last_modified", Java.Lang.JavaSystem.CurrentTimeMillis());
-            cursor.AddRow(row);
+    public override ICursor QueryChildDocuments(string parentDocId, string[] projection, string sortOrder)
+    {
+        var c = new MatrixCursor(projection?? new[]{"document_id","mime_type","display_name","size","last_modified"});
+        string parentPath = DocIdToPath(parentDocId);
+        if(!Directory.Exists(parentPath)) return c;
+
+        foreach(var d in Directory.GetDirectories(parentPath)){
+            var r = c.NewRow();
+            r.Add("ryubing:"+d);
+            r.Add(DocumentsContract.Document.MimeTypeDir);
+            r.Add(Path.GetFileName(d));
+            r.Add(0L);
+            r.Add(Java.Lang.JavaSystem.CurrentTimeMillis());
         }
-        foreach(var file in Directory.GetFiles(parentPath)){
-            var info = new FileInfo(file);
-            var row = cursor.NewRow();
-            row.Add("document_id", "ryubing:"+file);
-            row.Add("mime_type", "application/octet-stream");
-            row.Add("display_name", info.Name);
-            row.Add("flags", 0);
-            row.Add("size", info.Length);
-            row.Add("last_modified", Java.Lang.JavaSystem.CurrentTimeMillis());
-            cursor.AddRow(row);
+        foreach(var f in Directory.GetFiles(parentPath)){
+            var r = c.NewRow();
+            r.Add("ryubing:"+f);
+            r.Add("application/octet-stream");
+            r.Add(Path.GetFileName(f));
+            r.Add(new FileInfo(f).Length);
+            r.Add(Java.Lang.JavaSystem.CurrentTimeMillis());
         }
-        return cursor;
+        return c;
     }
 
-    public override ParcelFileDescriptor OpenDocument(string documentId, string mode, CancellationSignal signal){
-        string path = DocIdToPath(documentId);
-        return ParcelFileDescriptor.Open(new Java.IO.File(path), ParcelFileMode.Parse(mode));
+    public override ParcelFileDescriptor OpenDocument(string documentId, string mode, CancellationSignal signal)
+    {
+        return ParcelFileDescriptor.Open(new Java.IO.File(DocIdToPath(documentId)), ParcelFileMode.Parse(mode));
     }
 
-    string DocIdToPath(string docId){
-        if(docId=="ryubing:/") return Context.FilesDir.AbsolutePath;
-        return docId.Replace("ryubing:", "");
-    }
+    string DocIdToPath(string docId) => docId == "ryubing:/"? Context.FilesDir.AbsolutePath : docId.Replace("ryubing:", "");
 }
