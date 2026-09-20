@@ -3,15 +3,14 @@ using Android.App;
 using Android.Content.PM;
 using Android.OS;
 using Android.Views;
-using Android.Widget;
 using System;
 using System.IO;
 using System.Threading.Tasks;
-using Ryujinx.HLE;
+using Ryujinx.Common.Logging;
 using Ryujinx.HLE.FileSystem;
 using Ryujinx.HLE.HOS;
-using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.Gpu;
+using HLESwitch = Ryujinx.HLE.Switch;
 
 namespace Ryujinx.Android;
 
@@ -21,7 +20,7 @@ namespace Ryujinx.Android;
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.KeyboardHidden)]
 public class GameActivity : Activity
 {
-    Switch device;
+    HLESwitch device;
     string romPath;
     SurfaceView surface;
     TextView status;
@@ -31,10 +30,9 @@ public class GameActivity : Activity
         base.OnCreate(savedInstanceState);
         Window?.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
 
-        romPath = Intent?.GetStringExtra("rom_path")?? "";
+        romPath = Intent?.GetStringExtra("rom_path") ?? "";
         if (!File.Exists(romPath)) { Finish(); return; }
 
-        // Layout com Surface pro Vulkan
         var root = new FrameLayout(this);
         surface = new SurfaceView(this);
         status = new TextView(this);
@@ -46,7 +44,6 @@ public class GameActivity : Activity
         root.AddView(status, new FrameLayout.LayoutParams(-2,-2, GravityFlags.Top | GravityFlags.Left));
         SetContentView(root);
 
-        // Copia keys de verdade
         try
         {
             var filesDir = FilesDir.AbsolutePath;
@@ -88,26 +85,19 @@ public class GameActivity : Activity
         try
         {
             RunOnUiThread(()=> status.Text = "Inicializando Ryujinx...");
-            
-            // Logger
             Logger.AddLogger(new ConsoleLogger(), LogLevel.Info);
 
-            // VFS - ISSO QUE FALTAVA NO SEU CODIGO PRETO
             var vfs = new VirtualFileSystem();
-            var nandFs = new IntegrityCheckLevelFs();
             
-            device = new Switch(vfs, null, null, null, null, null, null, null);
+            device = new HLESwitch(vfs, null, null, null, null, null, null, null);
             
             RunOnUiThread(()=> status.Text = $"Carregando ROM...");
 
-            // Carrega XCI/NSP
-            var loader = device.LoadApplication(romPath);
-            if (loader is Ryujinx.HLE.Loaders.ProcessResult.Failed)
+            var result = device.LoadApplication(romPath);
+            if (result == false)
                 throw new Exception("Falha ao carregar ROM - keys erradas?");
 
             RunOnUiThread(()=> { status.Visibility = ViewStates.Gone; });
-
-            // INICIA DE VERDADE
             device.Run();
         }
         catch (Exception ex)
