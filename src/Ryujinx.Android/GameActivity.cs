@@ -16,11 +16,11 @@ public class GameActivity : Activity
     string romPath=""; SurfaceView surfaceView; TextView logView;
     [DllImport("android")] static extern IntPtr ANativeWindow_fromSurface(IntPtr env, IntPtr surface);
     [DllImport("android")] static extern void ANativeWindow_release(IntPtr window);
-    void MyLog(string s){ try{ RunOnUiThread(()=>{ if(logView!=null){ logView.Text+="\n"+s; if(logView.Text.Length>4000) logView.Text=logView.Text.Substring(logView.Text.Length-4000);} }); try{ var p="/storage/emulated/0/Download/Ryubing/ryubing_log.txt"; Directory.CreateDirectory(Path.GetDirectoryName(p)); File.AppendAllText(p, DateTime.Now+": "+s+" [tid="+SysEnv.CurrentManagedThreadId+"]\n"); }catch{} }catch{} }
+    void MyLog(string s){ try{ RunOnUiThread(()=>{ if(logView!=null){ logView.Text+="\n"+s; if(logView.Text.Length>4000) logView.Text=logView.Text.Substring(logView.Text.Length-4000);} }); try{ var p="/storage/emulated/0/Download/Ryubing/ryubing_log.txt"; Directory.CreateDirectory(Path.GetDirectoryName(p)); File.AppendAllText(p, DateTime.Now+": "+s+"\n"); }catch{} }catch{} }
     protected override void OnCreate(Bundle saved){
         base.OnCreate(saved);
         if(Holder.device!=null || Holder.emuThread!=null){
-            bool ended=false; try{ Holder.running=false; if(Holder.emuThread!=null) ended=Holder.emuThread.Join(3000); }catch{ }
+            bool ended=false; try{ Holder.running=false; if(Holder.emuThread!=null) ended=Holder.emuThread.Join(3000); }catch{}
             if(ended){ try{ Holder.device?.Dispose(); }catch{} try{ if(Holder.gpu is IDisposable d) d.Dispose(); }catch{} if(Holder.nativeWindow!=IntPtr.Zero){ try{ ANativeWindow_release(Holder.nativeWindow); }catch{} Holder.nativeWindow=IntPtr.Zero; } Holder.device=null; Holder.gpu=null; Holder.emuThread=null; }
         }
         if(Window!=null) Window.AddFlags(WindowManagerFlags.Fullscreen|WindowManagerFlags.KeepScreenOn);
@@ -55,12 +55,9 @@ public class GameActivity : Activity
             MyLog($"Load {Path.GetFileName(romPath)}");
             if(romPath.EndsWith(".xci",StringComparison.OrdinalIgnoreCase)) Holder.device.LoadXci(romPath); else Holder.device.LoadNsp(romPath);
             MyLog($"Load END");
-            try{
-                int w=1280, h=720; // FIXO pra S20 FE - tira listras
-                MyLog($"SetSize {w}x{h}");
-                var winProp=Holder.gpu.GetType().GetProperty("Window",All); var win=winProp?.GetValue(Holder.gpu);
-                win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{w,h});
-            }catch(Exception eSz){ MyLog($"SetSize ERR {eSz.Message}"); }
+            int w=2186, h=1080;
+            MyLog($"SetSize {w}x{h}");
+            try{ var winProp=Holder.gpu.GetType().GetProperty("Window",All); var win=winProp?.GetValue(Holder.gpu); win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{w,h}); MyLog($"SetSize OK"); }catch(Exception eSz){ MyLog($"SetSize ERR {eSz.Message}"); }
             int frames=0; long last=SysEnv.TickCount64;
             MyLog($"LOOP ON");
             while(Holder.running && Holder.nativeWindow!=IntPtr.Zero){
@@ -68,11 +65,16 @@ public class GameActivity : Activity
                     Holder.device.ProcessFrame();
                     Holder.device.PresentFrame(()=>{});
                     frames++;
-                    if(SysEnv.TickCount64-last>1000){ MyLog($"RODANDO frames={frames}"); last=SysEnv.TickCount64; }
-                }catch(Exception eLoop){ MyLog($"LOOP EX f={frames} {eLoop.Message}"); break; }
+                    if(SysEnv.TickCount64-last>1000){
+                        MyLog($"RODANDO frames={frames}");
+                        Android.Util.Log.Debug("Ryubing",$"HEARTBEAT frames={frames}");
+                        last=SysEnv.TickCount64;
+                    }
+                    Thread.Sleep(16);
+                }catch(Exception eLoop){ MyLog($"LOOP EX f={frames} {eLoop.Message}"); Android.Util.Log.Debug("Ryubing",$"LOOP EX {eLoop}"); break; }
             }
             MyLog($"LOOP SAIU f={frames}");
-        }catch(Exception eAll){ MyLog($"CRASH {eAll}"); } finally{ MyLog($"Emu END id={tid}"); }
+        }catch(Exception eAll){ MyLog($"CRASH {eAll}"); Android.Util.Log.Debug("Ryubing",$"CRASH {eAll}"); } finally{ MyLog($"Emu END id={tid}"); }
     }
     unsafe delegate Silk.NET.Vulkan.Result CDel(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
     HleConfiguration BuildHle(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio, string baseDir, string sysDir){
