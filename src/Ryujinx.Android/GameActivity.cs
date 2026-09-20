@@ -62,23 +62,19 @@ public class GameActivity : Activity
             while(Holder.running && Holder.nativeWindow!=IntPtr.Zero){
                 try{
                     FileLog($"PF START f={frames}");
-                    global::Android.Util.Log.Debug("Ryubing", $"PF START f={frames}");
                     Holder.device.ProcessFrame();
                     FileLog($"PF END f={frames}");
-                    global::Android.Util.Log.Debug("Ryubing", $"PF END f={frames}");
                     Holder.device.PresentFrame(()=>{});
                     FileLog($"PR END f={frames}");
-                    global::Android.Util.Log.Debug("Ryubing", $"PR END f={frames}");
                     frames++;
-                    Thread.Sleep(100);
+                    Thread.Sleep(16);
                 }catch(Exception eLoop){
                     FileLog($"LOOP EX f={frames} {eLoop}");
-                    global::Android.Util.Log.Debug("Ryubing", $"LOOP EX f={frames} {eLoop}");
                     break;
                 }
             }
             FileLog($"LOOP SAIU f={frames}"); MyLog($"LOOP SAIU f={frames}");
-        }catch(Exception eAll){ FileLog($"CRASH {eAll}"); MyLog($"CRASH {eAll}"); } finally{ FileLog($"Emu END id={tid}"); MyLog($"Emu END id={tid}"); }
+        }catch(Exception eAll){ FileLog($"CRASH {eAll}"); MyLog($"CRASH {eAll}"); } finally{ FileLog($"Emu END"); MyLog($"Emu END"); }
     }
     unsafe delegate Silk.NET.Vulkan.Result CDel(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
     HleConfiguration BuildHle(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio, string baseDir, string sysDir){
@@ -90,7 +86,20 @@ public class GameActivity : Activity
         var ucp=Activator.CreateInstance(typeof(UserChannelPersistence),true);
         var hleType=typeof(HleConfiguration); var hleCtor=hleType.GetConstructors(All)[0]; var hps=hleCtor.GetParameters(); var hargs=new object[hps.Length]; for(int k=0;k<hps.Length;k++){ var pt=hps[k].ParameterType; if(pt==typeof(string)) hargs[k]="UTC"; else if(pt==typeof(bool)) hargs[k]=true; else if(pt.IsEnum) hargs[k]=Enum.GetValues(pt).GetValue(0); else if(pt.IsValueType) hargs[k]=Activator.CreateInstance(pt); } var hle=(HleConfiguration)hleCtor.Invoke(hargs);
         try{ var prop = hleType.GetProperties(All).FirstOrDefault(p=>p.PropertyType.Name.Contains("UI")); prop?.SetValue(hle, CreateDummyUI()); }catch{}
-        try{ foreach(var p in hleType.GetProperties(All)){ if(p.Name.Contains("MemoryManager") && p.PropertyType.IsEnum){ try{ p.SetValue(hle, Enum.Parse(p.PropertyType, "HostTrackedUnsafe")); }catch{ try{ p.SetValue(hle, Enum.Parse(p.PropertyType, "HostTracked")); }catch{} } } if(p.Name.Contains("ExpandRam")){ try{ p.SetValue(hle, false); }catch{} } } }catch{}
+        try{
+            foreach(var p in hleType.GetProperties(All)){
+                if(p.Name.Contains("MemoryManager") && p.PropertyType.IsEnum){
+                    try{
+                        // S20 FE FIX #492 - Software em vez de HostTrackedUnsafe (userfaultfd não existe no OneUI)
+                        p.SetValue(hle, Enum.Parse(p.PropertyType, "Software"));
+                        MyLog($"MemoryManager = Software (S20 FE fix #492)");
+                    }catch{
+                        try{ p.SetValue(hle, Enum.Parse(p.PropertyType, "HostTracked")); }catch{}
+                    }
+                }
+                if(p.Name.Contains("ExpandRam")){ try{ p.SetValue(hle, false); }catch{} }
+            }
+        }catch{}
         var confM=hleType.GetMethod("Configure",All); var cps=confM.GetParameters(); var cargs=new object[cps.Length]; for(int k=0;k<cps.Length;k++){ var pt=cps[k].ParameterType; if(pt==typeof(VirtualFileSystem)) cargs[k]=vfs; else if(pt==typeof(LibHacHorizonManager)) cargs[k]=lhm; else if(pt==typeof(ContentManager)) cargs[k]=cm; else if(pt==typeof(AccountManager)) cargs[k]=accMan; else if(pt==typeof(UserChannelPersistence)) cargs[k]=ucp; else if(pt.IsAssignableFrom(gpu.GetType())) cargs[k]=gpu; else if(pt.FullName.Contains("IRenderer")) cargs[k]=gpu; else if(typeof(IHardwareDeviceDriver).IsAssignableFrom(pt)) cargs[k]=audio; else if(typeof(IHostUIHandler).IsAssignableFrom(pt)) cargs[k]=CreateDummyUI(); }
         return confM.Invoke(hle,cargs) as HleConfiguration;
     }
