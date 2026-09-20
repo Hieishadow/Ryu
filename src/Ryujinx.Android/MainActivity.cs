@@ -78,14 +78,13 @@ public class MainActivity : Activity
             if(string.IsNullOrEmpty(selectedRom) || !File.Exists(selectedRom)){
                 Toast.MakeText(this, "ROM nao encontrada", ToastLength.Short).Show(); return;
             }
-            var internalProd = Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "keys", "prod.keys");
-            var internalProd2 = Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "system", "keys", "prod.keys");
-            if(!File.Exists(internalProd) && !File.Exists(internalProd2) && !File.Exists(Path.Combine(KeysPath,"prod.keys"))){
-                Toast.MakeText(this, "prod.keys faltando - usa Importar Keys", ToastLength.Long).Show(); return;
+            try{
+                var intentGame = new Intent(this, typeof(global::Ryujinx.Android.GameActivity));
+                intentGame.PutExtra("rom_path", selectedRom);
+                StartActivity(intentGame);
+            }catch(Exception ex){
+                Toast.MakeText(this, "Erro abrir jogo: "+ex.Message, ToastLength.Long).Show();
             }
-            var intentGame = new Intent(this, typeof(global::Ryujinx.Android.GameActivity));
-            intentGame.PutExtra("rom_path", selectedRom);
-            StartActivity(intentGame);
         };
         topRow.AddView(btnJogar);
         layout.AddView(topRow);
