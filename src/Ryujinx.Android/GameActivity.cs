@@ -59,7 +59,7 @@ public class GameActivity : Activity
         int frames=0;
         while(running && nativeWindow!=IntPtr.Zero){
             try{
-                try{ device.Gpu?.WaitIdle(); }catch{}
+                try{ device.Gpu?.GetType().GetMethod("WaitIdle",All)?.Invoke(device.Gpu,null); }catch{}
                 device.ProcessFrame();
                 bool cbCalled=false;
                 device.PresentFrame(()=>{ cbCalled=true; });
