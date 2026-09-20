@@ -6,6 +6,7 @@ using Android.OS;
 using Android.Widget;
 using Android.Views;
 using Android.Database;
+using Android.Provider;
 using System;
 using System.IO;
 using System.Linq;
@@ -25,7 +26,7 @@ namespace DragoNX;
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.KeyboardHidden)]
 public class MainActivity : Activity
 {
-    const string BasePath = "/storage/emulated/0/Download/Ryubing";
+    public const string BasePath = "/storage/emulated/0/Download/Ryubing";
     const string GamesPath = BasePath + "/games";
     const string KeysPath = BasePath + "/keys";
     const string FirmwarePath = BasePath + "/firmware";
@@ -40,32 +41,25 @@ public class MainActivity : Activity
     {
         base.OnCreate(savedInstanceState);
         if(Window!=null) Window.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
-
         layout = new LinearLayout(this);
         layout.Orientation = Orientation.Vertical;
         layout.SetGravity(GravityFlags.Center);
         layout.SetBackgroundColor(Android.Graphics.Color.Black);
         layout.SetPadding(40, 20, 40, 20);
-
         var title = new TextView(this) { Text = "Ryubing - S20 FE Edition" };
         title.SetTextColor(Android.Graphics.Color.White);
         title.TextSize = 20; title.Gravity = GravityFlags.Center;
         layout.AddView(title);
-
         var info = new TextView(this){ Gravity = GravityFlags.Center, TextSize = 11f };
         layout.AddView(info);
-
         var topRow = new LinearLayout(this){ Orientation = Orientation.Horizontal };
         topRow.SetGravity(GravityFlags.Center);
-
         var btnPerm = new Button(this) { Text = "1 - Permissao" };
         btnPerm.Click += (s, e) => RequestAllFilesPermission();
         topRow.AddView(btnPerm);
-
         var btnScan = new Button(this) { Text = "2 - Listar Jogos" };
         btnScan.Click += (s, e) => ScanGames();
         topRow.AddView(btnScan);
-
         var btnImport = new Button(this) { Text = "Importar Keys" };
         btnImport.SetBackgroundColor(Android.Graphics.Color.Yellow);
         btnImport.Click += (s,e)=>{
@@ -76,7 +70,6 @@ public class MainActivity : Activity
             StartActivityForResult(intent, 1001);
         };
         topRow.AddView(btnImport);
-
         btnJogar = new Button(this) { Text = "JOGAR" };
         btnJogar.SetBackgroundColor(Android.Graphics.Color.Green);
         btnJogar.Enabled = false;
@@ -90,7 +83,6 @@ public class MainActivity : Activity
             if(!File.Exists(internalProd) && !File.Exists(internalProd2) && !File.Exists(Path.Combine(KeysPath,"prod.keys"))){
                 Toast.MakeText(this, "prod.keys faltando - usa Importar Keys", ToastLength.Long).Show(); return;
             }
-            // trava binario 16025
             var fi = File.Exists(internalProd) ? new FileInfo(internalProd) : (File.Exists(internalProd2) ? new FileInfo(internalProd2) : null);
             if(fi!=null && fi.Length>10000){
                 Toast.MakeText(this, $"prod.keys BINARIO {fi.Length}b! Importe o TXT de 5kb", ToastLength.Long).Show(); return;
@@ -124,9 +116,7 @@ public class MainActivity : Activity
                 var uri = data.Data;
                 string fileName = GetFileNameFromUri(uri).ToLower();
                 string targetName = fileName.Contains("title") ? "title.keys" : "prod.keys";
-
                 ContentResolver.TakePersistableUriPermission(uri, ActivityFlags.GrantReadUriPermission);
-
                 using(var input = ContentResolver.OpenInputStream(uri)){
                     if(input==null) return;
                     var baseDir = Path.Combine(FilesDir.AbsolutePath, "Ryujinx");
@@ -135,11 +125,9 @@ public class MainActivity : Activity
                     Directory.CreateDirectory(keysDir);
                     Directory.CreateDirectory(sysKeysDir);
                     Directory.CreateDirectory(KeysPath);
-
                     using(var ms = new MemoryStream()){
                         input.CopyTo(ms);
                         var bytes = ms.ToArray();
-                        // trava binario 16025
                         if(targetName=="prod.keys" && bytes.Length>10000){
                             Toast.MakeText(this, $"ARQUIVO BINARIO {bytes.Length}b ignorado! Pegue o TXT de 5kb", ToastLength.Long).Show();
                             return;
@@ -190,13 +178,12 @@ public class MainActivity : Activity
                 var src = Path.Combine(KeysPath, k);
                 if (!File.Exists(src)) continue;
                 var len = new FileInfo(src).Length;
-                if(k=="prod.keys" && len>10000) continue; // nunca sobrescreve TXT bom com binario
+                if(k=="prod.keys" && len>10000) continue;
                 try{
                     File.Copy(src, Path.Combine(keysDir, k), true);
                     File.Copy(src, Path.Combine(sysKeysDir, k), true);
                 }catch{}
             }
-            // FIX CRITICO: seta BaseDir pro VFS não criar pasta temporaria vazia
             try{
                 var admType = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a=>{try{return a.GetTypes();}catch{return new Type[0];}}).FirstOrDefault(t=>t.Name=="AppDataManager");
                 admType?.GetProperty("BaseDirPath")?.SetValue(null, baseDir);
@@ -213,7 +200,6 @@ public class MainActivity : Activity
         var prodExt = new FileInfo(Path.Combine(KeysPath, "prod.keys"));
         var prodInt = new FileInfo(Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "keys", "prod.keys"));
         var titleInt = new FileInfo(Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "keys", "title.keys"));
-
         if(!prodInt.Exists && !prodExt.Exists){
             info.Text = "keys NAO encontradas - usa Importar Keys (TXT 5kb)";
             info.SetTextColor(Android.Graphics.Color.Red);
@@ -279,4 +265,4 @@ public class MainActivity : Activity
         }
         layout.AddView(container);
     }
-} 
+}
