@@ -16,7 +16,7 @@ namespace Ryujinx.Memory
         private static void Log(string s){
             try{
                 var p="/storage/emulated/0/Download/Ryubing/ryubing_log.txt";
-                Directory.CreateDirectory(Path.GetDirectoryName(p));
+                Directory.CreateDirectory(Path.GetDirectoryName(p)!);
                 File.AppendAllText(p, $"{DateTime.Now:HH:mm:ss.fff} [UNIX] {s}\n");
             }catch{}
         }
@@ -51,31 +51,29 @@ namespace Ryujinx.Memory
 
         public static void Commit(nint address, ulong size, bool forJit)
         {
-            Log($"Commit addr=0x{address:X} size={size} ({size/1024/1024}MB)");
-            MmapProts prot = MmapProts.PROT_READ | MmapProts.PROT_WRITE;
-            if (OperatingSystem.IsMacOS() && OperatingSystem.IsMacOSVersionAtLeast(10, 14) && forJit) prot |= MmapProts.PROT_EXEC;
+            Log($"Commit addr=0x{address:X} size={size} ({size/1024/1024}MB) forJit={forJit}");
+            // S20 FE FIX: no Android tem que ser RWX senão JIT morre com SIGSEGV dentro de InitializeServices
+            MmapProts prot = MmapProts.PROT_READ | MmapProts.PROT_WRITE | MmapProts.PROT_EXEC;
 
             int result = mprotect(address, size, prot);
-            if (result != 0 && OperatingSystem.IsAndroid())
+            if (result != 0)
             {
-                Log($"mprotect FAIL {Marshal.GetLastPInvokeErrorMessage()} -> trying MAP_FIXED");
+                Log($"mprotect FAIL {Marshal.GetLastPInvokeErrorMessage()} -> MAP_FIXED RWX");
                 nint mapped = Mmap(address, size, prot, MmapFlags.MAP_FIXED | MmapFlags.MAP_PRIVATE | MmapFlags.MAP_ANONYMOUS, -1, 0);
                 if (mapped == MAP_FAILED)
                 {
                     Log($"MAP_FIXED FAIL {Marshal.GetLastPInvokeErrorMessage()}");
-                    throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+                    throw new SystemException($"Commit fail 0x{address:X} {Marshal.GetLastPInvokeErrorMessage()}");
                 }
                 Log($"MAP_FIXED OK addr=0x{mapped:X}");
                 return;
             }
-            if (result != 0) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-            Log($"Commit OK");
+            Log($"Commit OK addr=0x{address:X}");
         }
 
         public static void Decommit(nint address, ulong size)
         {
             Log($"Decommit addr=0x{address:X} size={size}");
-            // S20 FE FIX: não faz RW antes, vai direto DONTNEED + NONE
             madvise(address, size, 4); // MADV_DONTNEED
             mprotect(address, size, MmapProts.PROT_NONE);
         }
@@ -83,13 +81,15 @@ namespace Ryujinx.Memory
         public static bool Reprotect(nint address, ulong size, MemoryPermission permission)
         {
             MmapProts prot = GetProtection(permission);
+            // No S20 FE, se pedir EXEC e falhar, tenta sem EXEC pra não crashar
             if (OperatingSystem.IsAndroid() && prot.HasFlag(MmapProts.PROT_EXEC))
             {
                 if (mprotect(address, size, prot) != 0)
                 {
-                    prot &= ~MmapProts.PROT_EXEC;
-                    prot |= MmapProts.PROT_READ | MmapProts.PROT_WRITE;
-                    return mprotect(address, size, prot) == 0;
+                    var fallback = prot & ~MmapProts.PROT_EXEC;
+                    if (fallback == MmapProts.PROT_NONE) fallback = MmapProts.PROT_READ | MmapProts.PROT_WRITE;
+                    Log($"Reprotect EXEC FAIL -> fallback {fallback}");
+                    return mprotect(address, size, fallback) == 0;
                 }
                 return true;
             }
