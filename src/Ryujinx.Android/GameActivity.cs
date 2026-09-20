@@ -16,7 +16,16 @@ public class GameActivity : Activity
     string romPath=""; SurfaceView surfaceView; TextView logView;
     [DllImport("android")] static extern IntPtr ANativeWindow_fromSurface(IntPtr env, IntPtr surface);
     [DllImport("android")] static extern void ANativeWindow_release(IntPtr window);
-    void MyLog(string s){ try{ RunOnUiThread(()=>{ if(logView!=null){ logView.Text+="\n"+s; if(logView.Text.Length>4000) logView.Text=logView.Text.Substring(logView.Text.Length-4000);} }); try{ var p="/storage/emulated/0/Download/Ryubing/ryubing_log.txt"; Directory.CreateDirectory(Path.GetDirectoryName(p)); File.AppendAllText(p, DateTime.Now+": "+s+"\n"); }catch{} }catch{} }
+
+    void FileLog(string s){
+        try{
+            var p="/storage/emulated/0/Download/Ryubing/ryubing_log.txt";
+            Directory.CreateDirectory(Path.GetDirectoryName(p));
+            File.AppendAllText(p, DateTime.Now.ToString("HH:mm:ss.fff")+" [FILE] "+s+"\n");
+        }catch{}
+    }
+    void MyLog(string s){ try{ RunOnUiThread(()=>{ if(logView!=null){ logView.Text+="\n"+s; if(logView.Text.Length>4000) logView.Text=logView.Text.Substring(logView.Text.Length-4000);} }); FileLog(s); }catch{ FileLog(s); } }
+
     protected override void OnCreate(Bundle saved){
         base.OnCreate(saved);
         if(Holder.device!=null || Holder.emuThread!=null){
@@ -60,27 +69,31 @@ public class GameActivity : Activity
             try{ var winProp=Holder.gpu.GetType().GetProperty("Window",All); var win=winProp?.GetValue(Holder.gpu); win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{w,h}); MyLog($"SetSize OK"); }catch(Exception eSz){ MyLog($"SetSize ERR {eSz.Message}"); }
 
             int frames=0; long last=SysEnv.TickCount64;
-            global::Android.Util.Log.Debug("Ryubing", "LOOP ON");
+            FileLog("LOOP ON");
+            MyLog("LOOP ON");
             while(Holder.running && Holder.nativeWindow!=IntPtr.Zero){
                 try{
-                    global::Android.Util.Log.Debug("Ryubing", $"PF START f={frames}");
+                    FileLog($"PF START f={frames}");
                     Holder.device.ProcessFrame();
-                    global::Android.Util.Log.Debug("Ryubing", $"PF END f={frames}");
+                    FileLog($"PF END f={frames}");
                     Holder.device.PresentFrame(()=>{});
-                    global::Android.Util.Log.Debug("Ryubing", $"PR END f={frames}");
+                    FileLog($"PR END f={frames}");
                     frames++;
                     if(SysEnv.TickCount64-last>1000){
-                        global::Android.Util.Log.Debug("Ryubing", $"RODANDO frames={frames}");
+                        FileLog($"RODANDO frames={frames}");
+                        MyLog($"RODANDO frames={frames}");
                         last=SysEnv.TickCount64;
                     }
                     Thread.Sleep(16);
                 }catch(Exception eLoop){
-                    global::Android.Util.Log.Debug("Ryubing", $"LOOP EX f={frames} {eLoop}");
+                    FileLog($"LOOP EX f={frames} {eLoop}");
+                    MyLog($"LOOP EX f={frames} {eLoop.Message}");
                     break;
                 }
             }
-            global::Android.Util.Log.Debug("Ryubing", $"LOOP SAIU f={frames}");
-        }catch(Exception eAll){ MyLog($"CRASH {eAll}"); global::Android.Util.Log.Debug("Ryubing",$"CRASH {eAll}"); } finally{ MyLog($"Emu END id={tid}"); global::Android.Util.Log.Debug("Ryubing", $"Emu END id={tid}"); }
+            FileLog($"LOOP SAIU f={frames}");
+            MyLog($"LOOP SAIU f={frames}");
+        }catch(Exception eAll){ FileLog($"CRASH {eAll}"); MyLog($"CRASH {eAll}"); } finally{ FileLog($"Emu END id={tid}"); MyLog($"Emu END id={tid}"); }
     }
     unsafe delegate Silk.NET.Vulkan.Result CDel(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
     HleConfiguration BuildHle(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio, string baseDir, string sysDir){
