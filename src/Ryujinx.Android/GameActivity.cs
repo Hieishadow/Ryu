@@ -20,34 +20,25 @@ public class GameActivity : Activity
         Window?.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
 
         string romPath = Intent?.GetStringExtra("rom_path")?? "";
-        if(string.IsNullOrEmpty(romPath) ||!System.IO.File.Exists(romPath)){ Finish(); return; }
+        if(string.IsNullOrEmpty(romPath) ||!File.Exists(romPath)){ Finish(); return; }
 
         var filesDir = FilesDir.AbsolutePath;
-        var baseDir = System.IO.Path.Combine(filesDir, "Ryujinx");
-        var keysDir = System.IO.Path.Combine(baseDir, "keys");
-        var prodKeys = System.IO.Path.Combine(keysDir, "prod.keys");
+        var baseDir = Path.Combine(filesDir, "Ryujinx");
+        var keysDir = Path.Combine(baseDir, "keys");
 
         try{
-            System.IO.Directory.CreateDirectory(keysDir);
-            System.IO.Directory.CreateDirectory(System.IO.Path.Combine(baseDir, "logs"));
-
-            var downloadKeys = "/storage/emulated/0/Download/Ryubing/keys/prod.keys";
-            if(System.IO.File.Exists(downloadKeys)){
-                if(!System.IO.File.Exists(prodKeys) || new FileInfo(downloadKeys).Length!= new FileInfo(prodKeys).Length)
-                    System.IO.File.Copy(downloadKeys, prodKeys, true);
-            }
-
+            Directory.CreateDirectory(keysDir);
             var admType = AppDomain.CurrentDomain.GetAssemblies()
-             .SelectMany(a=>{try{return a.GetTypes();}catch{return new Type[0];}})
-             .FirstOrDefault(t=>t.Name=="AppDataManager");
+            .SelectMany(a=>{try{return a.GetTypes();}catch{return new Type[0];}})
+            .FirstOrDefault(t=>t.Name=="AppDataManager");
             admType?.GetProperty("BaseDirPath")?.SetValue(null, baseDir);
 
-            // FIX do erro 64 e 65 - usar Android.Graphics completo
+            // FIX ERRO L47 e L50 - tem que usar global::
             var black = new View(this);
-            black.SetBackgroundColor(Android.Graphics.Color.Black);
+            black.SetBackgroundColor(global::Android.Graphics.Color.Black);
             SetContentView(black);
         }catch(Exception ex){
-            Android.Util.Log.Error("Ryubing", ex.ToString());
+            global::Android.Util.Log.Error("Ryubing", ex.ToString());
             Finish();
         }
     }
