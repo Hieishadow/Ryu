@@ -70,6 +70,19 @@ public class MainActivity : Activity
         btnScan.Click += (s, e) => ScanGames();
         topRow.AddView(btnScan);
 
+        // NOVO BOTAO - NAO QUEBRA NADA
+        var btnImport = new Button(this) { Text = "Importar Keys" };
+        btnImport.SetBackgroundColor(Android.Graphics.Color.Yellow);
+        btnImport.Click += (s,e)=>{
+            try{
+                var intent = new Intent(Intent.ActionOpenDocument);
+                intent.AddCategory(Intent.CategoryOpenable);
+                intent.SetType("*/*");
+                StartActivityForResult(intent, 1001);
+            }catch(Exception ex){ Toast.MakeText(this, ex.Message, ToastLength.Long).Show(); }
+        };
+        topRow.AddView(btnImport);
+
         btnJogar = new Button(this) { Text = "JOGAR" };
         btnJogar.SetBackgroundColor(Android.Graphics.Color.Green);
         btnJogar.Enabled = false;
@@ -83,10 +96,12 @@ public class MainActivity : Activity
                 Toast.MakeText(this, "ROM nao encontrada", ToastLength.Short).Show();
                 return;
             }
-            var prod = Path.Combine(KeysPath, "prod.keys");
-            if(File.Exists(prod)==false)
+            // AGORA CHECA INTERNO TAMBEM
+            var internalKeys = Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "keys", "prod.keys");
+            var externalProd = Path.Combine(KeysPath, "prod.keys");
+            if(File.Exists(internalKeys)==false && File.Exists(externalProd)==false)
             {
-                Toast.MakeText(this, "prod.keys faltando", ToastLength.Long).Show();
+                Toast.MakeText(this, "prod.keys faltando - usa Importar Keys", ToastLength.Long).Show();
                 return;
             }
             var intent = new Intent(this, typeof(GameActivity));
@@ -97,6 +112,45 @@ public class MainActivity : Activity
 
         layout.AddView(topRow);
         SetContentView(layout);
+    }
+
+    protected override void OnActivityResult(int requestCode, Result result, Intent data)
+    {
+        base.OnActivityResult(requestCode, result, data);
+        if(requestCode==1001 && result==Result.Ok && data!=null){
+            try{
+                var uri = data.Data;
+                if(uri==null) return;
+                using(var input = ContentResolver.OpenInputStream(uri)){
+                    if(input==null) return;
+                    var baseDir = Path.Combine(FilesDir.AbsolutePath, "Ryujinx");
+                    var keysDir = Path.Combine(baseDir, "keys");
+                    var sysKeysDir = Path.Combine(baseDir, "system", "keys");
+                    Directory.CreateDirectory(keysDir);
+                    Directory.CreateDirectory(sysKeysDir);
+                    Directory.CreateDirectory(KeysPath);
+
+                    string dstInternal1 = Path.Combine(keysDir, "prod.keys");
+                    string dstInternal2 = Path.Combine(sysKeysDir, "prod.keys");
+                    string dstExternal = Path.Combine(KeysPath, "prod.keys");
+
+                    // salva nos 3 lugares
+                    using(var ms = new MemoryStream()){
+                        input.CopyTo(ms);
+                        var bytes = ms.ToArray();
+                        File.WriteAllBytes(dstInternal1, bytes);
+                        File.WriteAllBytes(dstInternal2, bytes);
+                        File.WriteAllBytes(dstExternal, bytes);
+                        long len = bytes.Length;
+                        string msg = len>3000 && len<10000 ? $"TXT OK {len} bytes" : $"BINARIO {len} bytes - precisa TXT 5kb";
+                        Toast.MakeText(this, $"Keys importada: {msg}", ToastLength.Long).Show();
+                    }
+                    UpdateInfo();
+                }
+            }catch(Exception ex){
+                Toast.MakeText(this, "Erro import: "+ex.Message, ToastLength.Long).Show();
+            }
+        }
     }
 
     protected override void OnResume()
@@ -134,16 +188,26 @@ public class MainActivity : Activity
             Directory.CreateDirectory(FirmwarePath);
             
             if (FilesDir == null) return;
-            var internalSystem = Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "system");
-            Directory.CreateDirectory(internalSystem);
+            var baseDir = Path.Combine(FilesDir.AbsolutePath, "Ryujinx");
+            var keysDir = Path.Combine(baseDir, "keys");
+            var sysKeysDir = Path.Combine(baseDir, "system", "keys");
+            Directory.CreateDirectory(keysDir);
+            Directory.CreateDirectory(sysKeysDir);
 
             foreach (var k in new[] { "prod.keys", "title.keys" })
             {
                 var src = Path.Combine(KeysPath, k);
-                var dst = Path.Combine(internalSystem, k);
+                var dst1 = Path.Combine(keysDir, k);
+                var dst2 = Path.Combine(sysKeysDir, k);
                 if (File.Exists(src)) 
                 {
-                    File.Copy(src, dst, true);
+                    try{
+                        // só copia se for TXT pra não sobrescrever TXT bom com binário 16025
+                        var len = new FileInfo(src).Length;
+                        if(k=="prod.keys" && len>10000) continue;
+                        File.Copy(src, dst1, true);
+                        File.Copy(src, dst2, true);
+                    }catch{}
                 }
             }
         }
@@ -159,21 +223,23 @@ public class MainActivity : Activity
         var v = layout.GetChildAt(1);
         var info = v as TextView;
         if (info == null) return;
-        var prod = new FileInfo(Path.Combine(KeysPath, "prod.keys"));
+        var prodExternal = new FileInfo(Path.Combine(KeysPath, "prod.keys"));
+        var prodInternal = new FileInfo(Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "keys", "prod.keys"));
         var titleKeys = new FileInfo(Path.Combine(KeysPath, "title.keys"));
-        if (prod.Exists)
-        {
-            string txt = "prod.keys " + prod.Length + " bytes | ";
-            if(titleKeys.Exists) txt += "title.keys " + titleKeys.Length + " bytes";
-            else txt += "title.keys FALTANDO";
-            info.Text = txt;
-            if(titleKeys.Exists) info.SetTextColor(Android.Graphics.Color.Green);
-            else info.SetTextColor(Android.Graphics.Color.Yellow);
-        }
-        else
-        {
-            info.Text = "keys NAO encontradas em " + KeysPath;
+        
+        string txt = "";
+        if (prodInternal.Exists) txt += $"interno {prodInternal.Length}b ";
+        if (prodExternal.Exists) txt += $"externo {prodExternal.Length}b | ";
+        if(titleKeys.Exists) txt += "title.keys " + titleKeys.Length + " bytes";
+        else txt += "title.keys FALTANDO";
+
+        if(prodInternal.Exists==false && prodExternal.Exists==false){
+            info.Text = "keys NAO encontradas - usa Importar Keys";
             info.SetTextColor(Android.Graphics.Color.Red);
+        }else{
+            info.Text = txt;
+            bool isTxt = prodInternal.Exists ? prodInternal.Length<10000 : prodExternal.Length<10000;
+            info.SetTextColor(isTxt ? Android.Graphics.Color.Green : Android.Graphics.Color.Yellow);
         }
     }
 
