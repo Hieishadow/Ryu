@@ -83,10 +83,7 @@ public class MainActivity : Activity
             if(!File.Exists(internalProd) && !File.Exists(internalProd2) && !File.Exists(Path.Combine(KeysPath,"prod.keys"))){
                 Toast.MakeText(this, "prod.keys faltando - usa Importar Keys", ToastLength.Long).Show(); return;
             }
-            var fi = File.Exists(internalProd) ? new FileInfo(internalProd) : (File.Exists(internalProd2) ? new FileInfo(internalProd2) : null);
-            if(fi!=null && fi.Length>10000){
-                Toast.MakeText(this, $"prod.keys BINARIO {fi.Length}b! Importe o TXT de 5kb", ToastLength.Long).Show(); return;
-            }
+            // TRAVA REMOVIDA AQUI - nao checa mais tamanho
             var intentGame = new Intent(this, typeof(GameActivity));
             intentGame.PutExtra("rom_path", selectedRom);
             StartActivity(intentGame);
@@ -128,15 +125,11 @@ public class MainActivity : Activity
                     using(var ms = new MemoryStream()){
                         input.CopyTo(ms);
                         var bytes = ms.ToArray();
-                        if(targetName=="prod.keys" && bytes.Length>10000){
-                            Toast.MakeText(this, $"ARQUIVO BINARIO {bytes.Length}b ignorado! Pegue o TXT de 5kb", ToastLength.Long).Show();
-                            return;
-                        }
+                        // TRAVA REMOVIDA AQUI - ACEITA 14612b e 16025b
                         File.WriteAllBytes(Path.Combine(keysDir, targetName), bytes);
                         File.WriteAllBytes(Path.Combine(sysKeysDir, targetName), bytes);
                         File.WriteAllBytes(Path.Combine(KeysPath, targetName), bytes);
-                        string msg = targetName=="prod.keys" ? $"TXT OK {bytes.Length}b" : $"{targetName} {bytes.Length}b";
-                        Toast.MakeText(this, $"{targetName} importada: {msg}", ToastLength.Long).Show();
+                        Toast.MakeText(this, $"{targetName} importada: {bytes.Length}b OK", ToastLength.Long).Show();
                     }
                     UpdateInfo();
                 }
@@ -177,8 +170,7 @@ public class MainActivity : Activity
             foreach (var k in new[] { "prod.keys", "title.keys" }){
                 var src = Path.Combine(KeysPath, k);
                 if (!File.Exists(src)) continue;
-                var len = new FileInfo(src).Length;
-                if(k=="prod.keys" && len>10000) continue;
+                // TRAVA REMOVIDA AQUI TAMBEM
                 try{
                     File.Copy(src, Path.Combine(keysDir, k), true);
                     File.Copy(src, Path.Combine(sysKeysDir, k), true);
@@ -201,7 +193,7 @@ public class MainActivity : Activity
         var prodInt = new FileInfo(Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "keys", "prod.keys"));
         var titleInt = new FileInfo(Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "keys", "title.keys"));
         if(!prodInt.Exists && !prodExt.Exists){
-            info.Text = "keys NAO encontradas - usa Importar Keys (TXT 5kb)";
+            info.Text = "keys NAO encontradas - usa Importar Keys";
             info.SetTextColor(Android.Graphics.Color.Red);
         }else{
             string txt = "";
@@ -209,8 +201,7 @@ public class MainActivity : Activity
             if(prodExt.Exists) txt += $"ext {prodExt.Length}b ";
             txt += titleInt.Exists ? $"| title {titleInt.Length}b" : "| title FALTA";
             info.Text = txt;
-            bool isTxt = prodInt.Exists ? prodInt.Length<10000 : prodExt.Length<10000;
-            info.SetTextColor(isTxt ? Android.Graphics.Color.Green : Android.Graphics.Color.Yellow);
+            info.SetTextColor(Android.Graphics.Color.Green); // SEMPRE VERDE AGORA
         }
     }
 
