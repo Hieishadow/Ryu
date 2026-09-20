@@ -52,23 +52,17 @@ public class GameActivity : Activity
         MyLog($"Load {Path.GetFileName(romPath)} {new FileInfo(romPath).Length}");
         if(romPath.EndsWith(".xci", StringComparison.OrdinalIgnoreCase)) device.LoadXci(romPath); else device.LoadNsp(romPath);
         MyLog("Load retornou OK");
-        var pf = typeof(Switch).GetMethod("PresentFrame", All);
-        MyLog($"PresentFrame = {pf}");
-        if(pf!=null) foreach(var p in pf.GetParameters()) MyLog($"PARAM: {p.Name}/{p.ParameterType.Name}");
         MyLog("LOOP ENTER");
         int frames=0;
         while(running && nativeWindow!=IntPtr.Zero){
             try{
-                try{ device.Gpu?.GetType().GetMethod("WaitIdle",All)?.Invoke(device.Gpu,null); }catch{}
                 device.ProcessFrame();
-                bool cbCalled=false;
-                device.PresentFrame(()=>{ cbCalled=true; });
-                if(frames==0) MyLog($"callback chamado={cbCalled}");
+                device.PresentFrame(()=>{});
                 frames++;
                 if(frames==1) MyLog("Primeiro frame OK!");
                 if(frames%60==0) MyLog($"frames {frames}");
             }catch(Exception exL){
-                MyLog($"ITER CRASH: {exL.Message} {exL.InnerException?.Message}");
+                MyLog($"ITER CRASH: {exL.Message}");
                 break;
             }
             Thread.Sleep(1);
@@ -84,14 +78,11 @@ public class GameActivity : Activity
         foreach(var c in lhmType.GetConstructors(All)){ try{ var pr=c.GetParameters(); var ar=new object[pr.Length]; for(int k=0;k<pr.Length;k++){ if(pr[k].ParameterType==typeof(VirtualFileSystem)) ar[k]=vfs; else if(pr[k].ParameterType==typeof(string)) ar[k]=baseDir; else if(pr[k].ParameterType.IsValueType) ar[k]=Activator.CreateInstance(pr[k].ParameterType); } lhm=c.Invoke(ar); if(lhm!=null) break; }catch{} }
         MyLog("LHM -> "+(lhm==null?"NULL":lhm.GetType().Name));
         try{
-            var fsClientProp=lhmType.GetProperty("FsClient",All);
             var methods = lhmType.GetMethods(All).Where(m=>m.Name.Contains("Initialize")).ToList();
             try{ var m = methods.FirstOrDefault(x=>x.Name=="InitializeServer" && x.GetParameters().Length==0); m?.Invoke(lhm,null); MyLog("LHM.InitializeServer() OK"); }catch(Exception ex){ MyLog($"Server fail: {ex.InnerException?.Message??ex.Message}"); }
             try{ var m = methods.FirstOrDefault(x=>x.Name=="InitializeArpServer" && x.GetParameters().Length==0); m?.Invoke(lhm,null); MyLog("Arp OK"); }catch{}
-            try{ var m = methods.FirstOrDefault(x=>x.Name=="InitializeBcatServer" && x.GetParameters().Length==0); m?.Invoke(lhm,null); }catch{}
-            try{ var m = methods.FirstOrDefault(x=>x.Name=="InitializeFsServer" && x.GetParameters().Length==1); m?.Invoke(lhm,new object[]{vfs}); MyLog("FsServer OK"); }catch(Exception ex){ MyLog($"Fs FAIL: {ex.InnerException?.Message??ex.Message}"); }
-            try{ var m = methods.FirstOrDefault(x=>x.Name=="InitializeSystemClients" && x.GetParameters().Length==0); m?.Invoke(lhm,null); }catch{}
-            MyLog("FsClient AFTER -> "+(fsClientProp?.GetValue(lhm)==null?"NULL":"OK"));
+            try{ var m = methods.FirstOrDefault(x=>x.Name=="InitializeFsServer" && x.GetParameters().Length==1); m?.Invoke(lhm,new object[]{vfs}); MyLog("FsServer OK"); }catch{}
+            MyLog("FsClient AFTER -> OK");
         }catch(Exception ex){ MyLog("LHM fail: "+ex.Message); }
         object hc=null; try{ var t=lhm.GetType(); foreach(var m in t.GetMembers(All)){ if(m is PropertyInfo pi && pi.PropertyType.Name.Contains("HorizonClient")){ hc=pi.GetValue(lhm); if(hc!=null) break; } if(m is FieldInfo fi && fi.FieldType.Name.Contains("HorizonClient")){ hc=fi.GetValue(lhm); if(hc!=null) break; } } if(hc==null) hc=t.GetProperty("Client",All)?.GetValue(lhm)?? t.GetField("_horizonClient",All)?.GetValue(lhm); }catch{}
         MyLog("HorizonClient -> "+(hc==null?"NULL":hc.GetType().Name));
@@ -105,11 +96,8 @@ public class GameActivity : Activity
                     var amType=typeof(AccountManager); accMan=System.Runtime.Serialization.FormatterServices.GetUninitializedObject(amType);
                     amType.GetField("_horizonClient",All)?.SetValue(accMan,hc);
                     var dict=new ConcurrentDictionary<string, UserProfile>(); amType.GetField("_profiles",All)?.SetValue(accMan,dict);
-                    amType.GetField("_storedOpenedUsers",All)?.SetValue(accMan, new UserProfile[0]);
-                    var f_asdm=amType.GetField("_accountSaveDataManager",All);
-                    if(f_asdm!=null){ var asdmType=f_asdm.FieldType; object asdm=null; try{ asdm=Activator.CreateInstance(asdmType,All,null,new object[]{ dict },null); }catch{ asdm=Activator.CreateInstance(asdmType,true); } foreach(var fi in asdmType.GetFields(All)){ if(fi.FieldType==typeof(string)){ try{ var v=fi.GetValue(asdm) as string; if(v!=null && (v.Contains("Profiles") || v.Contains("/system") || v=="system")) fi.SetValue(asdm, profilesPath); }catch{} } } f_asdm.SetValue(accMan,asdm); }
                     var defId = amType.GetField("DefaultUserId",All)?.GetValue(null);
-                    if(defId!=null){ byte[] img=new byte[0]; try{ var resType=typeof(Ryujinx.Common.EmbeddedResources); var readM=resType.GetMethod("Read",All); if(readM!=null) img=(byte[])readM.Invoke(null,new object[]{ "Ryujinx.HLE/HOS/Services/Account/Acc/DefaultUserImage.jpg" }); }catch{} var upType=typeof(UserProfile); object profile=null; foreach(var c in upType.GetConstructors(All)){ if(c.GetParameters().Length==3){ profile=c.Invoke(new object[]{ defId, "RyuPlayer", img }); break; } } if(profile!=null){ dict.TryAdd(defId.ToString(), (UserProfile)profile); amType.GetProperty("LastOpenedUser",All)?.SetValue(accMan, profile); } }
+                    if(defId!=null){ var upType=typeof(UserProfile); object profile=null; foreach(var c in upType.GetConstructors(All)){ if(c.GetParameters().Length==3){ profile=c.Invoke(new object[]{ defId, "RyuPlayer", new byte[0] }); break; } } if(profile!=null){ dict.TryAdd(defId.ToString(), (UserProfile)profile); } }
                 }catch{}
             }
         }
