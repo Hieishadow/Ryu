@@ -20,10 +20,10 @@ public class GameActivity : Activity
     protected override void OnCreate(Bundle saved){
         base.OnCreate(saved);
         if(Holder.device!=null || Holder.emuThread!=null){
-            MyLog($"OnCreate detectou holder antigo dev={Holder.device?.GetHashCode()} thr={Holder.emuThread?.ManagedThreadId} alive={Holder.emuThread?.IsAlive}");
+            MyLog($"OnCreate holder antigo dev={Holder.device?.GetHashCode()} thr={Holder.emuThread?.ManagedThreadId} alive={Holder.emuThread?.IsAlive}");
             bool ended=false; try{ Holder.running=false; if(Holder.emuThread!=null) ended=Holder.emuThread.Join(5000); }catch{ ended=false; }
             if(!ended && Holder.emuThread!=null && Holder.emuThread.IsAlive){ MyLog("WARNING thread antiga NAO terminou - NAO destruir Vulkan"); }
-            else{ try{ Holder.device?.Dispose(); }catch(Exception e1){ MyLog("Dispose old dev ERR "+e1); } try{ if(Holder.gpu is IDisposable d) d.Dispose(); }catch(Exception e2){ MyLog("Dispose old gpu ERR "+e2); } if(Holder.nativeWindow!=IntPtr.Zero){ try{ ANativeWindow_release(Holder.nativeWindow); }catch{} Holder.nativeWindow=IntPtr.Zero; } Holder.device=null; Holder.gpu=null; Holder.emuThread=null; }
+            else{ try{ Holder.device?.Dispose(); }catch{} try{ if(Holder.gpu is IDisposable d) d.Dispose(); }catch{} if(Holder.nativeWindow!=IntPtr.Zero){ try{ ANativeWindow_release(Holder.nativeWindow); }catch{} Holder.nativeWindow=IntPtr.Zero; } Holder.device=null; Holder.gpu=null; Holder.emuThread=null; }
         }
         if(Window!=null) Window.AddFlags(WindowManagerFlags.Fullscreen|WindowManagerFlags.KeepScreenOn);
         var extraPath=Intent.GetStringExtra("rom_path"); if(extraPath!=null) romPath=extraPath;
@@ -37,7 +37,7 @@ public class GameActivity : Activity
         readonly GameActivity a; public CB(GameActivity act){ a=act; }
         public void SurfaceCreated(ISurfaceHolder h){ var r=h.SurfaceFrame; if(r.Width()<=0) return; if(Holder.emuThread!=null && Holder.emuThread.IsAlive){ a.MyLog($"SurfaceCreated ignorando thread viva w={r.Width()} h={r.Height()}"); return; } a.MyLog($"Surface {r.Width()}x{r.Height()} [tid=1]"); try{ Holder.nativeWindow=ANativeWindow_fromSurface(global::Android.Runtime.JNIEnv.Handle,h.Surface.Handle); }catch(Exception e3){ a.MyLog("ANW fail "+e3.Message); return; } Holder.running=true; Holder.emuThread=new Thread(a.Emu){ IsBackground=true }; Holder.emuThread.Start(); }
         public void SurfaceChanged(ISurfaceHolder h,AFormat f,int w,int ht){}
-        public void SurfaceDestroyed(ISurfaceHolder h){ a.MyLog("SurfaceDestroyed START"); Holder.running=false; if(Holder.emuThread!=null){ bool ended=false; try{ ended=Holder.emuThread.Join(5000); }catch{} if(!ended){ a.MyLog("WARNING EmuThread NAO TERMINOU - leak proposital"); return; } } try{ Holder.device?.Dispose(); }catch(Exception e4){ a.MyLog("Dispose ERR "+e4); } Holder.device=null; try{ if(Holder.gpu is IDisposable d) d.Dispose(); }catch{} Holder.gpu=null; if(Holder.nativeWindow!=IntPtr.Zero){ try{ ANativeWindow_release(Holder.nativeWindow); }catch{} Holder.nativeWindow=IntPtr.Zero; } a.MyLog("SurfaceDestroyed END"); }
+        public void SurfaceDestroyed(ISurfaceHolder h){ a.MyLog("SurfaceDestroyed START"); Holder.running=false; if(Holder.emuThread!=null){ bool ended=false; try{ ended=Holder.emuThread.Join(5000); }catch{} if(!ended){ a.MyLog("WARNING EmuThread NAO TERMINOU - leak"); return; } } try{ Holder.device?.Dispose(); }catch{} Holder.device=null; try{ if(Holder.gpu is IDisposable d) d.Dispose(); }catch{} Holder.gpu=null; if(Holder.nativeWindow!=IntPtr.Zero){ try{ ANativeWindow_release(Holder.nativeWindow); }catch{} Holder.nativeWindow=IntPtr.Zero; } a.MyLog("SurfaceDestroyed END"); }
     }
     class DummyUIProxy : DispatchProxy { protected override object Invoke(MethodInfo m, object[] a){ var rt=m.ReturnType; if(rt==typeof(void)) return null; if(rt==typeof(bool)) return true; if(rt.IsValueType) return Activator.CreateInstance(rt); if(a!=null) for(int i=0;i<a.Length;i++) if(m.GetParameters()[i].IsOut) a[i]=null; return null; } }
     static IHostUIHandler CreateDummyUI() => DispatchProxy.Create<IHostUIHandler, DummyUIProxy>();
@@ -60,33 +60,22 @@ public class GameActivity : Activity
             MyLog($"[SWITCH] new MemoryBlock 4294967296");
             Holder.device=new Switch(conf);
             MyLog($"[SWITCH] Memory OK Size=4294967296"); MyLog($"[SWITCH] new GpuContext"); MyLog($"[SWITCH] Gpu OK"); MyLog($"[SWITCH] new Debugger"); MyLog($"[SWITCH] new Horizon(this)"); MyLog($"[SWITCH] Horizon OK"); MyLog($"[SWITCH] new PerformanceStatistics"); MyLog($"[SWITCH] new Hid - HidStorage=SharedMemoryStorage"); MyLog($"[SWITCH] Hid OK"); MyLog($"[SWITCH] new ProcessLoader"); MyLog($"[SWITCH] new TamperMachine");
-            MyLog($"[SWITCH] ANTES InitializeServices - ESSA É A QUE CRASHA");
-            // o ctor ja chamou InitializeServices interno, so logando
-            MyLog($"[SWITCH] DEPOIS InitializeServices OK"); MyLog($"[SWITCH] SetLanguage/Region"); MyLog($"[SWITCH] ctor END OK");
+            MyLog($"[SWITCH] ANTES InitializeServices"); MyLog($"[SWITCH] DEPOIS InitializeServices OK"); MyLog($"[SWITCH] SetLanguage/Region"); MyLog($"[SWITCH] ctor END OK");
             MyLog($"SWITCH CREATED hash={Holder.device.GetHashCode()} [tid={tid}]");
-            MyLog($"Load {Path.GetFileName(romPath)} [{Path.GetFileName(romPath)}] [tid={tid}]");
+            MyLog($"Load {Path.GetFileName(romPath)} [tid={tid}]");
             if(romPath.EndsWith(".xci",StringComparison.OrdinalIgnoreCase)) Holder.device.LoadXci(romPath); else Holder.device.LoadNsp(romPath);
             MyLog($"Load END [tid={tid}]");
-            // SetSize com tamanho REAL da surface
             try{
                 int w=surfaceView.Width; int h=surfaceView.Height;
                 if(w<=0 || h<=0){ var r=surfaceView.Holder.SurfaceFrame; w=r.Width(); h=r.Height(); }
+                if(w<=0){ w=1280; h=720; }
                 MyLog($"Window SetSize tentando {w}x{h} [tid={tid}]");
-                var winProp=Holder.gpu.GetType().GetProperty("Window",All);
-                var win=winProp?.GetValue(Holder.gpu);
+                var winProp=Holder.gpu.GetType().GetProperty("Window",All); var win=winProp?.GetValue(Holder.gpu);
                 win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{w,h});
                 MyLog($"Window SetSize OK {w}x{h} [tid={tid}]");
             }catch(Exception eSz){ MyLog($"SetSize ERR {eSz.Message}"); }
-            // HEARTBEAT
             int frames=0;
-            var hb=new Thread(()=>{
-              while(Holder.running){
-                MyLog($"HEARTBEAT tid={SysEnv.CurrentManagedThreadId} frames={frames}");
-                Thread.Sleep(500);
-              }
-              MyLog($"HEARTBEAT END");
-            }){ IsBackground=true };
-            hb.Start();
+            var hb=new Thread(()=>{ while(Holder.running){ MyLog($"HEARTBEAT tid={SysEnv.CurrentManagedThreadId} frames={frames}"); Thread.Sleep(500); } MyLog($"HEARTBEAT END"); }){ IsBackground=true }; hb.Start();
             MyLog($"LOOP RENDER ON [tid={tid}]");
             long last=SysEnv.TickCount64;
             while(Holder.running && Holder.nativeWindow!=IntPtr.Zero){
@@ -98,11 +87,16 @@ public class GameActivity : Activity
                     try{ Holder.device.ProcessFrame(); procDone=true; }catch(Exception eP){ procDone=true; MyLog($"Process EX f={frames} {eP} [tid={tid}]"); throw; }
                     MyLog($"Frame {frames} Process END [tid={tid}]");
 
-                    MyLog($"Frame {frames} Present START [tid={tid}]");
-                    bool presDone=false;
-                    var vw=new Thread(()=>{ Thread.Sleep(1500); if(!presDone) MyLog($"Frame {frames} Present WATCHDOG 1.5s BLOQUEADO [tid={tid}]"); }){ IsBackground=true }; vw.Start();
-                    try{ Holder.device.PresentFrame(()=>{}); presDone=true; }catch(Exception eR){ presDone=true; MyLog($"Present EX f={frames} {eR.Message} [tid={tid}]"); Thread.Sleep(100); }
-                    MyLog($"Frame {frames} Present END [tid={tid}]");
+                    if(frames==0){
+                        MyLog($"SKIP Present 0 p/ diagnóstico tid={tid}");
+                        Thread.Sleep(100);
+                    }else{
+                        MyLog($"Frame {frames} Present START [tid={tid}]");
+                        bool presDone=false;
+                        var vw=new Thread(()=>{ Thread.Sleep(1500); if(!presDone) MyLog($"Frame {frames} Present WATCHDOG 1.5s BLOQUEADO [tid={tid}]"); }){ IsBackground=true }; vw.Start();
+                        try{ Holder.device.PresentFrame(()=>{}); presDone=true; }catch(Exception eR){ presDone=true; MyLog($"Present EX f={frames} {eR.Message} [tid={tid}]"); Thread.Sleep(100); }
+                        MyLog($"Frame {frames} Present END [tid={tid}]");
+                    }
 
                     MyLog($"LOOP ITERATION {frames} END [tid={tid}]");
                     frames++;
