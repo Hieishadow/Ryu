@@ -6,7 +6,12 @@ using Android.Views;
 using Android.Widget;
 using System;
 using System.IO;
-using System.Linq;
+using System.Threading.Tasks;
+using Ryujinx.HLE;
+using Ryujinx.HLE.FileSystem;
+using Ryujinx.HLE.HOS;
+using Ryujinx.Common.Logging;
+using Ryujinx.Graphics.Gpu;
 
 namespace Ryujinx.Android;
 
@@ -16,95 +21,111 @@ namespace Ryujinx.Android;
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.KeyboardHidden)]
 public class GameActivity : Activity
 {
-    TextView logTxt;
-    string logFile = "/storage/emulated/0/Download/Ryubing/logs/ryubing.log";
-    void Log(string m)
-    {
-        try{ File.AppendAllText(logFile, $"{DateTime.Now:HH:mm:ss} {m}\n"); }catch{}
-        global::Android.Util.Log.Info("Ryubing", m);
-        RunOnUiThread(()=>{ if(logTxt!=null) logTxt.Text += "\n" + m; });
-    }
+    Switch device;
+    string romPath;
+    SurfaceView surface;
+    TextView status;
 
     protected override void OnCreate(Bundle savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
         Window?.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
 
-        var layout = new LinearLayout(this){ Orientation = Orientation.Vertical };
-        layout.SetBackgroundColor(global::Android.Graphics.Color.Black);
-        logTxt = new TextView(this);
-        logTxt.SetTextColor(global::Android.Graphics.Color.White);
-        logTxt.TextSize = 12f;
-        logTxt.SetPadding(20,20,20,20);
-        logTxt.Text = "Ryubing iniciando...";
-        layout.AddView(logTxt);
-        SetContentView(layout);
+        romPath = Intent?.GetStringExtra("rom_path")?? "";
+        if (!File.Exists(romPath)) { Finish(); return; }
 
-        string romPath = Intent?.GetStringExtra("rom_path")?? "";
-        if(string.IsNullOrEmpty(romPath) ||!File.Exists(romPath)){ Log($"ROM nao existe: {romPath}"); return; }
+        // Layout com Surface pro Vulkan
+        var root = new FrameLayout(this);
+        surface = new SurfaceView(this);
+        status = new TextView(this);
+        status.SetTextColor(global::Android.Graphics.Color.White);
+        status.Text = $"Carregando {Path.GetFileName(romPath)}...";
+        status.SetBackgroundColor(global::Android.Graphics.Color.Argb(180,0,0,0));
 
-        try{
+        root.AddView(surface, new FrameLayout.LayoutParams(-1,-1));
+        root.AddView(status, new FrameLayout.LayoutParams(-2,-2, GravityFlags.Top | GravityFlags.Left));
+        SetContentView(root);
+
+        // Copia keys de verdade
+        try
+        {
             var filesDir = FilesDir.AbsolutePath;
             var baseDir = Path.Combine(filesDir, "Ryujinx");
             var keysDir = Path.Combine(baseDir, "keys");
-            var prodKeys = Path.Combine(keysDir, "prod.keys");
-            var pubKeys = "/storage/emulated/0/Download/Ryubing/keys/prod.keys";
-
             Directory.CreateDirectory(keysDir);
-            Directory.CreateDirectory(Path.Combine(baseDir, "logs"));
-            Directory.CreateDirectory("/storage/emulated/0/Download/Ryubing/logs");
+            Directory.CreateDirectory(Path.Combine(baseDir, "system", "keys"));
 
-            if(File.Exists(pubKeys))
+            var src = "/storage/emulated/0/Download/Ryubing/keys/prod.keys";
+            if (File.Exists(src))
             {
-                if(!File.Exists(prodKeys) || new FileInfo(pubKeys).Length!=new FileInfo(prodKeys).Length)
-                {
-                    File.Copy(pubKeys, prodKeys, true);
-                    Log($"Keys copiada {new FileInfo(pubKeys).Length}b");
-                }
+                File.Copy(src, Path.Combine(keysDir, "prod.keys"), true);
+                File.Copy(src, Path.Combine(baseDir, "system", "keys", "prod.keys"), true);
             }
 
-            var admType = AppDomain.CurrentDomain.GetAssemblies()
+            var adm = AppDomain.CurrentDomain.GetAssemblies()
                 .SelectMany(a=>{try{return a.GetTypes();}catch{return new Type[0];}})
                 .FirstOrDefault(t=>t.Name=="AppDataManager");
-            if(admType!=null)
-            {
-                admType.GetProperty("BaseDirPath")?.SetValue(null, baseDir);
-                Log($"BaseDir={baseDir}");
-            }
+            adm?.GetProperty("BaseDirPath")?.SetValue(null, baseDir);
+        }catch(Exception ex){ global::Android.Util.Log.Error("Ryubing", ex.ToString()); }
 
-            long len = File.Exists(prodKeys)? new FileInfo(prodKeys).Length : 0;
-            Log($"JOGAR {Path.GetFileName(romPath)} Keys={len}b");
+        surface.Holder.AddCallback(new SurfaceCallback(this));
+    }
 
-            // TENTA ACHAR O HOST REAL DO RYUJINX
-            var types = AppDomain.CurrentDomain.GetAssemblies()
-                .SelectMany(a=>{try{return a.GetTypes();}catch{return new Type[0];}}).ToList();
-
-            var entry = types.FirstOrDefault(t=>t.Name=="GameHost")
-                     ?? types.FirstOrDefault(t=>t.Name=="AndroidHost")
-                     ?? types.FirstOrDefault(t=>t.Name.Contains("GameHost"));
-
-            if(entry!=null)
-            {
-                Log($"Achado host: {entry.FullName}");
-                var m = entry.GetMethod("Start") ?? entry.GetMethod("Launch") ?? entry.GetMethod("Run") ?? entry.GetMethod("StartGame");
-                if(m!=null)
-                {
-                    var inst = Activator.CreateInstance(entry);
-                    Log($"Invocando {m.Name}...");
-                    m.Invoke(inst, new object[]{ romPath });
-                    return;
-                }
-                Log($"Metodo Start nao achado em {entry.Name}. Metodos: {string.Join(",", entry.GetMethods().Select(x=>x.Name))}");
-            }
-            else
-            {
-                Log("ERRO: GameHost nao encontrado. Listando o que tem:");
-                foreach(var t in types.Where(t=>t.FullName.Contains("Ryujinx")).Take(30))
-                    Log($" - {t.FullName}");
-                Log("FIX: Voce precisa iniciar pelo MainActivity do Ryujinx, nao por GameActivity separada.");
-            }
-        }catch(Exception ex){
-            Log($"EXCEPTION: {ex}");
+    class SurfaceCallback : Java.Lang.Object, ISurfaceHolderCallback
+    {
+        GameActivity act;
+        public SurfaceCallback(GameActivity a){ act=a; }
+        public void SurfaceChanged(ISurfaceHolder h, global::Android.Graphics.Format f, int w, int h2){}
+        public void SurfaceDestroyed(ISurfaceHolder h){}
+        public void SurfaceCreated(ISurfaceHolder h)
+        {
+            Task.Run(()=> act.StartEmulation());
         }
+    }
+
+    void StartEmulation()
+    {
+        try
+        {
+            RunOnUiThread(()=> status.Text = "Inicializando Ryujinx...");
+            
+            // Logger
+            Logger.AddLogger(new ConsoleLogger(), LogLevel.Info);
+
+            // VFS - ISSO QUE FALTAVA NO SEU CODIGO PRETO
+            var vfs = new VirtualFileSystem();
+            var nandFs = new IntegrityCheckLevelFs();
+            
+            device = new Switch(vfs, null, null, null, null, null, null, null);
+            
+            RunOnUiThread(()=> status.Text = $"Carregando ROM...");
+
+            // Carrega XCI/NSP
+            var loader = device.LoadApplication(romPath);
+            if (loader is Ryujinx.HLE.Loaders.ProcessResult.Failed)
+                throw new Exception("Falha ao carregar ROM - keys erradas?");
+
+            RunOnUiThread(()=> { status.Visibility = ViewStates.Gone; });
+
+            // INICIA DE VERDADE
+            device.Run();
+        }
+        catch (Exception ex)
+        {
+            global::Android.Util.Log.Error("Ryubing", ex.ToString());
+            try{ File.AppendAllText("/storage/emulated/0/Download/Ryubing/logs/ryubing.log", ex.ToString()); }catch{}
+            RunOnUiThread(()=> {
+                status.Text = $"ERRO: {ex.Message}\n{ex.StackTrace}";
+                status.Visibility = ViewStates.Visible;
+                Toast.MakeText(this, ex.Message, ToastLength.Long).Show();
+            });
+        }
+    }
+
+    protected override void OnDestroy()
+    {
+        device?.Stop();
+        device?.Dispose();
+        base.OnDestroy();
     }
 }
