@@ -33,26 +33,39 @@ public class GameActivity : Activity
             Directory.CreateDirectory(jitDir);
             SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE",jitDir);
             try{ Directory.SetCurrentDirectory(baseDir); SysEnv.CurrentDirectory=baseDir; }catch{}
+
+            // LIMPEZA AUTOMATICA - sem precisar acessar /data
+            try{
+                foreach(var f in Directory.GetFiles(keysDir)) File.Delete(f);
+                MyLog("Limpeza keys interna OK");
+            }catch(Exception ex){ MyLog($"Limpeza FAIL {ex.Message}"); }
+
             try{
                 string[] prodSources = new[]{ "/storage/emulated/0/Ryujinx/keys/prod.keys", "/storage/emulated/0/Download/Ryubing/keys/prod.keys", "/storage/emulated/0/Download/Ryubing/prod.keys", "/storage/emulated/0/Download/prod.keys" };
-                string[] titleSources = new[]{ "/storage/emulated/0/Ryujinx/keys/title.keys", "/storage/emulated/0/Download/Ryubing/keys/title.keys", "/storage/emulated/0/Download/Ryubing/title.keys", "/storage/emulated/0/Download/title.keys" };
                 string destProd = Path.Combine(keysDir,"prod.keys");
-                string destTitle = Path.Combine(keysDir,"title.keys");
-                foreach(var src in prodSources){ if(File.Exists(src)){ File.Copy(src, destProd, true); break; } }
-                foreach(var src in titleSources){ if(File.Exists(src)){ File.Copy(src, destTitle, true); break; } }
-                MyLog($"Keys prod={File.Exists(destProd)} title={File.Exists(destTitle)}");
+                foreach(var src in prodSources){
+                    if(File.Exists(src)){
+                        var len=new FileInfo(src).Length;
+                        File.Copy(src, destProd, true);
+                        MyLog($"Keys copiado {src} size={len}");
+                        break;
+                    }
+                }
+                MyLog($"Keys final size={(File.Exists(destProd)?new FileInfo(destProd).Length:0)}");
             }catch(Exception ex){ MyLog($"Keys FAIL: {ex.Message}"); }
+
             try{ typeof(VirtualFileSystem).GetField("_instance",All)?.SetValue(null,null); }catch{}
             VirtualFileSystem vfs=VirtualFileSystem.CreateInstance();
             vfs.ReloadKeySet(); vfs.ReloadKeySet();
-            MyLog("VFS OK");
+            MyLog($"VFS OK prodCount={vfs.KeySet.Current.ProdKeys.Count} titleCount={vfs.KeySet.Current.TitleKeys.Count}");
+            if(vfs.KeySet.Current.ProdKeys.Count==0) throw new Exception("prod.keys com 0 keys - formato invalido");
+
             var audio=new DummyHardwareDeviceDriver();
             if(nativeWindow==IntPtr.Zero) return;
 
             gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
             try{
                 var mInit = gpu.GetType().GetMethod("Initialize", All);
-                MyLog($"VK Initialize found={mInit!=null}");
                 if(mInit!=null){
                     if(mInit.GetParameters().Length==0) mInit.Invoke(gpu,null);
                     else {
@@ -78,27 +91,14 @@ public class GameActivity : Activity
             bool isXci = romPath.EndsWith(".xci", StringComparison.OrdinalIgnoreCase);
             string methodName = isXci? "LoadXci" : "LoadNsp";
             var method = device.GetType().GetMethods(All).FirstOrDefault(m=>m.Name==methodName);
-            if(method==null){ method = device.GetType().GetMethods(All).FirstOrDefault(m=>m.Name=="LoadNsp"); methodName="LoadNsp"; }
-            MyLog($"[LOAD] Usando {methodName} found={method!=null}");
+            if(method==null) method = device.GetType().GetMethods(All).FirstOrDefault(m=>m.Name=="LoadNsp");
+            MyLog($"[LOAD] Usando {method.Name}");
 
             bool ok = false; object result = null;
             try{
-                ulong titleId = 0UL;
-                if(romPath.Contains("Luigi", StringComparison.OrdinalIgnoreCase)) titleId = 0x01004D100B3C6000UL;
-                else if(romPath.Contains("Zelda", StringComparison.OrdinalIgnoreCase) || romPath.Contains("Links", StringComparison.OrdinalIgnoreCase)) titleId = 0x01006BB00C6F0000UL;
-
-                MyLog($"[LOAD] Tentando TitleId={titleId:X}");
-                result = method.Invoke(device, new object[]{ romPath, titleId });
+                result = method.Invoke(device, new object[]{ romPath, (ulong)0 });
                 ok = result is bool b? b : true;
-                if(!ok){
-                    MyLog("[LOAD] Tentando 0UL");
-                    result = method.Invoke(device, new object[]{ romPath, (ulong)0 });
-                    ok = result is bool b2? b2 : true;
-                }
-            }catch(Exception ex){
-                MyLog($"[LOAD] EX {ex.InnerException?.Message}");
-                try{ result = method.Invoke(device, new object[]{ romPath, (ulong)0 }); ok = result is bool b3? b3 : true; }catch{}
-            }
+            }catch(Exception ex){ MyLog($"[LOAD] EX {ex.InnerException?.Message}"); }
             MyLog($"[LOAD] RESULTADO={result} OK={ok}");
             if(!ok) throw new Exception($"{methodName} false");
             MyLog($"{methodName} OK");
@@ -121,7 +121,7 @@ public class GameActivity : Activity
             var methods = lhmType.GetMethods(All).Where(m=>m.Name.Contains("Initialize")).ToList();
             methods.FirstOrDefault(x=>x.Name=="InitializeServer" && x.GetParameters().Length==0)?.Invoke(lhm,null);
             methods.FirstOrDefault(x=>x.Name=="InitializeFsServer" && x.GetParameters().Length==1)?.Invoke(lhm,new object[]{vfs});
-            try{ methods.FirstOrDefault(x=>x.Name=="InitializeSystemClients")?.Invoke(lhm,null); }catch(Exception ex){ MyLog($"SystemClients ignorado: {ex.InnerException?.Message}"); }
+            try{ methods.FirstOrDefault(x=>x.Name=="InitializeSystemClients")?.Invoke(lhm,null); }catch{}
         }catch{}
         object hc=null; try{ hc=lhm.GetType().GetProperty("Client",All)?.GetValue(lhm)?? lhm.GetType().GetField("_horizonClient",All)?.GetValue(lhm); }catch{}
         var amType=typeof(AccountManager); object accMan=null;
