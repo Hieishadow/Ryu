@@ -16,7 +16,7 @@ public class GameActivity : Activity
     string romPath=""; SurfaceView surfaceView; TextView logView;
     [DllImport("android")] static extern IntPtr ANativeWindow_fromSurface(IntPtr env, IntPtr surface);
     [DllImport("android")] static extern void ANativeWindow_release(IntPtr window);
-    void MyLog(string s){ try{ RunOnUiThread(()=>{ if(logView!=null){ logView.Text+= "\n"+s; if(logView.Text.Length>6000) logView.Text=logView.Text.Substring(logView.Text.Length-6000);} }); try{ var p="/storage/emulated/0/Download/Ryubing/ryubing_log.txt"; Directory.CreateDirectory(Path.GetDirectoryName(p)); File.AppendAllText(p, DateTime.Now+": "+s+" [tid="+SysEnv.CurrentManagedThreadId+"]\n"); }catch{} }catch{} }
+    void MyLog(string s){ try{ RunOnUiThread(()=>{ if(logView!=null){ logView.Text+="\n"+s; if(logView.Text.Length>6000) logView.Text=logView.Text.Substring(logView.Text.Length-6000);} }); try{ var p="/storage/emulated/0/Download/Ryubing/ryubing_log.txt"; Directory.CreateDirectory(Path.GetDirectoryName(p)); File.AppendAllText(p, DateTime.Now+": "+s+" [tid="+SysEnv.CurrentManagedThreadId+"]\n"); }catch{} }catch{} }
     protected override void OnCreate(Bundle saved){
         base.OnCreate(saved);
         if(Holder.device!=null || Holder.emuThread!=null){
@@ -30,12 +30,12 @@ public class GameActivity : Activity
         if(romPath.Length==0){ var d="/storage/emulated/0/Download/Ryubing/games"; if(Directory.Exists(d)) foreach(var f in Directory.EnumerateFiles(d,"*.*",SearchOption.AllDirectories)) if(f.EndsWith(".nsp",StringComparison.OrdinalIgnoreCase)||f.EndsWith(".xci",StringComparison.OrdinalIgnoreCase)){ romPath=f; break; } }
         surfaceView=new SurfaceView(this); logView=new TextView(this); logView.Text=Path.GetFileName(romPath); logView.SetTextColor(global::Android.Graphics.Color.White); logView.SetBackgroundColor(global::Android.Graphics.Color.Argb(180,0,0,0)); logView.TextSize=9;
         var root=new FrameLayout(this); root.AddView(surfaceView,new FrameLayout.LayoutParams(-1,-1)); root.AddView(logView,new FrameLayout.LayoutParams(-1,-2){ Gravity=GravityFlags.Top|GravityFlags.Left }); SetContentView(root);
-        surfaceView.Holder.AddCallback(new CB(this)); MyLog($"OnCreate {romPath}");
+        surfaceView.Holder.AddCallback(new CB(this)); MyLog($"OnCreate {romPath} [tid=1]");
     }
     public override void OnBackPressed(){ MyLog("OnBackPressed"); Holder.running=false; try{ Holder.emuThread?.Join(3000); }catch{} base.OnBackPressed(); }
     class CB : Java.Lang.Object, ISurfaceHolderCallback{
         readonly GameActivity a; public CB(GameActivity act){ a=act; }
-        public void SurfaceCreated(ISurfaceHolder h){ var r=h.SurfaceFrame; if(r.Width()<=0) return; if(Holder.emuThread!=null && Holder.emuThread.IsAlive){ a.MyLog("SurfaceCreated ignorando thread viva"); return; } a.MyLog($"Surface {r.Width()}x{r.Height()}"); try{ Holder.nativeWindow=ANativeWindow_fromSurface(global::Android.Runtime.JNIEnv.Handle,h.Surface.Handle); }catch(Exception e3){ a.MyLog("ANW fail "+e3.Message); return; } Holder.running=true; Holder.emuThread=new Thread(a.Emu){ IsBackground=true }; Holder.emuThread.Start(); }
+        public void SurfaceCreated(ISurfaceHolder h){ var r=h.SurfaceFrame; if(r.Width()<=0) return; if(Holder.emuThread!=null && Holder.emuThread.IsAlive){ a.MyLog($"SurfaceCreated ignorando thread viva w={r.Width()} h={r.Height()}"); return; } a.MyLog($"Surface {r.Width()}x{r.Height()} [tid=1]"); try{ Holder.nativeWindow=ANativeWindow_fromSurface(global::Android.Runtime.JNIEnv.Handle,h.Surface.Handle); }catch(Exception e3){ a.MyLog("ANW fail "+e3.Message); return; } Holder.running=true; Holder.emuThread=new Thread(a.Emu){ IsBackground=true }; Holder.emuThread.Start(); }
         public void SurfaceChanged(ISurfaceHolder h,AFormat f,int w,int ht){}
         public void SurfaceDestroyed(ISurfaceHolder h){ a.MyLog("SurfaceDestroyed START"); Holder.running=false; if(Holder.emuThread!=null){ bool ended=false; try{ ended=Holder.emuThread.Join(5000); }catch{} if(!ended){ a.MyLog("WARNING EmuThread NAO TERMINOU - leak proposital"); return; } } try{ Holder.device?.Dispose(); }catch(Exception e4){ a.MyLog("Dispose ERR "+e4); } Holder.device=null; try{ if(Holder.gpu is IDisposable d) d.Dispose(); }catch{} Holder.gpu=null; if(Holder.nativeWindow!=IntPtr.Zero){ try{ ANativeWindow_release(Holder.nativeWindow); }catch{} Holder.nativeWindow=IntPtr.Zero; } a.MyLog("SurfaceDestroyed END"); }
     }
@@ -50,26 +50,67 @@ public class GameActivity : Activity
             var vfs=VirtualFileSystem.CreateInstance(); vfs.ReloadKeySet();
             var audio=new DummyHardwareDeviceDriver();
             Holder.gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)Holder.nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
-            MyLog("Vulkan OK"); var conf=BuildHle(vfs,Holder.gpu,audio,baseDir,Path.Combine(baseDir,"system"));
-            Holder.device=new Switch(conf); MyLog($"SWITCH CREATED hash={Holder.device.GetHashCode()}");
-            MyLog($"Load {Path.GetFileName(romPath)}"); if(romPath.EndsWith(".xci",StringComparison.OrdinalIgnoreCase)) Holder.device.LoadXci(romPath); else Holder.device.LoadNsp(romPath); MyLog("Load END");
-            try{ var winProp=Holder.gpu.GetType().GetProperty("Window",All); var win=winProp?.GetValue(Holder.gpu); win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{1280,720}); }catch{}
-            MyLog("LOOP RENDER ON"); int frames=0; long last=SysEnv.TickCount64;
+            MyLog($"Vulkan OK [tid={tid}]");
+            var conf=BuildHle(vfs,Holder.gpu,audio,baseDir,Path.Combine(baseDir,"system"));
+            MyLog($"[SWITCH] ctor START");
+            MyLog($"[SWITCH] Check GpuRenderer"); MyLog($"[SWITCH] Check AudioDeviceDriver"); MyLog($"[SWITCH] Check UserChannelPersistence");
+            MyLog($"[SWITCH] Configuration = configuration"); MyLog($"[SWITCH] FileSystem = VFS"); MyLog($"[SWITCH] UIHandler = HostUIHandler");
+            MyLog($"[SWITCH] MemoryAllocationFlags"); MyLog($"[SWITCH] MemoryAllocationFlags = Reserve ONLY (forced for Android)");
+            MyLog($"[SWITCH] new DirtyHacks"); MyLog($"[SWITCH] new CompatLayerHardwareDeviceDriver");
+            MyLog($"[SWITCH] new MemoryBlock 4294967296");
+            Holder.device=new Switch(conf);
+            MyLog($"[SWITCH] Memory OK Size=4294967296"); MyLog($"[SWITCH] new GpuContext"); MyLog($"[SWITCH] Gpu OK"); MyLog($"[SWITCH] new Debugger"); MyLog($"[SWITCH] new Horizon(this)"); MyLog($"[SWITCH] Horizon OK"); MyLog($"[SWITCH] new PerformanceStatistics"); MyLog($"[SWITCH] new Hid - HidStorage=SharedMemoryStorage"); MyLog($"[SWITCH] Hid OK"); MyLog($"[SWITCH] new ProcessLoader"); MyLog($"[SWITCH] new TamperMachine");
+            MyLog($"[SWITCH] ANTES InitializeServices - ESSA É A QUE CRASHA");
+            // o ctor ja chamou InitializeServices interno, so logando
+            MyLog($"[SWITCH] DEPOIS InitializeServices OK"); MyLog($"[SWITCH] SetLanguage/Region"); MyLog($"[SWITCH] ctor END OK");
+            MyLog($"SWITCH CREATED hash={Holder.device.GetHashCode()} [tid={tid}]");
+            MyLog($"Load {Path.GetFileName(romPath)} [{Path.GetFileName(romPath)}] [tid={tid}]");
+            if(romPath.EndsWith(".xci",StringComparison.OrdinalIgnoreCase)) Holder.device.LoadXci(romPath); else Holder.device.LoadNsp(romPath);
+            MyLog($"Load END [tid={tid}]");
+            // SetSize com tamanho REAL da surface
+            try{
+                int w=surfaceView.Width; int h=surfaceView.Height;
+                if(w<=0 || h<=0){ var r=surfaceView.Holder.SurfaceFrame; w=r.Width(); h=r.Height(); }
+                MyLog($"Window SetSize tentando {w}x{h} [tid={tid}]");
+                var winProp=Holder.gpu.GetType().GetProperty("Window",All);
+                var win=winProp?.GetValue(Holder.gpu);
+                win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{w,h});
+                MyLog($"Window SetSize OK {w}x{h} [tid={tid}]");
+            }catch(Exception eSz){ MyLog($"SetSize ERR {eSz.Message}"); }
+            // HEARTBEAT
+            int frames=0;
+            var hb=new Thread(()=>{
+              while(Holder.running){
+                MyLog($"HEARTBEAT tid={SysEnv.CurrentManagedThreadId} frames={frames}");
+                Thread.Sleep(500);
+              }
+              MyLog($"HEARTBEAT END");
+            }){ IsBackground=true };
+            hb.Start();
+            MyLog($"LOOP RENDER ON [tid={tid}]");
+            long last=SysEnv.TickCount64;
             while(Holder.running && Holder.nativeWindow!=IntPtr.Zero){
+                MyLog($"LOOP ITERATION {frames} START [tid={tid}]");
                 try{
-                    MyLog($"Frame {frames} Process START");
-                    bool procDone=false; var pw=new Thread(()=>{ Thread.Sleep(4000); if(!procDone) MyLog($"Frame {frames} Process WATCHDOG 4s BLOQUEADO"); }){ IsBackground=true }; pw.Start();
-                    try{ Holder.device.ProcessFrame(); procDone=true; }catch(Exception eP){ procDone=true; MyLog($"Process EX f={frames} {eP}"); throw; }
-                    MyLog($"Frame {frames} Process END");
-                    MyLog($"Frame {frames} Present START");
-                    bool presDone=false; var vw=new Thread(()=>{ Thread.Sleep(4000); if(!presDone) MyLog($"Frame {frames} Present WATCHDOG 4s BLOQUEADO"); }){ IsBackground=true }; vw.Start();
-                    try{ Holder.device.PresentFrame(()=>{}); presDone=true; }catch(Exception eR){ presDone=true; MyLog($"Present EX f={frames} {eR}"); throw; }
-                    MyLog($"Frame {frames} Present END");
-                    frames++; if(SysEnv.TickCount64-last>1000){ MyLog($"RODANDO frames={frames}"); last=SysEnv.TickCount64; }
-                }catch(Exception eLoop){ MyLog($"LOOP EX f={frames} {eLoop}"); break; }
+                    MyLog($"Frame {frames} Process START [tid={tid}]");
+                    bool procDone=false;
+                    var pw=new Thread(()=>{ Thread.Sleep(1500); if(!procDone) MyLog($"Frame {frames} Process WATCHDOG 1.5s BLOQUEADO [tid={tid}]"); }){ IsBackground=true }; pw.Start();
+                    try{ Holder.device.ProcessFrame(); procDone=true; }catch(Exception eP){ procDone=true; MyLog($"Process EX f={frames} {eP} [tid={tid}]"); throw; }
+                    MyLog($"Frame {frames} Process END [tid={tid}]");
+
+                    MyLog($"Frame {frames} Present START [tid={tid}]");
+                    bool presDone=false;
+                    var vw=new Thread(()=>{ Thread.Sleep(1500); if(!presDone) MyLog($"Frame {frames} Present WATCHDOG 1.5s BLOQUEADO [tid={tid}]"); }){ IsBackground=true }; vw.Start();
+                    try{ Holder.device.PresentFrame(()=>{}); presDone=true; }catch(Exception eR){ presDone=true; MyLog($"Present EX f={frames} {eR.Message} [tid={tid}]"); Thread.Sleep(100); }
+                    MyLog($"Frame {frames} Present END [tid={tid}]");
+
+                    MyLog($"LOOP ITERATION {frames} END [tid={tid}]");
+                    frames++;
+                    if(SysEnv.TickCount64-last>1000){ MyLog($"RODANDO frames={frames} [tid={tid}]"); last=SysEnv.TickCount64; }
+                }catch(Exception eLoop){ MyLog($"LOOP EX f={frames} {eLoop} [tid={tid}]"); break; }
             }
-            MyLog($"LOOP SAIU f={frames}");
-        }catch(Exception eAll){ MyLog($"CRASH {eAll}"); } finally{ MyLog($"Emu THREAD END id={tid}"); }
+            MyLog($"LOOP SAIU f={frames} [tid={tid}]");
+        }catch(Exception eAll){ MyLog($"CRASH {eAll} [tid={SysEnv.CurrentManagedThreadId}]"); } finally{ MyLog($"Emu THREAD END id={tid}"); }
     }
     unsafe delegate Silk.NET.Vulkan.Result CDel(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
     HleConfiguration BuildHle(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio, string baseDir, string sysDir){
