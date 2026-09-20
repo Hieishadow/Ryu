@@ -73,25 +73,35 @@ public class GameActivity : Activity
             MyLog("Switch OK");
 
             var fi = new FileInfo(romPath);
-            MyLog($"[NSP] {fi.Name} MB={fi.Length/(1024*1024)}");
+            MyLog($"[ROM] {fi.Name} MB={fi.Length/(1024*1024)} Ext={fi.Extension}");
 
-            var loadMethods = device.GetType().GetMethods(All).Where(m=>m.Name=="LoadNsp").ToList();
-            MethodInfo selected = loadMethods.FirstOrDefault();
-            MyLog($"[LOAD] metodos={loadMethods.Count}");
+            bool isXci = romPath.EndsWith(".xci", StringComparison.OrdinalIgnoreCase);
+            string methodName = isXci? "LoadXci" : "LoadNsp";
+            var method = device.GetType().GetMethods(All).FirstOrDefault(m=>m.Name==methodName);
+            if(method==null){ method = device.GetType().GetMethods(All).FirstOrDefault(m=>m.Name=="LoadNsp"); methodName="LoadNsp"; }
+            MyLog($"[LOAD] Usando {methodName} found={method!=null}");
 
             bool ok = false; object result = null;
             try{
-                MyLog("[LOAD] Tentando 01006BB00C6F0000");
-                result = selected.Invoke(device, new object[]{ romPath, 0x01006BB00C6F0000UL });
+                ulong titleId = 0UL;
+                if(romPath.Contains("Luigi", StringComparison.OrdinalIgnoreCase)) titleId = 0x01004D100B3C6000UL;
+                else if(romPath.Contains("Zelda", StringComparison.OrdinalIgnoreCase) || romPath.Contains("Links", StringComparison.OrdinalIgnoreCase)) titleId = 0x01006BB00C6F0000UL;
+
+                MyLog($"[LOAD] Tentando TitleId={titleId:X}");
+                result = method.Invoke(device, new object[]{ romPath, titleId });
                 ok = result is bool b? b : true;
+                if(!ok){
+                    MyLog("[LOAD] Tentando 0UL");
+                    result = method.Invoke(device, new object[]{ romPath, (ulong)0 });
+                    ok = result is bool b2? b2 : true;
+                }
             }catch(Exception ex){
-                MyLog($"[LOAD] TitleId fail {ex.InnerException?.Message} -> tentando 0UL");
-                result = selected.Invoke(device, new object[]{ romPath, (ulong)0 });
-                ok = result is bool b2? b2 : true;
+                MyLog($"[LOAD] EX {ex.InnerException?.Message}");
+                try{ result = method.Invoke(device, new object[]{ romPath, (ulong)0 }); ok = result is bool b3? b3 : true; }catch{}
             }
             MyLog($"[LOAD] RESULTADO={result} OK={ok}");
-            if(!ok) throw new Exception("LoadNsp false");
-            MyLog("LoadNsp OK");
+            if(!ok) throw new Exception($"{methodName} false");
+            MyLog($"{methodName} OK");
 
             RunOnUiThread(()=>{ logView.Visibility=ViewStates.Gone; });
             int frame=0; MyLog("LOOP INICIADO");
