@@ -20,9 +20,8 @@ public class GameActivity : Activity
     protected override void OnCreate(Bundle saved){
         base.OnCreate(saved);
         if(Holder.device!=null || Holder.emuThread!=null){
-            MyLog($"OnCreate holder antigo dev={Holder.device?.GetHashCode()} thr={Holder.emuThread?.ManagedThreadId} alive={Holder.emuThread?.IsAlive}");
             bool ended=false; try{ Holder.running=false; if(Holder.emuThread!=null) ended=Holder.emuThread.Join(5000); }catch{ ended=false; }
-            if(!ended && Holder.emuThread!=null && Holder.emuThread.IsAlive){ MyLog("WARNING thread antiga NAO terminou - NAO destruir Vulkan"); }
+            if(!ended && Holder.emuThread!=null && Holder.emuThread.IsAlive){ MyLog("WARNING thread antiga NAO terminou"); }
             else{ try{ Holder.device?.Dispose(); }catch{} try{ if(Holder.gpu is IDisposable d) d.Dispose(); }catch{} if(Holder.nativeWindow!=IntPtr.Zero){ try{ ANativeWindow_release(Holder.nativeWindow); }catch{} Holder.nativeWindow=IntPtr.Zero; } Holder.device=null; Holder.gpu=null; Holder.emuThread=null; }
         }
         if(Window!=null) Window.AddFlags(WindowManagerFlags.Fullscreen|WindowManagerFlags.KeepScreenOn);
@@ -43,11 +42,9 @@ public class GameActivity : Activity
     void Emu(){
         int tid=SysEnv.CurrentManagedThreadId; MyLog($"Emu THREAD START id={tid}");
         try{
-            // Força interpreter / sem PPTC pra testar SIGSEGV
             SysEnv.SetEnvironmentVariable("RYUJINX_DISABLE_PPTC", "1");
-            SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE", Path.Combine(CacheDir.AbsolutePath,"jit"));
             string baseDir=Path.Combine(FilesDir.AbsolutePath,"Ryujinx"); Directory.CreateDirectory(Path.Combine(baseDir,"system")); Directory.CreateDirectory(Path.Combine(baseDir,"keys"));
-            string jitDir=Path.Combine(CacheDir.AbsolutePath,"jit"); Directory.CreateDirectory(jitDir);
+            string jitDir=Path.Combine(CacheDir.AbsolutePath,"jit"); Directory.CreateDirectory(jitDir); SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE",jitDir);
             try{ typeof(VirtualFileSystem).GetField("_instance",All)?.SetValue(null,null); }catch{}
             var vfs=VirtualFileSystem.CreateInstance(); vfs.ReloadKeySet();
             var audio=new DummyHardwareDeviceDriver();
@@ -71,24 +68,19 @@ public class GameActivity : Activity
             int frames=0;
             var hb=new Thread(()=>{ while(Holder.running){ MyLog($"HEARTBEAT tid={SysEnv.CurrentManagedThreadId} frames={frames}"); Thread.Sleep(500); } MyLog($"HEARTBEAT END"); }){ IsBackground=true }; hb.Start();
             MyLog($"LOOP RENDER ON [tid={tid}]");
+            long last=SysEnv.TickCount64;
             while(Holder.running && Holder.nativeWindow!=IntPtr.Zero){
                 MyLog($"LOOP ITERATION {frames} START [tid={tid}]");
                 try{
                     MyLog($"Frame {frames} Process START [tid={tid}]");
-                    bool procDone=false;
-                    var pw=new Thread(()=>{ Thread.Sleep(1500); if(!procDone) MyLog($"Frame {frames} Process WATCHDOG 1.5s BLOQUEADO [tid={tid}]"); }){ IsBackground=true }; pw.Start();
-                    try{ Holder.device.ProcessFrame(); procDone=true; }catch(Exception eP){ procDone=true; MyLog($"Process EX f={frames} {eP} [tid={tid}]"); throw; }
+                    try{ Holder.device.ProcessFrame(); }catch(Exception eP){ MyLog($"Process EX f={frames} {eP} [tid={tid}]"); throw; }
                     MyLog($"Frame {frames} Process END [tid={tid}]");
-                    if(frames==0){
-                        MyLog($"SKIP Present 0 p/ diagnóstico tid={tid}");
-                        Thread.Sleep(100);
-                    }else{
-                        MyLog($"Frame {frames} Present START [tid={tid}]");
-                        Holder.device.PresentFrame(()=>{});
-                        MyLog($"Frame {frames} Present END [tid={tid}]");
-                    }
+                    MyLog($"Frame {frames} Present START [tid={tid}]");
+                    try{ Holder.device.PresentFrame(()=>{}); }catch(Exception eR){ MyLog($"Present EX f={frames} {eR.Message} [tid={tid}]"); }
+                    MyLog($"Frame {frames} Present END [tid={tid}]");
                     MyLog($"LOOP ITERATION {frames} END [tid={tid}]");
                     frames++;
+                    if(SysEnv.TickCount64-last>1000){ MyLog($"RODANDO frames={frames} [tid={tid}]"); last=SysEnv.TickCount64; }
                     Thread.Sleep(16);
                 }catch(Exception eLoop){ MyLog($"LOOP EX f={frames} {eLoop} [tid={tid}]"); break; }
             }
@@ -105,15 +97,7 @@ public class GameActivity : Activity
         var ucp=Activator.CreateInstance(typeof(UserChannelPersistence),true);
         var hleType=typeof(HleConfiguration); var hleCtor=hleType.GetConstructors(All)[0]; var hps=hleCtor.GetParameters(); var hargs=new object[hps.Length]; for(int k=0;k<hps.Length;k++){ var pt=hps[k].ParameterType; if(pt==typeof(string)) hargs[k]="UTC"; else if(pt==typeof(bool)) hargs[k]=true; else if(pt.IsEnum) hargs[k]=Enum.GetValues(pt).GetValue(0); else if(pt.IsValueType) hargs[k]=Activator.CreateInstance(pt); } var hle=(HleConfiguration)hleCtor.Invoke(hargs);
         try{ var prop = hleType.GetProperties(All).FirstOrDefault(p=>p.PropertyType.Name.Contains("UI")); prop?.SetValue(hle, CreateDummyUI()); }catch{}
-        // Tenta forçar HostTrackedUnsafe
-        try{
-            foreach(var p in hleType.GetProperties(All)){
-                if(p.Name.Contains("MemoryManager") && p.PropertyType.IsEnum){
-                    try{ p.SetValue(hle, Enum.Parse(p.PropertyType, "HostTrackedUnsafe")); }catch{ try{ p.SetValue(hle, Enum.Parse(p.PropertyType, "HostTracked")); }catch{} }
-                }
-                if(p.Name.Contains("ExpandRam")){ try{ p.SetValue(hle, false); }catch{} }
-            }
-        }catch{}
+        try{ foreach(var p in hleType.GetProperties(All)){ if(p.Name.Contains("MemoryManager") && p.PropertyType.IsEnum){ try{ p.SetValue(hle, Enum.Parse(p.PropertyType, "HostTrackedUnsafe")); }catch{ try{ p.SetValue(hle, Enum.Parse(p.PropertyType, "HostTracked")); }catch{} } } if(p.Name.Contains("ExpandRam")){ try{ p.SetValue(hle, false); }catch{} } } }catch{}
         var confM=hleType.GetMethod("Configure",All); var cps=confM.GetParameters(); var cargs=new object[cps.Length]; for(int k=0;k<cps.Length;k++){ var pt=cps[k].ParameterType; if(pt==typeof(VirtualFileSystem)) cargs[k]=vfs; else if(pt==typeof(LibHacHorizonManager)) cargs[k]=lhm; else if(pt==typeof(ContentManager)) cargs[k]=cm; else if(pt==typeof(AccountManager)) cargs[k]=accMan; else if(pt==typeof(UserChannelPersistence)) cargs[k]=ucp; else if(pt.IsAssignableFrom(gpu.GetType())) cargs[k]=gpu; else if(pt.FullName.Contains("IRenderer")) cargs[k]=gpu; else if(typeof(IHardwareDeviceDriver).IsAssignableFrom(pt)) cargs[k]=audio; else if(typeof(IHostUIHandler).IsAssignableFrom(pt)) cargs[k]=CreateDummyUI(); }
         return confM.Invoke(hle,cargs) as HleConfiguration;
     }
