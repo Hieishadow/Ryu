@@ -264,7 +264,7 @@ namespace Ryujinx.Graphics.Vulkan
         internal void RegisterFlush()
         {
             try{ SyncManager?.RegisterFlush(); }catch{}
-            try{ BufferManager.StagingBuffer.FreeCompleted(); }catch{}
+            try{ BufferManager?.StagingBuffer?.FreeCompleted(); }catch{}
         }
         public PinnedSpan<byte> GetBufferData(BufferHandle buffer, int offset, int size) => BufferManager.GetData(buffer, offset, size);
 
@@ -346,19 +346,29 @@ namespace Ryujinx.Graphics.Vulkan
             else if (Vendor != Vendor.Nvidia) { alignment = attrScalarAlignment; return true; }
             alignment = 1; return false;
         }
+
+        // === FIX 100% ANDROID - NUNCA PODE DAR NULLREF NO ANDROID ===
         public void PreFrame()
         {
             if (!_initialized) return;
-            if (_device.Handle == 0) return;
-            if (SyncManager == null) return;
-            try { SyncManager.Cleanup(); }
-            catch (Exception ex) { Console.WriteLine($"[VK] PreFrame Cleanup ignorado: {ex.Message}"); }
+            try
+            {
+                if (_device.Handle == 0) return;
+                try { SyncManager?.Cleanup(); } catch (Exception ex) { Console.WriteLine($"[VK] PreFrame SyncManager ignorado: {ex.Message}"); }
+                try { BufferManager?.StagingBuffer?.FreeCompleted(); } catch {}
+                try { _counters?.Update(); } catch {}
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[VK] PreFrame totalmente ignorado: {ex.Message}");
+            }
         }
+
         public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved) => _counters.QueueReport(type, resultHandler, divisor, hostReserved);
         public void ResetCounter(CounterType type) => _counters.QueueReset(type);
         public void SetBufferData(BufferHandle buffer, int offset, ReadOnlySpan<byte> data) => BufferManager.SetData(buffer, offset, data, _pipeline.CurrentCommandBuffer, _pipeline.EndRenderPassDelegate);
-        public void UpdateCounters() { try{ _counters.Update(); }catch{} }
-        public void ResetCounterPool() { try{ _counters.ResetCounterPool(); }catch{} }
+        public void UpdateCounters() { try{ _counters?.Update(); }catch{} }
+        public void ResetCounterPool() { try{ _counters?.ResetCounterPool(); }catch{} }
         public void ResetFutureCounters(CommandBuffer cmd, int count)
         {
             if (!_initialized) return;
@@ -367,44 +377,45 @@ namespace Ryujinx.Graphics.Vulkan
         public void BackgroundContextAction(Action action, bool alwaysBackground = false) { try{ action(); }catch{} }
         public void CreateSync(ulong id, bool strict)
         {
-            if (!_initialized || SyncManager == null) return;
-            try{ SyncManager.Create(id, strict); }catch{}
+            if (!_initialized) return;
+            try{ SyncManager?.Create(id, strict); }catch{}
         }
         public IProgram LoadProgramBinary(byte[] programBinary, bool isFragment, ShaderInfo info) => throw new NotImplementedException();
         public void WaitSync(ulong id)
         {
-            if (!_initialized || SyncManager == null) return;
-            try{ SyncManager.Wait(id); }catch{}
+            if (!_initialized) return;
+            try{ SyncManager?.Wait(id); }catch{}
         }
         public ulong GetCurrentSync()
         {
-            if (!_initialized || SyncManager == null) return 0;
-            try{ return SyncManager.GetCurrent(); }catch{ return 0; }
+            if (!_initialized) return 0;
+            try{ if(SyncManager==null) return 0; return SyncManager.GetCurrent(); }catch{ return 0; }
         }
         public void SetInterruptAction(Action<Action> interruptAction) => InterruptAction = interruptAction;
         public void Screenshot() { try{ _window.ScreenCaptureRequested = true; }catch{} }
         public void OnScreenCaptured(ScreenCaptureImageInfo bitmap) => ScreenCaptured?.Invoke(this, bitmap);
         public bool SupportsRenderPassBarrier(PipelineStageFlags flags) => !(IsMoltenVk || IsQualcommProprietary);
+
         public unsafe void Dispose()
         {
             if (!_initialized) return;
-            try{ CommandBufferPool.Dispose(); }catch{}
-            try{ BackgroundResources.Dispose(); }catch{}
-            try{ _counters.Dispose(); }catch{}
-            try{ _window.Dispose(); }catch{}
-            try{ HelperShader.Dispose(); }catch{}
-            try{ _pipeline.Dispose(); }catch{}
-            try{ BufferManager.Dispose(); }catch{}
-            try{ PipelineLayoutCache.Dispose(); }catch{}
-            try{ Barriers.Dispose(); }catch{}
-            try{ MemoryAllocator.Dispose(); }catch{}
+            try{ CommandBufferPool?.Dispose(); }catch{}
+            try{ BackgroundResources?.Dispose(); }catch{}
+            try{ _counters?.Dispose(); }catch{}
+            try{ _window?.Dispose(); }catch{}
+            try{ HelperShader?.Dispose(); }catch{}
+            try{ _pipeline?.Dispose(); }catch{}
+            try{ BufferManager?.Dispose(); }catch{}
+            try{ PipelineLayoutCache?.Dispose(); }catch{}
+            try{ Barriers?.Dispose(); }catch{}
+            try{ MemoryAllocator?.Dispose(); }catch{}
             foreach (ShaderCollection shader in Shaders) { try{ shader.Dispose(); }catch{} }
             foreach (ITexture texture in Textures) { try{ texture.Release(); }catch{} }
             foreach (SamplerHolder sampler in Samplers) { try{ sampler.Dispose(); }catch{} }
-            try{ SurfaceApi.DestroySurface(_instance.Instance, _surface, null); }catch{}
-            try{ Api.DestroyDevice(_device, null); }catch{}
-            try{ _debugMessenger.Dispose(); }catch{}
-            try{ _instance.Dispose(); }catch{}
+            try{ if(SurfaceApi!=null) SurfaceApi.DestroySurface(_instance.Instance, _surface, null); }catch{}
+            try{ if(Api!=null) Api.DestroyDevice(_device, null); }catch{}
+            try{ _debugMessenger?.Dispose(); }catch{}
+            try{ _instance?.Dispose(); }catch{}
         }
         public bool PrepareHostMapping(nint address, ulong size) => Capabilities.SupportsHostImportedMemory && HostMemoryAllocator.TryImport(BufferManager.HostImportedBufferMemoryRequirements, BufferManager.DefaultBufferMemoryFlags, address, size);
     }
