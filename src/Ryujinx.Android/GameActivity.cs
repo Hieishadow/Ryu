@@ -2,6 +2,7 @@
 using Android.App;
 using Android.Content.PM;
 using Android.OS;
+using Android.Views; // <--- ISSO CONSERTA O ERRO CS0103 DA SUA PRINT
 using System;
 using System.IO;
 using System.Linq;
@@ -9,7 +10,7 @@ using Path = System.IO.Path;
 using File = System.IO.File;
 using Directory = System.IO.Directory;
 
-namespace DragoNX;
+namespace Ryujinx.Android; // <--- se sua pasta é Ryu/src/Ryujinx.Android/ usa esse, se for DragoNX troca aqui
 
 [Activity(
     Name = "com.ryubing.android.GameActivity",
@@ -44,36 +45,28 @@ public class GameActivity : Activity
             Directory.CreateDirectory(Path.Combine(baseDir, "logs"));
             Directory.CreateDirectory(publicLogDir);
 
-            // Copia keys da pasta Download se não tiver dentro
             var downloadKeys = "/storage/emulated/0/Download/Ryubing/keys/prod.keys";
             if (File.Exists(downloadKeys))
             {
-                // SEM TRAVA: aceita 14612b e 16025b
                 if (!File.Exists(prodKeys) || new FileInfo(downloadKeys).Length!= new FileInfo(prodKeys).Length)
                     File.Copy(downloadKeys, prodKeys, true);
             }
 
-            // FIX VFS - CRITICO pra não dar crash no System.sav
+            // FIX VFS - CRITICO
             var admType = AppDomain.CurrentDomain.GetAssemblies()
-               .SelectMany(a => { try { return a.GetTypes(); } catch { return new Type[0]; } })
-               .FirstOrDefault(t => t.Name == "AppDataManager");
+              .SelectMany(a => { try { return a.GetTypes(); } catch { return new Type[0]; } })
+              .FirstOrDefault(t => t.Name == "AppDataManager");
             admType?.GetProperty("BaseDirPath")?.SetValue(null, baseDir);
 
             long len = File.Exists(prodKeys)? new FileInfo(prodKeys).Length : 0;
+            try{ File.AppendAllText(publicLogFile, $"{DateTime.Now:HH:mm:ss} {Path.GetFileName(romPath)} Keys={len}b\n"); }catch{}
 
-            // Log só em arquivo público + logcat, NADA NA TELA
-            File.AppendAllText(publicLogFile, $"{DateTime.Now:HH:mm:ss} JOGAR {Path.GetFileName(romPath)} Keys={len}b Base={baseDir}\n");
-            Android.Util.Log.Info("Ryubing", $"ROM={romPath} Base={baseDir} Keys={len}b");
+            // TELA PRETA - SEM AQUELE TEXTO DA SUA OUTRA PRINT
+            SetContentView(new View(this){ Background = new Android.Graphics.Drawables.ColorDrawable(Android.Graphics.Color.Black) });
 
-            // TELA PRETA LIMPA - CONSERTO DA SUA PRINT
-            var blackView = new Android.Views.View(this);
-            blackView.SetBackgroundColor(Android.Graphics.Color.Black);
-            SetContentView(blackView);
-
-            // INICIA O RYUJINX DE VERDADE - tenta achar a classe automaticamente
             var entryType = AppDomain.CurrentDomain.GetAssemblies()
-               .SelectMany(a => { try { return a.GetTypes(); } catch { return new Type[0]; } })
-               .FirstOrDefault(t => t.Name.Contains("RyujinxAndroid") || t.Name.Contains("GameHost") || t.Name.Contains("AndroidEntry"));
+              .SelectMany(a => { try { return a.GetTypes(); } catch { return new Type[0]; } })
+              .FirstOrDefault(t => t.Name.Contains("RyujinxAndroid") || t.Name.Contains("GameHost") || t.Name.Contains("AndroidEntry"));
 
             if (entryType!= null)
             {
@@ -85,7 +78,6 @@ public class GameActivity : Activity
                     return;
                 }
             }
-            // Se não achou, deixa preto e não fecha - Ryujinx deve iniciar por outro lado
         }
         catch (Exception ex)
         {
