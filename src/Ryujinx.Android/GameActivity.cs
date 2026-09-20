@@ -16,42 +16,31 @@ public class GameActivity : Activity
     string romPath=""; SurfaceView surfaceView; TextView logView;
     [DllImport("android")] static extern IntPtr ANativeWindow_fromSurface(IntPtr env, IntPtr surface);
     [DllImport("android")] static extern void ANativeWindow_release(IntPtr window);
-    void MyLog(string s){ try{ RunOnUiThread(()=>{ if(logView!=null){ logView.Text+= "\n"+s; if(logView.Text.Length>5000) logView.Text=logView.Text.Substring(logView.Text.Length-5000);} }); try{ var p="/storage/emulated/0/Download/Ryubing/ryubing_log.txt"; Directory.CreateDirectory(Path.GetDirectoryName(p)); File.AppendAllText(p, DateTime.Now+": "+s+" [tid="+SysEnv.CurrentManagedThreadId+"]\n"); }catch{} }catch{} }
-
+    void MyLog(string s){ try{ RunOnUiThread(()=>{ if(logView!=null){ logView.Text+= "\n"+s; if(logView.Text.Length>6000) logView.Text=logView.Text.Substring(logView.Text.Length-6000);} }); try{ var p="/storage/emulated/0/Download/Ryubing/ryubing_log.txt"; Directory.CreateDirectory(Path.GetDirectoryName(p)); File.AppendAllText(p, DateTime.Now+": "+s+" [tid="+SysEnv.CurrentManagedThreadId+"]\n"); }catch{} }catch{} }
     protected override void OnCreate(Bundle saved){
         base.OnCreate(saved);
         if(Holder.device!=null || Holder.emuThread!=null){
-            MyLog($"OnCreate detectou holder antigo dev={Holder.device?.GetHashCode()} thr={Holder.emuThread?.ManagedThreadId}");
-            bool ended=false;
-            try{ Holder.running=false; if(Holder.emuThread!=null) ended=Holder.emuThread.Join(5000); }catch{ ended=false; }
-            if(!ended && Holder.emuThread!=null && Holder.emuThread.IsAlive){
-                MyLog("WARNING thread antiga NAO terminou - NAO vou destruir Vulkan agora");
-            }else{
-                MyLog("Holder antigo terminou - destruindo");
-                try{ Holder.device?.Dispose(); MyLog("Dispose old device OK"); }catch(Exception e1){ MyLog("Dispose old device ERR "+e1); }
-                try{ if(Holder.gpu is IDisposable d){ d.Dispose(); MyLog("Dispose old gpu OK"); } }catch(Exception e2){ MyLog("Dispose old gpu ERR "+e2); }
-                if(Holder.nativeWindow!=IntPtr.Zero){ try{ ANativeWindow_release(Holder.nativeWindow); }catch{} Holder.nativeWindow=IntPtr.Zero; }
-                Holder.device=null; Holder.gpu=null; Holder.emuThread=null; Holder.nativeWindow=IntPtr.Zero;
-            }
+            MyLog($"OnCreate detectou holder antigo dev={Holder.device?.GetHashCode()} thr={Holder.emuThread?.ManagedThreadId} alive={Holder.emuThread?.IsAlive}");
+            bool ended=false; try{ Holder.running=false; if(Holder.emuThread!=null) ended=Holder.emuThread.Join(5000); }catch{ ended=false; }
+            if(!ended && Holder.emuThread!=null && Holder.emuThread.IsAlive){ MyLog("WARNING thread antiga NAO terminou - NAO destruir Vulkan"); }
+            else{ try{ Holder.device?.Dispose(); }catch(Exception e1){ MyLog("Dispose old dev ERR "+e1); } try{ if(Holder.gpu is IDisposable d) d.Dispose(); }catch(Exception e2){ MyLog("Dispose old gpu ERR "+e2); } if(Holder.nativeWindow!=IntPtr.Zero){ try{ ANativeWindow_release(Holder.nativeWindow); }catch{} Holder.nativeWindow=IntPtr.Zero; } Holder.device=null; Holder.gpu=null; Holder.emuThread=null; }
         }
         if(Window!=null) Window.AddFlags(WindowManagerFlags.Fullscreen|WindowManagerFlags.KeepScreenOn);
         var extraPath=Intent.GetStringExtra("rom_path"); if(extraPath!=null) romPath=extraPath;
         if(romPath.Length==0){ var d="/storage/emulated/0/Download/Ryubing/games"; if(Directory.Exists(d)) foreach(var f in Directory.EnumerateFiles(d,"*.*",SearchOption.AllDirectories)) if(f.EndsWith(".nsp",StringComparison.OrdinalIgnoreCase)||f.EndsWith(".xci",StringComparison.OrdinalIgnoreCase)){ romPath=f; break; } }
         surfaceView=new SurfaceView(this); logView=new TextView(this); logView.Text=Path.GetFileName(romPath); logView.SetTextColor(global::Android.Graphics.Color.White); logView.SetBackgroundColor(global::Android.Graphics.Color.Argb(180,0,0,0)); logView.TextSize=9;
         var root=new FrameLayout(this); root.AddView(surfaceView,new FrameLayout.LayoutParams(-1,-1)); root.AddView(logView,new FrameLayout.LayoutParams(-1,-2){ Gravity=GravityFlags.Top|GravityFlags.Left }); SetContentView(root);
-        surfaceView.Holder.AddCallback(new CB(this)); MyLog($"OnCreate {romPath} mainTid={SysEnv.CurrentManagedThreadId}");
+        surfaceView.Holder.AddCallback(new CB(this)); MyLog($"OnCreate {romPath}");
     }
     public override void OnBackPressed(){ MyLog("OnBackPressed"); Holder.running=false; try{ Holder.emuThread?.Join(3000); }catch{} base.OnBackPressed(); }
-
     class CB : Java.Lang.Object, ISurfaceHolderCallback{
         readonly GameActivity a; public CB(GameActivity act){ a=act; }
-        public void SurfaceCreated(ISurfaceHolder h){ var r=h.SurfaceFrame; if(r.Width()<=0) return; if(Holder.emuThread!=null && Holder.emuThread.IsAlive){ a.MyLog($"SurfaceCreated ignorando thread viva {Holder.emuThread.ManagedThreadId}"); return; } a.MyLog($"Surface {r.Width()}x{r.Height()} tid={SysEnv.CurrentManagedThreadId}"); try{ Holder.nativeWindow=ANativeWindow_fromSurface(global::Android.Runtime.JNIEnv.Handle,h.Surface.Handle); }catch(Exception e3){ a.MyLog("ANW fail "+e3.Message); return; } Holder.running=true; Holder.emuThread=new Thread(a.Emu){ IsBackground=true }; Holder.emuThread.Start(); }
+        public void SurfaceCreated(ISurfaceHolder h){ var r=h.SurfaceFrame; if(r.Width()<=0) return; if(Holder.emuThread!=null && Holder.emuThread.IsAlive){ a.MyLog("SurfaceCreated ignorando thread viva"); return; } a.MyLog($"Surface {r.Width()}x{r.Height()}"); try{ Holder.nativeWindow=ANativeWindow_fromSurface(global::Android.Runtime.JNIEnv.Handle,h.Surface.Handle); }catch(Exception e3){ a.MyLog("ANW fail "+e3.Message); return; } Holder.running=true; Holder.emuThread=new Thread(a.Emu){ IsBackground=true }; Holder.emuThread.Start(); }
         public void SurfaceChanged(ISurfaceHolder h,AFormat f,int w,int ht){}
-        public void SurfaceDestroyed(ISurfaceHolder h){ a.MyLog("SurfaceDestroyed START"); Holder.running=false; if(Holder.emuThread!=null){ a.MyLog($"Waiting EmuThread {Holder.emuThread.ManagedThreadId}"); bool ended=false; try{ ended=Holder.emuThread.Join(5000); }catch{} if(!ended){ a.MyLog("WARNING EmuThread NAO TERMINOU - leak proposital"); return; } a.MyLog("EmuThread terminou OK"); } try{ a.MyLog($"DISPOSE hash={Holder.device?.GetHashCode()} isDisp={Holder.gpu is IDisposable}"); Holder.device?.Dispose(); a.MyLog("Dispose device OK"); }catch(Exception e4){ a.MyLog("Dispose device ERR "+e4); } Holder.device=null; try{ if(Holder.gpu is IDisposable d){ d.Dispose(); a.MyLog("Dispose gpu OK"); } }catch(Exception e5){ a.MyLog("Dispose gpu ERR "+e5); } Holder.gpu=null; if(Holder.nativeWindow!=IntPtr.Zero){ try{ ANativeWindow_release(Holder.nativeWindow); a.MyLog("ANW release OK"); }catch{} Holder.nativeWindow=IntPtr.Zero; } a.MyLog("SurfaceDestroyed END"); }
+        public void SurfaceDestroyed(ISurfaceHolder h){ a.MyLog("SurfaceDestroyed START"); Holder.running=false; if(Holder.emuThread!=null){ bool ended=false; try{ ended=Holder.emuThread.Join(5000); }catch{} if(!ended){ a.MyLog("WARNING EmuThread NAO TERMINOU - leak proposital"); return; } } try{ Holder.device?.Dispose(); }catch(Exception e4){ a.MyLog("Dispose ERR "+e4); } Holder.device=null; try{ if(Holder.gpu is IDisposable d) d.Dispose(); }catch{} Holder.gpu=null; if(Holder.nativeWindow!=IntPtr.Zero){ try{ ANativeWindow_release(Holder.nativeWindow); }catch{} Holder.nativeWindow=IntPtr.Zero; } a.MyLog("SurfaceDestroyed END"); }
     }
     class DummyUIProxy : DispatchProxy { protected override object Invoke(MethodInfo m, object[] a){ var rt=m.ReturnType; if(rt==typeof(void)) return null; if(rt==typeof(bool)) return true; if(rt.IsValueType) return Activator.CreateInstance(rt); if(a!=null) for(int i=0;i<a.Length;i++) if(m.GetParameters()[i].IsOut) a[i]=null; return null; } }
     static IHostUIHandler CreateDummyUI() => DispatchProxy.Create<IHostUIHandler, DummyUIProxy>();
-
     void Emu(){
         int tid=SysEnv.CurrentManagedThreadId; MyLog($"Emu THREAD START id={tid}");
         try{
@@ -62,26 +51,25 @@ public class GameActivity : Activity
             var audio=new DummyHardwareDeviceDriver();
             Holder.gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)Holder.nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
             MyLog("Vulkan OK"); var conf=BuildHle(vfs,Holder.gpu,audio,baseDir,Path.Combine(baseDir,"system"));
-            Holder.device=new Switch(conf); MyLog($"SWITCH CREATED hash={Holder.device.GetHashCode()} tid={tid}");
+            Holder.device=new Switch(conf); MyLog($"SWITCH CREATED hash={Holder.device.GetHashCode()}");
             MyLog($"Load {Path.GetFileName(romPath)}"); if(romPath.EndsWith(".xci",StringComparison.OrdinalIgnoreCase)) Holder.device.LoadXci(romPath); else Holder.device.LoadNsp(romPath); MyLog("Load END");
-            try{ var winProp=Holder.gpu.GetType().GetProperty("Window",All); var win=winProp?.GetValue(Holder.gpu); win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{1280,720}); MyLog("Window SetSize OK"); }catch(Exception e6){ MyLog("SetSize fail "+e6.Message); }
+            try{ var winProp=Holder.gpu.GetType().GetProperty("Window",All); var win=winProp?.GetValue(Holder.gpu); win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{1280,720}); }catch{}
             MyLog("LOOP RENDER ON"); int frames=0; long last=SysEnv.TickCount64;
             while(Holder.running && Holder.nativeWindow!=IntPtr.Zero){
                 try{
                     MyLog($"Frame {frames} Process START");
-                    Holder.device.ProcessFrame();
+                    bool procDone=false; var pw=new Thread(()=>{ Thread.Sleep(4000); if(!procDone) MyLog($"Frame {frames} Process WATCHDOG 4s BLOQUEADO"); }){ IsBackground=true }; pw.Start();
+                    try{ Holder.device.ProcessFrame(); procDone=true; }catch(Exception eP){ procDone=true; MyLog($"Process EX f={frames} {eP}"); throw; }
                     MyLog($"Frame {frames} Process END");
                     MyLog($"Frame {frames} Present START");
-                    bool presentFinished=false;
-                    var watchdog=new Thread(()=>{ Thread.Sleep(4000); if(!presentFinished) MyLog($"Frame {frames} Present WATCHDOG 4s BLOQUEADO"); }){ IsBackground=true };
-                    watchdog.Start();
-                    try{ Holder.device.PresentFrame(()=>{}); presentFinished=true; }catch(Exception e7){ presentFinished=true; MyLog($"Present EX f={frames} {e7}"); throw; }
+                    bool presDone=false; var vw=new Thread(()=>{ Thread.Sleep(4000); if(!presDone) MyLog($"Frame {frames} Present WATCHDOG 4s BLOQUEADO"); }){ IsBackground=true }; vw.Start();
+                    try{ Holder.device.PresentFrame(()=>{}); presDone=true; }catch(Exception eR){ presDone=true; MyLog($"Present EX f={frames} {eR}"); throw; }
                     MyLog($"Frame {frames} Present END");
                     frames++; if(SysEnv.TickCount64-last>1000){ MyLog($"RODANDO frames={frames}"); last=SysEnv.TickCount64; }
-                }catch(Exception e8){ MyLog($"LOOP EX f={frames} {e8}"); break; }
+                }catch(Exception eLoop){ MyLog($"LOOP EX f={frames} {eLoop}"); break; }
             }
-            MyLog($"LOOP SAIU f={frames} tid={tid}");
-        }catch(Exception e9){ MyLog($"CRASH tid={tid} {e9}"); } finally{ MyLog($"Emu THREAD END id={tid}"); }
+            MyLog($"LOOP SAIU f={frames}");
+        }catch(Exception eAll){ MyLog($"CRASH {eAll}"); } finally{ MyLog($"Emu THREAD END id={tid}"); }
     }
     unsafe delegate Silk.NET.Vulkan.Result CDel(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
     HleConfiguration BuildHle(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio, string baseDir, string sysDir){
