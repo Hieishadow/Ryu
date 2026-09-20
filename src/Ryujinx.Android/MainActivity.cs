@@ -14,7 +14,7 @@ using Path = System.IO.Path;
 using File = System.IO.File;
 using Directory = System.IO.Directory;
 
-namespace DragoNX;
+namespace Ryujinx.Android;
 
 [Activity(
     Name = "com.ryubing.android.MainActivity",
@@ -44,10 +44,10 @@ public class MainActivity : Activity
         layout = new LinearLayout(this);
         layout.Orientation = Orientation.Vertical;
         layout.SetGravity(GravityFlags.Center);
-        layout.SetBackgroundColor(Android.Graphics.Color.Black);
+        layout.SetBackgroundColor(global::Android.Graphics.Color.Black);
         layout.SetPadding(40, 20, 40, 20);
         var title = new TextView(this) { Text = "Ryubing - S20 FE Edition" };
-        title.SetTextColor(Android.Graphics.Color.White);
+        title.SetTextColor(global::Android.Graphics.Color.White);
         title.TextSize = 20; title.Gravity = GravityFlags.Center;
         layout.AddView(title);
         var info = new TextView(this){ Gravity = GravityFlags.Center, TextSize = 11f };
@@ -61,7 +61,7 @@ public class MainActivity : Activity
         btnScan.Click += (s, e) => ScanGames();
         topRow.AddView(btnScan);
         var btnImport = new Button(this) { Text = "Importar Keys" };
-        btnImport.SetBackgroundColor(Android.Graphics.Color.Yellow);
+        btnImport.SetBackgroundColor(global::Android.Graphics.Color.Yellow);
         btnImport.Click += (s,e)=>{
             var intent = new Intent(Intent.ActionOpenDocument);
             intent.AddCategory(Intent.CategoryOpenable);
@@ -71,7 +71,7 @@ public class MainActivity : Activity
         };
         topRow.AddView(btnImport);
         btnJogar = new Button(this) { Text = "JOGAR" };
-        btnJogar.SetBackgroundColor(Android.Graphics.Color.Green);
+        btnJogar.SetBackgroundColor(global::Android.Graphics.Color.Green);
         btnJogar.Enabled = false;
         btnJogar.Click += (s, e) =>
         {
@@ -83,8 +83,7 @@ public class MainActivity : Activity
             if(!File.Exists(internalProd) && !File.Exists(internalProd2) && !File.Exists(Path.Combine(KeysPath,"prod.keys"))){
                 Toast.MakeText(this, "prod.keys faltando - usa Importar Keys", ToastLength.Long).Show(); return;
             }
-            // TRAVA REMOVIDA AQUI - nao checa mais tamanho
-            var intentGame = new Intent(this, typeof(GameActivity));
+            var intentGame = new Intent(this, typeof(global::Ryujinx.Android.GameActivity));
             intentGame.PutExtra("rom_path", selectedRom);
             StartActivity(intentGame);
         };
@@ -93,7 +92,7 @@ public class MainActivity : Activity
         SetContentView(layout);
     }
 
-    string GetFileNameFromUri(Android.Net.Uri uri){
+    string GetFileNameFromUri(global::Android.Net.Uri uri){
         try{
             using(var c = ContentResolver.Query(uri, null, null, null, null)){
                 if(c!=null && c.MoveToFirst()){
@@ -125,7 +124,6 @@ public class MainActivity : Activity
                     using(var ms = new MemoryStream()){
                         input.CopyTo(ms);
                         var bytes = ms.ToArray();
-                        // TRAVA REMOVIDA AQUI - ACEITA 14612b e 16025b
                         File.WriteAllBytes(Path.Combine(keysDir, targetName), bytes);
                         File.WriteAllBytes(Path.Combine(sysKeysDir, targetName), bytes);
                         File.WriteAllBytes(Path.Combine(KeysPath, targetName), bytes);
@@ -170,7 +168,6 @@ public class MainActivity : Activity
             foreach (var k in new[] { "prod.keys", "title.keys" }){
                 var src = Path.Combine(KeysPath, k);
                 if (!File.Exists(src)) continue;
-                // TRAVA REMOVIDA AQUI TAMBEM
                 try{
                     File.Copy(src, Path.Combine(keysDir, k), true);
                     File.Copy(src, Path.Combine(sysKeysDir, k), true);
@@ -181,7 +178,7 @@ public class MainActivity : Activity
                 admType?.GetProperty("BaseDirPath")?.SetValue(null, baseDir);
             }catch{}
         }catch(Exception ex){
-            Android.Util.Log.Error("Ryubing", "EnsureDirectories: " + ex.Message);
+            global::Android.Util.Log.Error("Ryubing", "EnsureDirectories: " + ex.Message);
         }
     }
 
@@ -194,14 +191,14 @@ public class MainActivity : Activity
         var titleInt = new FileInfo(Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "keys", "title.keys"));
         if(!prodInt.Exists && !prodExt.Exists){
             info.Text = "keys NAO encontradas - usa Importar Keys";
-            info.SetTextColor(Android.Graphics.Color.Red);
+            info.SetTextColor(global::Android.Graphics.Color.Red);
         }else{
             string txt = "";
             if(prodInt.Exists) txt += $"interno {prodInt.Length}b ";
             if(prodExt.Exists) txt += $"ext {prodExt.Length}b ";
             txt += titleInt.Exists ? $"| title {titleInt.Length}b" : "| title FALTA";
             info.Text = txt;
-            info.SetTextColor(Android.Graphics.Color.Green); // SEMPRE VERDE AGORA
+            info.SetTextColor(global::Android.Graphics.Color.Green);
         }
     }
 
@@ -230,14 +227,14 @@ public class MainActivity : Activity
                 .Where(f => f.EndsWith(".nsp", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".xci", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".nsz", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".xcz", StringComparison.OrdinalIgnoreCase))
                 .OrderBy(f => f).Take(100).ToList();
             if (allFiles.Count == 0){
-                var empty = new TextView(this) { Text = "Nenhum jogo em " + GamesPath }; empty.SetTextColor(Android.Graphics.Color.Red); empty.Gravity = GravityFlags.Center;
+                var empty = new TextView(this) { Text = "Nenhum jogo em " + GamesPath }; empty.SetTextColor(global::Android.Graphics.Color.Red); empty.Gravity = GravityFlags.Center;
                 layout.AddView(empty); return;
             }
             foreach (var romPath in allFiles){
                 var row = new LinearLayout(this){ Orientation = Orientation.Horizontal }; row.SetGravity(GravityFlags.CenterVertical); row.SetPadding(10,8,10,8);
                 var fi = new FileInfo(romPath);
                 var name = new TextView(this) { Text = Path.GetFileName(romPath) + $" [{fi.Length/1024/1024}MB]" };
-                name.SetTextColor(Android.Graphics.Color.White); name.TextSize = 11;
+                name.SetTextColor(global::Android.Graphics.Color.White); name.TextSize = 11;
                 name.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
                 row.AddView(name);
                 var localPath = romPath;
@@ -252,7 +249,7 @@ public class MainActivity : Activity
                 container.AddView(row);
             }
         }catch(Exception ex){
-            var err = new TextView(this) { Text = "Erro scan: " + ex.Message }; err.SetTextColor(Android.Graphics.Color.Red); container.AddView(err);
+            var err = new TextView(this) { Text = "Erro scan: " + ex.Message }; err.SetTextColor(global::Android.Graphics.Color.Red); container.AddView(err);
         }
         layout.AddView(container);
     }
