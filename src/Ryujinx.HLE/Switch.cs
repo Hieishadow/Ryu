@@ -43,10 +43,15 @@ namespace Ryujinx.HLE
         public bool IsFrameAvailable => Gpu.Window.IsFrameAvailable;
         public DirtyHacks DirtyHacks { get; }
 
+        private int _frameCount = 0;
+
         private static void DebugLog(string message)
         {
-            Console.WriteLine($"[SWITCH] {message}");
-            try{ File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [SWITCH] {message}\n"); }catch{}
+            try{
+                var p = "/storage/emulated/0/Download/Ryubing/ryubing_log.txt";
+                Directory.CreateDirectory(Path.GetDirectoryName(p)!);
+                File.AppendAllText(p, $"{DateTime.Now:HH:mm:ss.fff} [SWITCH] {message}\n");
+            }catch{}
         }
 
         public Switch(HleConfiguration configuration)
@@ -62,13 +67,12 @@ namespace Ryujinx.HLE
                 UIHandler = Configuration.HostUIHandler;
                 
                 MemoryAllocationFlags memoryAllocationFlags = MemoryAllocationFlags.Reserve;
-                DebugLog("MemoryAllocationFlags = Reserve ONLY (forced for Android)");
+                DebugLog($"MemoryAllocationFlags = Reserve ONLY (forced for Android) Size={configuration.MemoryConfiguration.DramSize}");
 
                 DirtyHacks = new DirtyHacks(Configuration.Hacks);
                 AudioDeviceDriver = new CompatLayerHardwareDeviceDriver(Configuration.AudioDeviceDriver);
-                DebugLog("new MemoryBlock " + Configuration.MemoryConfiguration.DramSize);
                 Memory = new MemoryBlock(Configuration.MemoryConfiguration.DramSize, memoryAllocationFlags);
-                DebugLog("Memory OK Size=" + Memory.Size);
+                DebugLog($"Memory OK Size={Memory.Size} Ptr=0x{Memory.Pointer:X}");
                 Gpu = new GpuContext(Configuration.GpuRenderer, DirtyHacks);
                 Debugger = Configuration.EnableGdbStub ? new Debugger.Debugger(this, Configuration.GdbStubPort) : null;
                 System = new HOS.Horizon(this);
@@ -94,24 +98,26 @@ namespace Ryujinx.HLE
                 Shared = this;
                 DebugLog("ctor END OK");
             }catch(Exception ex){
-                DebugLog("CTOR CRASH: " + ex.ToString());
+                DebugLog($"CTOR CRASH: {ex}");
                 throw;
             }
         }
 
         public void ProcessFrame()
         {
-            DebugLog("PF-> ProcessShaderCacheQueue START");
-            Gpu.ProcessShaderCacheQueue();
-            DebugLog("PF-> ProcessShaderCacheQueue END");
+            _frameCount++;
+            bool logThis = _frameCount % 60 == 1;
 
-            DebugLog("PF-> PreFrame START");
-            Gpu.Renderer.PreFrame();
-            DebugLog("PF-> PreFrame END");
-
-            DebugLog("PF-> DispatchCalls START");
-            Gpu.GPFifo.DispatchCalls();
-            DebugLog("PF-> DispatchCalls END");
+            if(logThis) DebugLog($"PF-> DispatchCalls START f={_frameCount}");
+            try{
+                Gpu.ProcessShaderCacheQueue();
+                Gpu.Renderer.PreFrame();
+                Gpu.GPFifo.DispatchCalls();
+            }catch(Exception ex){
+                DebugLog($"PF CRASH f={_frameCount} {ex}");
+                throw;
+            }
+            if(logThis) DebugLog($"PF-> DispatchCalls END f={_frameCount}");
         }
 
         public int IncrementCustomVSyncInterval(){ CustomVSyncInterval+=1; UpdateVSyncInterval(); return CustomVSyncInterval; }
