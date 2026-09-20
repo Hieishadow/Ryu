@@ -6,6 +6,7 @@ using Ryujinx.HLE.HOS.Services.Account.Acc; using Ryujinx.Graphics.Vulkan; using
 using Ryujinx.Audio.Integration; using Silk.NET.Vulkan; using System; using System.Collections.Concurrent;
 using System.IO; using System.Linq; using System.Reflection; using System.Runtime.InteropServices; using System.Threading;
 using SysEnv = System.Environment; using Switch = Ryujinx.HLE.Switch;
+using AndEnv = Android.OS.Environment;
 
 namespace Ryujinx.Android;
 [Activity(Name="com.ryubing.android.GameActivity", Theme="@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation=ScreenOrientation.Landscape, ConfigurationChanges=ConfigChanges.Orientation|ConfigChanges.ScreenSize|ConfigChanges.ScreenLayout|ConfigChanges.KeyboardHidden, Exported=false)]
@@ -53,27 +54,26 @@ public class GameActivity : Activity
         MyLog($"Load {Path.GetFileName(romPath)} {new FileInfo(romPath).Length}");
         if(romPath.EndsWith(".xci", StringComparison.OrdinalIgnoreCase)) device.LoadXci(romPath); else device.LoadNsp(romPath);
         MyLog("Load retornou OK");
-        MyLog("LOOP ENTER");
+        MyLog("LOOP ENTER - RENDER ON");
         int frames=0;
-        long lastLog = Environment.TickCount;
+        long lastTick = SysEnv.TickCount64;
         while(running && nativeWindow!=IntPtr.Zero){
             try{
                 device.ProcessFrame();
                 device.PresentFrame(()=>{});
                 frames++;
                 if(frames==1) MyLog("Primeiro frame OK!");
-                if(Environment.TickCount - lastLog > 1000){
+                if(SysEnv.TickCount64 - lastTick > 1000){
                     MyLog($"frames {frames} - RODANDO");
-                    lastLog = Environment.TickCount;
+                    lastTick = SysEnv.TickCount64;
                 }
             }catch(Exception exL){
-                MyLog($"ITER ERRO (nao fecha): {exL.Message} {exL.InnerException?.Message}");
+                MyLog($"ITER ERRO: {exL.Message}");
                 Thread.Sleep(16);
             }
-            Thread.Sleep(1);
         }
-        MyLog($"Fim loop frames={frames} running={running} win={nativeWindow}");
-    }catch(Exception ex){ MyLog($"Emu CRASH FATAL: {ex}"); Thread.Sleep(5000); } }
+        MyLog($"Fim loop frames={frames}");
+    }catch(Exception ex){ MyLog($"Emu CRASH: {ex}"); } }
 
     unsafe delegate Silk.NET.Vulkan.Result CDel(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
 
