@@ -17,10 +17,11 @@ public class RyubingDocumentsProvider : DocumentsProvider
     public override ICursor QueryRoots(string[] projection)
     {
         var c = new MatrixCursor(projection?? new[]{"root_id","flags","title","document_id","available_bytes"});
-        // NET10: não usa mais FlagSupportsRecents obsoleto, usa RootFlags direto
         var row = c.NewRow();
+        // NET10: usar int direto, não RootFlags
+        int flags = (int)(DocumentsContract.Root.FlagLocalOnly | DocumentsContract.Root.FlagSupportsRecents | DocumentsContract.Root.FlagSupportsIsChild);
         row.Add("ryubing_root");
-        row.Add((int)(RootFlags.SupportsRecents | RootFlags.LocalOnly | RootFlags.SupportsIsChild));
+        row.Add(flags);
         row.Add("Ryubing");
         row.Add("ryubing:/");
         row.Add(10000000000L);
@@ -33,10 +34,11 @@ public class RyubingDocumentsProvider : DocumentsProvider
         string path = DocIdToPath(docId);
         bool isDir = Directory.Exists(path);
         var row = c.NewRow();
+        int flags = (int)(DocumentsContract.Document.FlagSupportsWrite | DocumentsContract.Document.FlagSupportsDelete);
         row.Add(docId);
         row.Add(isDir? DocumentsContract.Document.MimeTypeDir : "application/octet-stream");
         row.Add(isDir? new DirectoryInfo(path).Name : Path.GetFileName(path));
-        row.Add((int)(DocumentFlags.SupportsWrite | DocumentFlags.SupportsDelete));
+        row.Add(flags);
         row.Add(isDir? 0L : (File.Exists(path)? new FileInfo(path).Length : 0L));
         row.Add(Java.Lang.JavaSystem.CurrentTimeMillis());
         return c;
@@ -47,7 +49,6 @@ public class RyubingDocumentsProvider : DocumentsProvider
         var c = new MatrixCursor(projection?? new[]{"document_id","mime_type","display_name","size","last_modified"});
         string parentPath = DocIdToPath(parentDocId);
         if(!Directory.Exists(parentPath)) return c;
-
         foreach(var d in Directory.GetDirectories(parentPath)){
             var r = c.NewRow();
             r.Add("ryubing:"+d);
