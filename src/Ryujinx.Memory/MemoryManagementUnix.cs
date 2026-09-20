@@ -45,7 +45,6 @@ namespace Ryujinx.Memory
             else flags |= MmapFlags.MAP_PRIVATE;
             if (prot == MmapProts.PROT_NONE) flags |= MmapFlags.MAP_NORESERVE;
 
-            // S20 FE FIX #494: força RWX se for JIT no Android
             if (OperatingSystem.IsAndroid() && forJit)
             {
                 prot |= MmapProts.PROT_EXEC;
@@ -67,12 +66,16 @@ namespace Ryujinx.Memory
         public static void Commit(nint address, ulong size, bool forJit)
         {
             Log($"Commit addr=0x{address:X} size={size} ({size/1024/1024}MB) forJit={forJit}");
-            MmapProts prot = MmapProts.PROT_READ | MmapProts.PROT_WRITE | MmapProts.PROT_EXEC;
+            
+            // FIX S20 FE #495: só pede EXEC se for JIT, senão RW puro
+            MmapProts prot = forJit 
+                ? MmapProts.PROT_READ | MmapProts.PROT_WRITE | MmapProts.PROT_EXEC
+                : MmapProts.PROT_READ | MmapProts.PROT_WRITE;
 
             int result = mprotect(address, size, prot);
             if (result != 0)
             {
-                Log($"mprotect FAIL {Marshal.GetLastPInvokeErrorMessage()} -> MAP_FIXED RWX");
+                Log($"mprotect FAIL {Marshal.GetLastPInvokeErrorMessage()} -> MAP_FIXED {prot}");
                 nint mapped = Mmap(address, size, prot, MmapFlags.MAP_FIXED | MmapFlags.MAP_PRIVATE | MmapFlags.MAP_ANONYMOUS, -1, 0);
                 if (mapped == MAP_FAILED)
                 {
