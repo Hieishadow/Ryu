@@ -21,7 +21,16 @@ namespace Ryujinx.Memory
             }catch{}
         }
 
-        public static nint Allocate(ulong size, bool forJit) => AllocateInternal(size, MmapProts.PROT_READ | MmapProts.PROT_WRITE, forJit);
+        public static nint Allocate(ulong size, bool forJit)
+        {
+            MmapProts prot = MmapProts.PROT_READ | MmapProts.PROT_WRITE;
+            if (OperatingSystem.IsAndroid() && forJit)
+            {
+                prot |= MmapProts.PROT_EXEC;
+                Log($"Allocate JIT RWX size={size} ({size/1024/1024}MB) forJit={forJit} prot={prot}");
+            }
+            return AllocateInternal(size, prot, forJit);
+        }
 
         public static nint Reserve(ulong size, bool forJit)
         {
@@ -36,6 +45,12 @@ namespace Ryujinx.Memory
             else flags |= MmapFlags.MAP_PRIVATE;
             if (prot == MmapProts.PROT_NONE) flags |= MmapFlags.MAP_NORESERVE;
 
+            // S20 FE FIX #494: força RWX se for JIT no Android
+            if (OperatingSystem.IsAndroid() && forJit)
+            {
+                prot |= MmapProts.PROT_EXEC;
+            }
+
             if (OperatingSystem.IsMacOS() && OperatingSystem.IsMacOSVersionAtLeast(10, 14) && forJit)
             {
                 flags |= MmapFlags.MAP_JIT_DARWIN;
@@ -45,14 +60,13 @@ namespace Ryujinx.Memory
             nint ptr = Mmap(nint.Zero, size, prot, flags, -1, 0);
             if (ptr == MAP_FAILED) throw new SystemException($"mmap fail size={size} prot={prot} flags={flags} err={Marshal.GetLastPInvokeErrorMessage()}");
             _allocations.TryAdd(ptr, size);
-            Log($"mmap OK ptr=0x{ptr:X} size={size} prot={prot}");
+            Log($"mmap OK ptr=0x{ptr:X} size={size} prot={prot} forJit={forJit}");
             return ptr;
         }
 
         public static void Commit(nint address, ulong size, bool forJit)
         {
             Log($"Commit addr=0x{address:X} size={size} ({size/1024/1024}MB) forJit={forJit}");
-            // S20 FE FIX: no Android tem que ser RWX senão JIT morre com SIGSEGV dentro de InitializeServices
             MmapProts prot = MmapProts.PROT_READ | MmapProts.PROT_WRITE | MmapProts.PROT_EXEC;
 
             int result = mprotect(address, size, prot);
@@ -74,14 +88,13 @@ namespace Ryujinx.Memory
         public static void Decommit(nint address, ulong size)
         {
             Log($"Decommit addr=0x{address:X} size={size}");
-            madvise(address, size, 4); // MADV_DONTNEED
+            madvise(address, size, 4);
             mprotect(address, size, MmapProts.PROT_NONE);
         }
 
         public static bool Reprotect(nint address, ulong size, MemoryPermission permission)
         {
             MmapProts prot = GetProtection(permission);
-            // No S20 FE, se pedir EXEC e falhar, tenta sem EXEC pra não crashar
             if (OperatingSystem.IsAndroid() && prot.HasFlag(MmapProts.PROT_EXEC))
             {
                 if (mprotect(address, size, prot) != 0)
