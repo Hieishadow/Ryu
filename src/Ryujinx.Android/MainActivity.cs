@@ -28,7 +28,6 @@ public class MainActivity : Activity
     const string GamesPath = BasePath + "/games";
     const string KeysPath = BasePath + "/keys";
     const string FirmwarePath = BasePath + "/firmware";
-
     static readonly string[] IgnoredDirs = { ".thumbnails", "System Volume Information", ".trashed", "LOST.DIR", "Android" };
 
     LinearLayout layout;
@@ -49,17 +48,13 @@ public class MainActivity : Activity
 
         var title = new TextView(this) { Text = "Ryubing - S20 FE Edition" };
         title.SetTextColor(Android.Graphics.Color.White);
-        title.TextSize = 20;
-        title.Gravity = GravityFlags.Center;
+        title.TextSize = 20; title.Gravity = GravityFlags.Center;
         layout.AddView(title);
 
-        var info = new TextView(this);
-        info.Gravity = GravityFlags.Center;
-        info.TextSize = 11f;
+        var info = new TextView(this){ Gravity = GravityFlags.Center, TextSize = 11f };
         layout.AddView(info);
 
-        var topRow = new LinearLayout(this);
-        topRow.Orientation = Orientation.Horizontal;
+        var topRow = new LinearLayout(this){ Orientation = Orientation.Horizontal };
         topRow.SetGravity(GravityFlags.Center);
 
         var btnPerm = new Button(this) { Text = "1 - Permissao" };
@@ -70,16 +65,14 @@ public class MainActivity : Activity
         btnScan.Click += (s, e) => ScanGames();
         topRow.AddView(btnScan);
 
-        // NOVO BOTAO - NAO QUEBRA NADA
         var btnImport = new Button(this) { Text = "Importar Keys" };
         btnImport.SetBackgroundColor(Android.Graphics.Color.Yellow);
         btnImport.Click += (s,e)=>{
-            try{
-                var intent = new Intent(Intent.ActionOpenDocument);
-                intent.AddCategory(Intent.CategoryOpenable);
-                intent.SetType("*/*");
-                StartActivityForResult(intent, 1001);
-            }catch(Exception ex){ Toast.MakeText(this, ex.Message, ToastLength.Long).Show(); }
+            var intent = new Intent(Intent.ActionOpenDocument);
+            intent.AddCategory(Intent.CategoryOpenable);
+            intent.SetType("*/*");
+            intent.AddFlags(ActivityFlags.GrantReadUriPermission);
+            StartActivityForResult(intent, 1001);
         };
         topRow.AddView(btnImport);
 
@@ -88,28 +81,23 @@ public class MainActivity : Activity
         btnJogar.Enabled = false;
         btnJogar.Click += (s, e) =>
         {
-            bool empty = string.IsNullOrEmpty(selectedRom);
-            bool exists = false;
-            if(empty==false) exists = File.Exists(selectedRom);
-            if(empty || exists==false)
-            {
-                Toast.MakeText(this, "ROM nao encontrada", ToastLength.Short).Show();
-                return;
+            if(string.IsNullOrEmpty(selectedRom) || !File.Exists(selectedRom)){
+                Toast.MakeText(this, "ROM nao encontrada", ToastLength.Short).Show(); return;
             }
-            // AGORA CHECA INTERNO TAMBEM
             var internalKeys = Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "keys", "prod.keys");
-            var externalProd = Path.Combine(KeysPath, "prod.keys");
-            if(File.Exists(internalKeys)==false && File.Exists(externalProd)==false)
-            {
-                Toast.MakeText(this, "prod.keys faltando - usa Importar Keys", ToastLength.Long).Show();
-                return;
+            var internalKeys2 = Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "system", "keys", "prod.keys");
+            if(!File.Exists(internalKeys) && !File.Exists(internalKeys2) && !File.Exists(Path.Combine(KeysPath,"prod.keys"))){
+                Toast.MakeText(this, "prod.keys faltando - usa Importar Keys", ToastLength.Long).Show(); return;
             }
-            var intent = new Intent(this, typeof(GameActivity));
-            intent.PutExtra("rom_path", selectedRom);
-            StartActivity(intent);
+            var fi = File.Exists(internalKeys) ? new FileInfo(internalKeys) : (File.Exists(internalKeys2) ? new FileInfo(internalKeys2) : null);
+            if(fi!=null && fi.Length>10000){
+                Toast.MakeText(this, $"prod.keys BINARIO {fi.Length}b! Importe o TXT 5kb", ToastLength.Long).Show(); return;
+            }
+            var intentGame = new Intent(this, typeof(GameActivity));
+            intentGame.PutExtra("rom_path", selectedRom);
+            StartActivity(intentGame);
         };
         topRow.AddView(btnJogar);
-
         layout.AddView(topRow);
         SetContentView(layout);
     }
@@ -117,10 +105,9 @@ public class MainActivity : Activity
     protected override void OnActivityResult(int requestCode, Result result, Intent data)
     {
         base.OnActivityResult(requestCode, result, data);
-        if(requestCode==1001 && result==Result.Ok && data!=null){
+        if(requestCode==1001 && result==Result.Ok && data?.Data!=null){
             try{
                 var uri = data.Data;
-                if(uri==null) return;
                 using(var input = ContentResolver.OpenInputStream(uri)){
                     if(input==null) return;
                     var baseDir = Path.Combine(FilesDir.AbsolutePath, "Ryujinx");
@@ -130,20 +117,17 @@ public class MainActivity : Activity
                     Directory.CreateDirectory(sysKeysDir);
                     Directory.CreateDirectory(KeysPath);
 
-                    string dstInternal1 = Path.Combine(keysDir, "prod.keys");
-                    string dstInternal2 = Path.Combine(sysKeysDir, "prod.keys");
-                    string dstExternal = Path.Combine(KeysPath, "prod.keys");
-
-                    // salva nos 3 lugares
                     using(var ms = new MemoryStream()){
                         input.CopyTo(ms);
                         var bytes = ms.ToArray();
-                        File.WriteAllBytes(dstInternal1, bytes);
-                        File.WriteAllBytes(dstInternal2, bytes);
-                        File.WriteAllBytes(dstExternal, bytes);
-                        long len = bytes.Length;
-                        string msg = len>3000 && len<10000 ? $"TXT OK {len} bytes" : $"BINARIO {len} bytes - precisa TXT 5kb";
-                        Toast.MakeText(this, $"Keys importada: {msg}", ToastLength.Long).Show();
+                        if(bytes.Length > 10000){
+                            Toast.MakeText(this, $"BINARIO {bytes.Length}b BLOQUEADO! Precisa TXT ~5kb", ToastLength.Long).Show();
+                            return;
+                        }
+                        File.WriteAllBytes(Path.Combine(keysDir, "prod.keys"), bytes);
+                        File.WriteAllBytes(Path.Combine(sysKeysDir, "prod.keys"), bytes);
+                        File.WriteAllBytes(Path.Combine(KeysPath, "prod.keys"), bytes);
+                        Toast.MakeText(this, $"Keys TXT OK {bytes.Length} bytes importada!", ToastLength.Long).Show();
                     }
                     UpdateInfo();
                 }
@@ -153,189 +137,114 @@ public class MainActivity : Activity
         }
     }
 
-    protected override void OnResume()
-    {
+    protected override void OnResume(){
         base.OnResume();
-        if (HasAllFilesPermission())
-        {
+        if (HasAllFilesPermission()){
             EnsureDirectories();
             UpdateInfo();
             ScanGames();
-        }
-        else if (permissionRequested==false)
-        {
+        }else if (!permissionRequested){
             permissionRequested = true;
             RequestAllFilesPermission();
-        }
-        else
-        {
-            UpdateInfo();
-        }
+        }else UpdateInfo();
     }
 
-    bool HasAllFilesPermission()
-    {
+    bool HasAllFilesPermission(){
         if (Build.VERSION.SdkInt < BuildVersionCodes.R) return true;
         return global::Android.OS.Environment.IsExternalStorageManager;
     }
 
-    void EnsureDirectories()
-    {
-        try
-        {
+    void EnsureDirectories(){
+        try{
             Directory.CreateDirectory(GamesPath);
             Directory.CreateDirectory(KeysPath);
             Directory.CreateDirectory(FirmwarePath);
-            
             if (FilesDir == null) return;
             var baseDir = Path.Combine(FilesDir.AbsolutePath, "Ryujinx");
             var keysDir = Path.Combine(baseDir, "keys");
             var sysKeysDir = Path.Combine(baseDir, "system", "keys");
             Directory.CreateDirectory(keysDir);
             Directory.CreateDirectory(sysKeysDir);
-
-            foreach (var k in new[] { "prod.keys", "title.keys" })
-            {
+            foreach (var k in new[] { "prod.keys", "title.keys" }){
                 var src = Path.Combine(KeysPath, k);
-                var dst1 = Path.Combine(keysDir, k);
-                var dst2 = Path.Combine(sysKeysDir, k);
-                if (File.Exists(src)) 
-                {
-                    try{
-                        // só copia se for TXT pra não sobrescrever TXT bom com binário 16025
-                        var len = new FileInfo(src).Length;
-                        if(k=="prod.keys" && len>10000) continue;
-                        File.Copy(src, dst1, true);
-                        File.Copy(src, dst2, true);
-                    }catch{}
-                }
+                if (!File.Exists(src)) continue;
+                var len = new FileInfo(src).Length;
+                if(k=="prod.keys" && len>10000) continue;
+                try{
+                    File.Copy(src, Path.Combine(keysDir, k), true);
+                    File.Copy(src, Path.Combine(sysKeysDir, k), true);
+                }catch{}
             }
-        }
-        catch (Exception ex)
-        {
+            try{
+                var admType = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a=>{try{return a.GetTypes();}catch{return new Type[0];}}).FirstOrDefault(t=>t.Name=="AppDataManager");
+                admType?.GetProperty("BaseDirPath")?.SetValue(null, baseDir);
+            }catch{}
+        }catch(Exception ex){
             Android.Util.Log.Error("Ryubing", "EnsureDirectories: " + ex.Message);
         }
     }
 
-    void UpdateInfo()
-    {
+    void UpdateInfo(){
         if (layout.ChildCount < 2) return;
-        var v = layout.GetChildAt(1);
-        var info = v as TextView;
+        var info = layout.GetChildAt(1) as TextView;
         if (info == null) return;
-        var prodExternal = new FileInfo(Path.Combine(KeysPath, "prod.keys"));
-        var prodInternal = new FileInfo(Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "keys", "prod.keys"));
-        var titleKeys = new FileInfo(Path.Combine(KeysPath, "title.keys"));
-        
-        string txt = "";
-        if (prodInternal.Exists) txt += $"interno {prodInternal.Length}b ";
-        if (prodExternal.Exists) txt += $"externo {prodExternal.Length}b | ";
-        if(titleKeys.Exists) txt += "title.keys " + titleKeys.Length + " bytes";
-        else txt += "title.keys FALTANDO";
-
-        if(prodInternal.Exists==false && prodExternal.Exists==false){
+        var prodExt = new FileInfo(Path.Combine(KeysPath, "prod.keys"));
+        var prodInt = new FileInfo(Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "keys", "prod.keys"));
+        if(!prodInt.Exists && !prodExt.Exists){
             info.Text = "keys NAO encontradas - usa Importar Keys";
             info.SetTextColor(Android.Graphics.Color.Red);
         }else{
-            info.Text = txt;
-            bool isTxt = prodInternal.Exists ? prodInternal.Length<10000 : prodExternal.Length<10000;
-            info.SetTextColor(isTxt ? Android.Graphics.Color.Green : Android.Graphics.Color.Yellow);
+            long len = prodInt.Exists ? prodInt.Length : prodExt.Length;
+            info.Text = $"prod.keys {len}b {(len<10000?"TXT OK":"BINARIO ERRADO")} | interno:{prodInt.Exists} ext:{prodExt.Exists}";
+            info.SetTextColor(len<10000 ? Android.Graphics.Color.Green : Android.Graphics.Color.Yellow);
         }
     }
 
-    void RequestAllFilesPermission()
-    {
-        try
-        {
+    void RequestAllFilesPermission(){
+        try{
             var intent = new Intent(global::Android.Provider.Settings.ActionManageAppAllFilesAccessPermission);
             intent.SetData(global::Android.Net.Uri.Parse("package:" + PackageName));
             StartActivity(intent);
-        }
-        catch
-        {
+        }catch{
             StartActivity(new Intent(global::Android.Provider.Settings.ActionManageAllFilesAccessPermission));
         }
     }
 
-    void ScanGames()
-    {
-        if (HasAllFilesPermission()==false)
-        {
-            Toast.MakeText(this, "Concede a permissao primeiro", ToastLength.Long).Show();
-            return;
+    void ScanGames(){
+        if (!HasAllFilesPermission()){
+            Toast.MakeText(this, "Concede a permissao primeiro", ToastLength.Long).Show(); return;
         }
-
-        while (layout.ChildCount > 3)
-            layout.RemoveViewAt(layout.ChildCount - 1);
-
-        selectedRom = "";
-        if (btnJogar != null)
-        {
-            btnJogar.Enabled = false;
-            btnJogar.Text = "JOGAR";
-        }
-
-        var container = new LinearLayout(this);
-        container.Orientation = Orientation.Vertical;
+        while (layout.ChildCount > 3) layout.RemoveViewAt(layout.ChildCount - 1);
+        selectedRom = ""; btnJogar.Enabled = false; btnJogar.Text = "JOGAR";
+        var container = new LinearLayout(this){ Orientation = Orientation.Vertical };
         container.SetGravity(GravityFlags.Center);
-
-        try
-        {
+        try{
             var allFiles = Directory.EnumerateFiles(GamesPath, "*.*", SearchOption.AllDirectories)
-                .Where(f => IgnoredDirs.Any(ig => f.Contains(ig, StringComparison.OrdinalIgnoreCase))==false)
-                .Where(f => f.EndsWith(".nsp", StringComparison.OrdinalIgnoreCase) ||
-                            f.EndsWith(".xci", StringComparison.OrdinalIgnoreCase) ||
-                            f.EndsWith(".nsz", StringComparison.OrdinalIgnoreCase) ||
-                            f.EndsWith(".xcz", StringComparison.OrdinalIgnoreCase))
-                .OrderBy(f => f)
-                .Take(100).ToList();
-
-            if (allFiles.Count == 0)
-            {
-                var empty = new TextView(this) { Text = "Nenhum jogo em " + GamesPath + " (recursivo)" };
-                empty.SetTextColor(Android.Graphics.Color.Red);
-                empty.Gravity = GravityFlags.Center;
-                layout.AddView(empty);
-                return;
+                .Where(f => !IgnoredDirs.Any(ig => f.Contains(ig, StringComparison.OrdinalIgnoreCase)))
+                .Where(f => f.EndsWith(".nsp", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".xci", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".nsz", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".xcz", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(f => f).Take(100).ToList();
+            if (allFiles.Count == 0){
+                var empty = new TextView(this) { Text = "Nenhum jogo em " + GamesPath }; empty.SetTextColor(Android.Graphics.Color.Red); empty.Gravity = GravityFlags.Center;
+                layout.AddView(empty); return;
             }
-
-            foreach (var romPath in allFiles)
-            {
-                var row = new LinearLayout(this);
-                row.Orientation = Orientation.Horizontal;
-                row.SetGravity(GravityFlags.CenterVertical);
-                row.SetPadding(10, 8, 10, 8);
-
+            foreach (var romPath in allFiles){
+                var row = new LinearLayout(this){ Orientation = Orientation.Horizontal }; row.SetGravity(GravityFlags.CenterVertical); row.SetPadding(10,8,10,8);
                 var fi = new FileInfo(romPath);
-                var name = new TextView(this) { Text = Path.GetFileName(romPath) + " [" + (fi.Length / 1024 / 1024) + "MB] [" + Path.GetFileName(Path.GetDirectoryName(romPath)) + "]" };
-                name.SetTextColor(Android.Graphics.Color.White);
-                name.TextSize = 11;
+                var name = new TextView(this) { Text = Path.GetFileName(romPath) + $" [{fi.Length/1024/1024}MB]" };
+                name.SetTextColor(Android.Graphics.Color.White); name.TextSize = 11;
                 name.LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
                 row.AddView(name);
-
                 var localPath = romPath;
                 var btn = new Button(this) { Text = "Selecionar" };
-                btn.Click += (s, e) =>
-                {
-                    selectedRom = localPath;
-                    if (btnJogar != null)
-                    {
-                        btnJogar.Enabled = true;
-                        btnJogar.Text = "JOGAR " + Path.GetFileName(localPath);
-                    }
+                btn.Click += (s, e) =>{
+                    selectedRom = localPath; btnJogar.Enabled = true; btnJogar.Text = "JOGAR " + Path.GetFileName(localPath);
                     Toast.MakeText(this, "Selecionado: " + Path.GetFileName(localPath), ToastLength.Short).Show();
                 };
-                row.AddView(btn);
-                container.AddView(row);
+                row.AddView(btn); container.AddView(row);
             }
+        }catch(Exception ex){
+            var err = new TextView(this) { Text = "Erro scan: " + ex.Message }; err.SetTextColor(Android.Graphics.Color.Red); container.AddView(err);
         }
-        catch (Exception ex)
-        {
-            var err = new TextView(this) { Text = "Erro scan: " + ex.Message };
-            err.SetTextColor(Android.Graphics.Color.Red);
-            container.AddView(err);
-        }
-
         layout.AddView(container);
     }
 }
