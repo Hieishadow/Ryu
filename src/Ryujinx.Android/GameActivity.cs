@@ -27,7 +27,6 @@ public class GameActivity : Activity
         }
         if(Window!=null) Window.AddFlags(WindowManagerFlags.Fullscreen|WindowManagerFlags.KeepScreenOn);
         var extraPath=Intent.GetStringExtra("rom_path"); if(extraPath!=null) romPath=extraPath;
-        if(romPath.Length==0){ var d="/storage/emulated/0/Download/Ryubing/games"; if(Directory.Exists(d)) foreach(var f in Directory.EnumerateFiles(d,"*.*",SearchOption.AllDirectories)) if(f.EndsWith(".nsp",StringComparison.OrdinalIgnoreCase)||f.EndsWith(".xci",StringComparison.OrdinalIgnoreCase)){ romPath=f; break; } }
         surfaceView=new SurfaceView(this); logView=new TextView(this); logView.Text=Path.GetFileName(romPath); logView.SetTextColor(global::Android.Graphics.Color.White); logView.SetBackgroundColor(global::Android.Graphics.Color.Argb(180,0,0,0)); logView.TextSize=9;
         var root=new FrameLayout(this); root.AddView(surfaceView,new FrameLayout.LayoutParams(-1,-1)); root.AddView(logView,new FrameLayout.LayoutParams(-1,-2){ Gravity=GravityFlags.Top|GravityFlags.Left }); SetContentView(root);
         surfaceView.Holder.AddCallback(new CB(this)); MyLog($"OnCreate {romPath} [tid=1]");
@@ -44,23 +43,18 @@ public class GameActivity : Activity
     void Emu(){
         int tid=SysEnv.CurrentManagedThreadId; MyLog($"Emu THREAD START id={tid}");
         try{
+            // Força interpreter / sem PPTC pra testar SIGSEGV
+            SysEnv.SetEnvironmentVariable("RYUJINX_DISABLE_PPTC", "1");
+            SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE", Path.Combine(CacheDir.AbsolutePath,"jit"));
             string baseDir=Path.Combine(FilesDir.AbsolutePath,"Ryujinx"); Directory.CreateDirectory(Path.Combine(baseDir,"system")); Directory.CreateDirectory(Path.Combine(baseDir,"keys"));
-            string jitDir=Path.Combine(CacheDir.AbsolutePath,"jit"); Directory.CreateDirectory(jitDir); SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE",jitDir);
+            string jitDir=Path.Combine(CacheDir.AbsolutePath,"jit"); Directory.CreateDirectory(jitDir);
             try{ typeof(VirtualFileSystem).GetField("_instance",All)?.SetValue(null,null); }catch{}
             var vfs=VirtualFileSystem.CreateInstance(); vfs.ReloadKeySet();
             var audio=new DummyHardwareDeviceDriver();
             Holder.gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)Holder.nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
             MyLog($"Vulkan OK [tid={tid}]");
             var conf=BuildHle(vfs,Holder.gpu,audio,baseDir,Path.Combine(baseDir,"system"));
-            MyLog($"[SWITCH] ctor START");
-            MyLog($"[SWITCH] Check GpuRenderer"); MyLog($"[SWITCH] Check AudioDeviceDriver"); MyLog($"[SWITCH] Check UserChannelPersistence");
-            MyLog($"[SWITCH] Configuration = configuration"); MyLog($"[SWITCH] FileSystem = VFS"); MyLog($"[SWITCH] UIHandler = HostUIHandler");
-            MyLog($"[SWITCH] MemoryAllocationFlags"); MyLog($"[SWITCH] MemoryAllocationFlags = Reserve ONLY (forced for Android)");
-            MyLog($"[SWITCH] new DirtyHacks"); MyLog($"[SWITCH] new CompatLayerHardwareDeviceDriver");
-            MyLog($"[SWITCH] new MemoryBlock 4294967296");
             Holder.device=new Switch(conf);
-            MyLog($"[SWITCH] Memory OK Size=4294967296"); MyLog($"[SWITCH] new GpuContext"); MyLog($"[SWITCH] Gpu OK"); MyLog($"[SWITCH] new Debugger"); MyLog($"[SWITCH] new Horizon(this)"); MyLog($"[SWITCH] Horizon OK"); MyLog($"[SWITCH] new PerformanceStatistics"); MyLog($"[SWITCH] new Hid - HidStorage=SharedMemoryStorage"); MyLog($"[SWITCH] Hid OK"); MyLog($"[SWITCH] new ProcessLoader"); MyLog($"[SWITCH] new TamperMachine");
-            MyLog($"[SWITCH] ANTES InitializeServices"); MyLog($"[SWITCH] DEPOIS InitializeServices OK"); MyLog($"[SWITCH] SetLanguage/Region"); MyLog($"[SWITCH] ctor END OK");
             MyLog($"SWITCH CREATED hash={Holder.device.GetHashCode()} [tid={tid}]");
             MyLog($"Load {Path.GetFileName(romPath)} [tid={tid}]");
             if(romPath.EndsWith(".xci",StringComparison.OrdinalIgnoreCase)) Holder.device.LoadXci(romPath); else Holder.device.LoadNsp(romPath);
@@ -77,7 +71,6 @@ public class GameActivity : Activity
             int frames=0;
             var hb=new Thread(()=>{ while(Holder.running){ MyLog($"HEARTBEAT tid={SysEnv.CurrentManagedThreadId} frames={frames}"); Thread.Sleep(500); } MyLog($"HEARTBEAT END"); }){ IsBackground=true }; hb.Start();
             MyLog($"LOOP RENDER ON [tid={tid}]");
-            long last=SysEnv.TickCount64;
             while(Holder.running && Holder.nativeWindow!=IntPtr.Zero){
                 MyLog($"LOOP ITERATION {frames} START [tid={tid}]");
                 try{
@@ -86,21 +79,17 @@ public class GameActivity : Activity
                     var pw=new Thread(()=>{ Thread.Sleep(1500); if(!procDone) MyLog($"Frame {frames} Process WATCHDOG 1.5s BLOQUEADO [tid={tid}]"); }){ IsBackground=true }; pw.Start();
                     try{ Holder.device.ProcessFrame(); procDone=true; }catch(Exception eP){ procDone=true; MyLog($"Process EX f={frames} {eP} [tid={tid}]"); throw; }
                     MyLog($"Frame {frames} Process END [tid={tid}]");
-
                     if(frames==0){
                         MyLog($"SKIP Present 0 p/ diagnóstico tid={tid}");
                         Thread.Sleep(100);
                     }else{
                         MyLog($"Frame {frames} Present START [tid={tid}]");
-                        bool presDone=false;
-                        var vw=new Thread(()=>{ Thread.Sleep(1500); if(!presDone) MyLog($"Frame {frames} Present WATCHDOG 1.5s BLOQUEADO [tid={tid}]"); }){ IsBackground=true }; vw.Start();
-                        try{ Holder.device.PresentFrame(()=>{}); presDone=true; }catch(Exception eR){ presDone=true; MyLog($"Present EX f={frames} {eR.Message} [tid={tid}]"); Thread.Sleep(100); }
+                        Holder.device.PresentFrame(()=>{});
                         MyLog($"Frame {frames} Present END [tid={tid}]");
                     }
-
                     MyLog($"LOOP ITERATION {frames} END [tid={tid}]");
                     frames++;
-                    if(SysEnv.TickCount64-last>1000){ MyLog($"RODANDO frames={frames} [tid={tid}]"); last=SysEnv.TickCount64; }
+                    Thread.Sleep(16);
                 }catch(Exception eLoop){ MyLog($"LOOP EX f={frames} {eLoop} [tid={tid}]"); break; }
             }
             MyLog($"LOOP SAIU f={frames} [tid={tid}]");
@@ -116,6 +105,15 @@ public class GameActivity : Activity
         var ucp=Activator.CreateInstance(typeof(UserChannelPersistence),true);
         var hleType=typeof(HleConfiguration); var hleCtor=hleType.GetConstructors(All)[0]; var hps=hleCtor.GetParameters(); var hargs=new object[hps.Length]; for(int k=0;k<hps.Length;k++){ var pt=hps[k].ParameterType; if(pt==typeof(string)) hargs[k]="UTC"; else if(pt==typeof(bool)) hargs[k]=true; else if(pt.IsEnum) hargs[k]=Enum.GetValues(pt).GetValue(0); else if(pt.IsValueType) hargs[k]=Activator.CreateInstance(pt); } var hle=(HleConfiguration)hleCtor.Invoke(hargs);
         try{ var prop = hleType.GetProperties(All).FirstOrDefault(p=>p.PropertyType.Name.Contains("UI")); prop?.SetValue(hle, CreateDummyUI()); }catch{}
+        // Tenta forçar HostTrackedUnsafe
+        try{
+            foreach(var p in hleType.GetProperties(All)){
+                if(p.Name.Contains("MemoryManager") && p.PropertyType.IsEnum){
+                    try{ p.SetValue(hle, Enum.Parse(p.PropertyType, "HostTrackedUnsafe")); }catch{ try{ p.SetValue(hle, Enum.Parse(p.PropertyType, "HostTracked")); }catch{} }
+                }
+                if(p.Name.Contains("ExpandRam")){ try{ p.SetValue(hle, false); }catch{} }
+            }
+        }catch{}
         var confM=hleType.GetMethod("Configure",All); var cps=confM.GetParameters(); var cargs=new object[cps.Length]; for(int k=0;k<cps.Length;k++){ var pt=cps[k].ParameterType; if(pt==typeof(VirtualFileSystem)) cargs[k]=vfs; else if(pt==typeof(LibHacHorizonManager)) cargs[k]=lhm; else if(pt==typeof(ContentManager)) cargs[k]=cm; else if(pt==typeof(AccountManager)) cargs[k]=accMan; else if(pt==typeof(UserChannelPersistence)) cargs[k]=ucp; else if(pt.IsAssignableFrom(gpu.GetType())) cargs[k]=gpu; else if(pt.FullName.Contains("IRenderer")) cargs[k]=gpu; else if(typeof(IHardwareDeviceDriver).IsAssignableFrom(pt)) cargs[k]=audio; else if(typeof(IHostUIHandler).IsAssignableFrom(pt)) cargs[k]=CreateDummyUI(); }
         return confM.Invoke(hle,cargs) as HleConfiguration;
     }
