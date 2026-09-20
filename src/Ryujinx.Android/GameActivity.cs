@@ -18,10 +18,8 @@ public class GameActivity : Activity
     [DllImport("android")] static extern void ANativeWindow_release(IntPtr window);
     [DllImport("android")] static extern int ANativeWindow_setBuffersGeometry(IntPtr window, int width, int height, int format);
     void MyLog(string s){ try{ RunOnUiThread(()=>{ if(logView!=null && logView.Visibility==ViewStates.Visible) logView.Text+= "\n"+s; }); var p2="/storage/emulated/0/Download/Ryubing/ryubing_log.txt"; try{ Directory.CreateDirectory(Path.GetDirectoryName(p2)); File.AppendAllText(p2, DateTime.Now+": "+s+"\n"); }catch{} }catch{} }
-
     protected override void OnCreate(Bundle saved){ base.OnCreate(saved); if(Window!=null) Window.AddFlags(WindowManagerFlags.Fullscreen|WindowManagerFlags.KeepScreenOn); string extra=Intent.GetStringExtra("rom_path"); if(extra!=null) romPath=extra; if(romPath.Length==0){ string dir="/storage/emulated/0/Download/Ryubing/games"; if(Directory.Exists(dir)) foreach(var f in Directory.EnumerateFiles(dir,"*.*",SearchOption.AllDirectories)) if(f.EndsWith(".nsp",StringComparison.OrdinalIgnoreCase)||f.EndsWith(".xci",StringComparison.OrdinalIgnoreCase)){ romPath=f; break; } } surfaceView=new SurfaceView(this); logView=new TextView(this); logView.Text="ROM: "+Path.GetFileName(romPath); logView.SetTextColor(global::Android.Graphics.Color.White); logView.TextSize=9; var root=new FrameLayout(this); root.AddView(surfaceView,new FrameLayout.LayoutParams(-1,-1)); root.AddView(logView,new FrameLayout.LayoutParams(-2,-2){ Gravity=GravityFlags.Top|GravityFlags.Left }); SetContentView(root); surfaceView.Holder.AddCallback(new CB(this)); MyLog("OnCreate OK - "+romPath); }
-
-    class CB : Java.Lang.Object, ISurfaceHolderCallback{ readonly GameActivity a; public CB(GameActivity act){ a=act; } public void SurfaceCreated(ISurfaceHolder h){ var r=h.SurfaceFrame; if(r.Width()<=0) return; a.MyLog("SurfaceCreated "+r.Width()+"x"+r.Height()); try{ a.nativeWindow=ANativeWindow_fromSurface(global::Android.Runtime.JNIEnv.Handle,h.Surface.Handle); ANativeWindow_setBuffersGeometry(a.nativeWindow,r.Width(),r.Height(),0); ANativeWindow_acquire(a.nativeWindow); }catch(Exception ex){ a.MyLog("ANativeWindow fail: "+ex.Message); return; } if(a.emuThread!=null&&a.emuThread.IsAlive) return; a.running=true; a.emuThread=new Thread(a.Emu){ IsBackground=true }; a.emuThread.Start(); } public void SurfaceChanged(ISurfaceHolder h,AFormat f,int w,int ht){ if(a.nativeWindow!=IntPtr.Zero) ANativeWindow_setBuffersGeometry(a.nativeWindow,w,ht,0); } public void SurfaceDestroyed(ISurfaceHolder h){ a.running=false; a.device?.Stop(); if(a.nativeWindow!=IntPtr.Zero){ ANativeWindow_release(a.nativeWindow); a.nativeWindow=IntPtr.Zero; } } }
+    class CB : Java.Lang.Object, ISurfaceHolderCallback{ readonly GameActivity a; public CB(GameActivity act){ a=act; } public void SurfaceCreated(ISurfaceHolder h){ var r=h.SurfaceFrame; if(r.Width()<=0) return; a.MyLog("SurfaceCreated "+r.Width()+"x"+r.Height()); try{ a.nativeWindow=ANativeWindow_fromSurface(global::Android.Runtime.JNIEnv.Handle,h.Surface.Handle); ANativeWindow_setBuffersGeometry(a.nativeWindow,r.Width(),r.Height(),0); ANativeWindow_acquire(a.nativeWindow); }catch(Exception ex){ a.MyLog("ANativeWindow fail: "+ex.Message); return; } if(a.emuThread!=null&&a.emuThread.IsAlive) return; a.running=true; a.emuThread=new Thread(a.Emu){ IsBackground=true }; a.emuThread.Start(); } public void SurfaceChanged(ISurfaceHolder h,AFormat f,int w,int ht){ if(a.nativeWindow!=IntPtr.Zero) ANativeWindow_setBuffersGeometry(a.nativeWindow,w,ht,0); } public void SurfaceDestroyed(ISurfaceHolder h){ a.running=false; try{ a.device?.Dispose(); }catch{} if(a.nativeWindow!=IntPtr.Zero){ ANativeWindow_release(a.nativeWindow); a.nativeWindow=IntPtr.Zero; } } }
 
     void Emu(){ try{
         MyLog("Emu START");
@@ -56,19 +54,23 @@ public class GameActivity : Activity
         MyLog("HLE FINAL OK");
         device=new Switch(conf);
         MyLog("Switch OK FINAL");
-        // CORREÇÃO 1: Usa LoadApplication que funciona pra XCI e NSP
-        var appLoaded = device.LoadApplication(romPath);
-        if(!appLoaded){ MyLog("LoadApplication FAIL, tentando LoadNsp"); device.LoadNsp(romPath); }
-        MyLog("Load OK - Iniciando game loop...");
+
+        if(romPath.EndsWith(".xci", StringComparison.OrdinalIgnoreCase))
+            device.LoadXci(romPath);
+        else
+            device.LoadNsp(romPath);
+
+        MyLog("Load OK - loop 60fps...");
         RunOnUiThread(()=>{ logView.Visibility=ViewStates.Gone; });
-
-        // CORREÇÃO 2: Não faz loop manual. Deixa o Switch controlar o frame
-        device.Run(false); // false = Start em modo jogo
-
-        // Mantém thread viva até fechar
-        while(running && device.IsRunning){ Thread.Sleep(100); }
-
-        MyLog("Emu finalizado normal");
+        int frames=0;
+        while(running){
+            device.ProcessFrame();
+            device.PresentFrame(()=>{});
+            frames++;
+            if(frames%60==0) MyLog($"PresentFrame OK - {frames} frames");
+            Thread.Sleep(16);
+        }
+        MyLog("Emu finalizado");
     }catch(Exception ex){ MyLog("Emu CRASH: "+ex.ToString()); } }
 
     unsafe delegate Silk.NET.Vulkan.Result CDel(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
