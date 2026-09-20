@@ -58,23 +58,29 @@ public class GameActivity : Activity
             int w=2186, h=1080;
             MyLog($"SetSize {w}x{h}");
             try{ var winProp=Holder.gpu.GetType().GetProperty("Window",All); var win=winProp?.GetValue(Holder.gpu); win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{w,h}); MyLog($"SetSize OK"); }catch(Exception eSz){ MyLog($"SetSize ERR {eSz.Message}"); }
+
             int frames=0; long last=SysEnv.TickCount64;
-            MyLog($"LOOP ON");
+            global::Android.Util.Log.Debug("Ryubing", "LOOP ON");
             while(Holder.running && Holder.nativeWindow!=IntPtr.Zero){
                 try{
+                    global::Android.Util.Log.Debug("Ryubing", $"PF START f={frames}");
                     Holder.device.ProcessFrame();
+                    global::Android.Util.Log.Debug("Ryubing", $"PF END f={frames}");
                     Holder.device.PresentFrame(()=>{});
+                    global::Android.Util.Log.Debug("Ryubing", $"PR END f={frames}");
                     frames++;
                     if(SysEnv.TickCount64-last>1000){
-                        MyLog($"RODANDO frames={frames}");
-                        global::Android.Util.Log.Debug("Ryubing",$"HEARTBEAT frames={frames}");
+                        global::Android.Util.Log.Debug("Ryubing", $"RODANDO frames={frames}");
                         last=SysEnv.TickCount64;
                     }
                     Thread.Sleep(16);
-                }catch(Exception eLoop){ MyLog($"LOOP EX f={frames} {eLoop.Message}"); global::Android.Util.Log.Debug("Ryubing",$"LOOP EX {eLoop}"); break; }
+                }catch(Exception eLoop){
+                    global::Android.Util.Log.Debug("Ryubing", $"LOOP EX f={frames} {eLoop}");
+                    break;
+                }
             }
-            MyLog($"LOOP SAIU f={frames}");
-        }catch(Exception eAll){ MyLog($"CRASH {eAll}"); global::Android.Util.Log.Debug("Ryubing",$"CRASH {eAll}"); } finally{ MyLog($"Emu END id={tid}"); }
+            global::Android.Util.Log.Debug("Ryubing", $"LOOP SAIU f={frames}");
+        }catch(Exception eAll){ MyLog($"CRASH {eAll}"); global::Android.Util.Log.Debug("Ryubing",$"CRASH {eAll}"); } finally{ MyLog($"Emu END id={tid}"); global::Android.Util.Log.Debug("Ryubing", $"Emu END id={tid}"); }
     }
     unsafe delegate Silk.NET.Vulkan.Result CDel(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
     HleConfiguration BuildHle(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio, string baseDir, string sysDir){
