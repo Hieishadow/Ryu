@@ -5,7 +5,7 @@ using AFormat = Android.Graphics.Format; using Ryujinx.HLE; using Ryujinx.HLE.Fi
 using Ryujinx.HLE.HOS.Services.Account.Acc; using Ryujinx.Graphics.Vulkan; using Ryujinx.Audio.Backends.Dummy;
 using Ryujinx.Audio.Integration; using Silk.NET.Vulkan; using System; using System.Collections.Concurrent;
 using System.IO; using System.Linq; using System.Reflection; using System.Runtime.InteropServices; using System.Threading;
-using SysEnv = System.Environment; using Switch = Ryujinx.HLE.Switch;
+using System.Threading.Tasks; using SysEnv = System.Environment; using Switch = Ryujinx.HLE.Switch;
 
 namespace Ryujinx.Android;
 [Activity(Name="com.ryubing.android.GameActivity", Theme="@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation=ScreenOrientation.Landscape, ConfigurationChanges=ConfigChanges.Orientation|ConfigChanges.ScreenSize|ConfigChanges.ScreenLayout|ConfigChanges.KeyboardHidden, Exported=false)]
@@ -41,22 +41,23 @@ public class GameActivity : Activity
         device=new Switch(conf);
         MyLog($"Load {Path.GetFileName(romPath)}");
         if(romPath.EndsWith(".xci",StringComparison.OrdinalIgnoreCase)) device.LoadXci(romPath); else device.LoadNsp(romPath);
-        try{
-            var winProp=gpu.GetType().GetProperty("Window",All);
-            var win=winProp?.GetValue(gpu);
-            win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{1280,720});
-            MyLog("Window SetSize OK");
-        }catch(Exception ex){ MyLog("SetSize fail "+ex.Message); }
+        try{ var winProp=gpu.GetType().GetProperty("Window",All); var win=winProp?.GetValue(gpu); win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{1280,720}); MyLog("Window SetSize OK"); }catch(Exception ex){ MyLog("SetSize fail "+ex.Message); }
         MyLog("LOOP RENDER ON");
         int frames=0; long last=SysEnv.TickCount64;
+        _ = Task.Run(async ()=>{ while(running){ await Task.Delay(1000); MyLog($"HEARTBEAT frames={frames}"); } });
         while(running && nativeWindow!=IntPtr.Zero){
             try{
-                device.ProcessFrame();
-                device.PresentFrame(()=>{});
+                MyLog($"Frame {frames} Process START");
+                try{ device.ProcessFrame(); MyLog($"Frame {frames} Process END"); }
+                catch(Exception ex){ MyLog($"Process EX f={frames} {ex.Message}"); break; }
+                MyLog($"Frame {frames} Present START");
+                try{ device.PresentFrame(()=>{}); MyLog($"Frame {frames} Present END"); }
+                catch(Exception ex){ MyLog($"Present EX f={frames} {ex.Message}"); break; }
                 frames++;
-                if(SysEnv.TickCount64-last>1000){ MyLog($"RODANDO frames={frames}"); last=SysEnv.TickCount64; }
-            }catch(Exception ex){ MyLog($"ITER {frames} {ex.Message}"); Thread.Sleep(20); }
+                if(SysEnv.TickCount64-last>1000){ MyLog($"RODANDO frames={frames}"); last=SysEnv.TickCount64; if(frames>5) RunOnUiThread(()=>{ logView.Visibility=ViewStates.Gone; }); }
+            }catch(Exception ex){ MyLog($"LOOP EX f={frames} {ex}"); break; }
         }
+        MyLog($"LOOP SAIU f={frames}");
     }catch(Exception ex){ MyLog($"CRASH {ex}"); } }
 
     unsafe delegate Silk.NET.Vulkan.Result CDel(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
