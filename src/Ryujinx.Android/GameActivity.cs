@@ -7,7 +7,7 @@ using Ryujinx.Audio.Integration; using Silk.NET.Vulkan; using System; using Syst
 using System.IO; using System.Linq; using System.Reflection; using System.Runtime.InteropServices; using System.Threading;
 using SysEnv = System.Environment; using Switch = Ryujinx.HLE.Switch;
 
-namespace DragoNX;
+namespace Ryujinx.Android;
 [Activity(Name="com.ryubing.android.GameActivity", Theme="@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation=ScreenOrientation.Landscape, Exported=false)]
 public class GameActivity : Activity
 {
