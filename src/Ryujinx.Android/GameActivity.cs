@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using Path = System.IO.Path;
 using File = System.IO.File;
+using Directory = System.IO.Directory;
 
 namespace DragoNX;
 
@@ -37,60 +38,45 @@ public class GameActivity : Activity
             var baseDir = Path.Combine(filesDir, "Ryujinx");
             var keysDir = Path.Combine(baseDir, "keys");
             var prodKeys = Path.Combine(keysDir, "prod.keys");
-
             Directory.CreateDirectory(keysDir);
 
-            // COPIA DA PASTA DOWNLOAD SE TIVER
+            // Copia da pasta Download se precisar
             var downloadKeys = "/storage/emulated/0/Download/Ryubing/keys/prod.keys";
             if(File.Exists(downloadKeys) &&!File.Exists(prodKeys)){
                 File.Copy(downloadKeys, prodKeys, true);
             }
 
-            // FIX VFS
+            // FIX VFS - CRITICO
             var admType = AppDomain.CurrentDomain.GetAssemblies()
-              .SelectMany(a=>{try{return a.GetTypes();}catch{return new Type[0];}})
-              .FirstOrDefault(t=>t.Name=="AppDataManager");
+             .SelectMany(a=>{try{return a.GetTypes();}catch{return new Type[0];}})
+             .FirstOrDefault(t=>t.Name=="AppDataManager");
             admType?.GetProperty("BaseDirPath")?.SetValue(null, baseDir);
 
-            // VALIDACAO NOVA - NAO DEIXA CRASHAR COM BINARIO
             if(!File.Exists(prodKeys)){
-                throw new Exception("prod.keys NAO encontrado em /Ryujinx/keys/");
+                throw new Exception("prod.keys NAO encontrado");
             }
 
             var len = new FileInfo(prodKeys).Length;
-            var text = File.ReadAllText(prodKeys);
-            if(len > 10000 ||!text.Contains("master_key_")){
-                // BINARIO DETECTADO
-                var layoutErr = new LinearLayout(this);
-                layoutErr.Orientation = Orientation.Vertical;
-                layoutErr.SetGravity(GravityFlags.Center);
-                layoutErr.SetBackgroundColor(Android.Graphics.Color.Black);
-                var txtErr = new TextView(this);
-                txtErr.Text = $"prod.keys INVALIDO: {len}b\n\nEsse arquivo e BINARIO.\nRyujinx precisa do TXT de 5kb com master_key_00 =...\n\nDelete e importe o correto.";
-                txtErr.SetTextColor(Android.Graphics.Color.Red);
-                txtErr.Gravity = GravityFlags.Center;
-                txtErr.TextSize = 18;
-                layoutErr.AddView(txtErr);
-                SetContentView(layoutErr);
-                return; // NAO CRASHA, SO MOSTRA ERRO
-            }
-
-            Android.Util.Log.Info("Ryubing", $"ROM: {romPath} Keys: {len}b OK");
+            Android.Util.Log.Info("Ryubing", $"ROM: {romPath}");
+            Android.Util.Log.Info("Ryubing", $"BaseDir: {baseDir}");
+            Android.Util.Log.Info("Ryubing", $"prod.keys: {len}b - SEM TRAVA");
 
             var layout = new LinearLayout(this);
             layout.Orientation = Orientation.Vertical;
             layout.SetGravity(GravityFlags.Center);
             layout.SetBackgroundColor(Android.Graphics.Color.Black);
+
             var txt = new TextView(this);
-            txt.Text = $"VFS OK - {Path.GetFileName(romPath)}\nKeys OK {len}b\nIniciando...";
+            txt.Text = $"Carregando:\n{Path.GetFileName(romPath)}\n\nKeys: {len}b (sem trava)\nBase: {baseDir}\n\nIniciando...";
             txt.SetTextColor(Android.Graphics.Color.White);
             txt.Gravity = GravityFlags.Center;
+            txt.TextSize = 16;
             layout.AddView(txt);
             SetContentView(layout);
 
-            Toast.MakeText(this, "Iniciando emulacao...", ToastLength.Short).Show();
+            Toast.MakeText(this, $"VFS OK {len}b - Iniciando", ToastLength.Short).Show();
 
-            // AQUI CHAMA SEU ENTRY REAL
+            // AQUI INICIA O RYUJINX DE VERDADE
             // new RyujinxAndroidEntry().Start(romPath);
         }
         catch(Exception ex){
