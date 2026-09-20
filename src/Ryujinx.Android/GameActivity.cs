@@ -17,7 +17,6 @@ public class GameActivity : Activity
     [DllImport("android")] static extern void ANativeWindow_acquire(IntPtr window);
     [DllImport("android")] static extern void ANativeWindow_release(IntPtr window);
     [DllImport("android")] static extern int ANativeWindow_setBuffersGeometry(IntPtr window, int width, int height, int format);
-    public void LogPub(string s){ MyLog(s); }
     void MyLog(string s){ try{ RunOnUiThread(()=>{ if(logView!=null) logView.Text+= "\n"+s; }); var p1=Path.Combine(FilesDir.AbsolutePath,"crash.txt"); var p2="/storage/emulated/0/Download/Ryubing/ryubing_log.txt"; try{ Directory.CreateDirectory(Path.GetDirectoryName(p2)); File.AppendAllText(p2, DateTime.Now+": "+s+"\n"); }catch{} try{ File.AppendAllText(p1, DateTime.Now+": "+s+"\n"); }catch{} }catch{} }
     protected override void OnCreate(Bundle saved){ base.OnCreate(saved); if(Window!=null) Window.AddFlags(WindowManagerFlags.Fullscreen|WindowManagerFlags.KeepScreenOn); string extra=Intent.GetStringExtra("rom_path"); if(extra!=null) romPath=extra; if(romPath.Length==0){ string dir="/storage/emulated/0/Download/Ryubing/games"; if(Directory.Exists(dir)) foreach(var f in Directory.EnumerateFiles(dir,"*.*",SearchOption.AllDirectories)) if(f.EndsWith(".nsp",StringComparison.OrdinalIgnoreCase)||f.EndsWith(".xci",StringComparison.OrdinalIgnoreCase)){ romPath=f; break; } } surfaceView=new SurfaceView(this); surfaceView.Holder.SetFormat((AFormat)1); logView=new TextView(this); logView.Text="ROM: "+Path.GetFileName(romPath); logView.SetTextColor(global::Android.Graphics.Color.White); logView.TextSize=9; var root=new FrameLayout(this); root.AddView(surfaceView,new FrameLayout.LayoutParams(-1,-1)); root.AddView(logView,new FrameLayout.LayoutParams(-2,-2){ Gravity=GravityFlags.Top|GravityFlags.Left }); SetContentView(root); surfaceView.Holder.AddCallback(new CB(this)); MyLog("OnCreate OK - "+romPath); }
     class CB : Java.Lang.Object, ISurfaceHolderCallback{ readonly GameActivity a; public CB(GameActivity act){ a=act; } public void SurfaceCreated(ISurfaceHolder h){ var r=h.SurfaceFrame; if(r.Width()<=0) return; a.MyLog("SurfaceCreated "+r.Width()+"x"+r.Height()); a.nativeWindow=ANativeWindow_fromSurface(global::Android.Runtime.JNIEnv.Handle,h.Surface.Handle); ANativeWindow_setBuffersGeometry(a.nativeWindow,r.Width(),r.Height(),1); ANativeWindow_acquire(a.nativeWindow); if(a.emuThread!=null&&a.emuThread.IsAlive) return; a.running=true; a.emuThread=new Thread(a.Emu){ IsBackground=true }; a.emuThread.Start(); } public void SurfaceChanged(ISurfaceHolder h,AFormat f,int w,int ht){ if(a.nativeWindow!=IntPtr.Zero) ANativeWindow_setBuffersGeometry(a.nativeWindow,w,ht,1); } public void SurfaceDestroyed(ISurfaceHolder h){ a.running=false; if(a.nativeWindow!=IntPtr.Zero){ ANativeWindow_release(a.nativeWindow); a.nativeWindow=IntPtr.Zero; } } }
@@ -41,36 +40,30 @@ public class GameActivity : Activity
                 string destTitle = Path.Combine(keysDir,"title.keys");
                 foreach(var src in prodSources){ if(File.Exists(src)){ File.Copy(src, destProd, true); break; } }
                 foreach(var src in titleSources){ if(File.Exists(src)){ File.Copy(src, destTitle, true); break; } }
-                if(File.Exists(destProd) && File.Exists(destTitle)){
-                    MyLog($"Keys OK prod={new FileInfo(destProd).Length} title={new FileInfo(destTitle).Length}");
-                }else{
-                    MyLog($"Keys FALTANDO prod={File.Exists(destProd)} title={File.Exists(destTitle)}");
-                }
+                MyLog($"Keys prod={File.Exists(destProd)} title={File.Exists(destTitle)}");
             }catch(Exception ex){ MyLog($"Keys FAIL: {ex.Message}"); }
             try{ typeof(VirtualFileSystem).GetField("_instance",All)?.SetValue(null,null); }catch{}
             VirtualFileSystem vfs=VirtualFileSystem.CreateInstance();
-            vfs.ReloadKeySet();
-            vfs.ReloadKeySet();
+            vfs.ReloadKeySet(); vfs.ReloadKeySet();
             MyLog("VFS OK");
             var audio=new DummyHardwareDeviceDriver();
             if(nativeWindow==IntPtr.Zero) return;
 
             gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
             try{
-                var debugLevelType = typeof(VulkanRenderer).Assembly.GetTypes().FirstOrDefault(t=>t.Name=="GraphicsDebugLevel");
-                object logLevel = 0;
-                if(debugLevelType!=null){ logLevel = Enum.Parse(debugLevelType, "None"); }
                 var mInit = gpu.GetType().GetMethod("Initialize", All);
-                MyLog($"VK Initialize method found={mInit!=null}");
+                MyLog($"VK Initialize found={mInit!=null}");
                 if(mInit!=null){
                     if(mInit.GetParameters().Length==0) mInit.Invoke(gpu,null);
-                    else mInit.Invoke(gpu,new object[]{ logLevel });
+                    else {
+                        var debugLevelType = typeof(VulkanRenderer).Assembly.GetTypes().FirstOrDefault(t=>t.Name=="GraphicsDebugLevel");
+                        object logLevel = debugLevelType!=null? Enum.Parse(debugLevelType, "None") : 0;
+                        mInit.Invoke(gpu,new object[]{ logLevel });
+                    }
                 }
-                var fInit = gpu.GetType().GetField("_initialized", All);
-                MyLog($"VK _initialized={fInit?.GetValue(gpu)}");
                 var window = gpu.GetType().GetProperty("Window", All)?.GetValue(gpu);
                 window?.GetType().GetMethod("SetSize", All)?.Invoke(window, new object[]{ surfaceView.Width, surfaceView.Height });
-                MyLog($"VK SetSize {surfaceView.Width}x{surfaceView.Height} OK");
+                MyLog($"VK OK {surfaceView.Width}x{surfaceView.Height}");
             }catch(Exception ex){ MyLog($"VK Init FAIL: {ex.InnerException?.ToString()??ex.ToString()}"); }
             MyLog("Vulkan OK");
 
@@ -79,44 +72,32 @@ public class GameActivity : Activity
             device=new Switch(conf);
             MyLog("Switch OK");
 
-            // LOGGER HOOK
-            try{
-                Ryujinx.Common.Logging.Logger.AddTarget(new MyRyuTarget(this));
-                MyLog("[RYU] Logger hookado OK");
-            }catch(Exception ex){ MyLog($"[RYU] Logger fail: {ex.Message}"); }
-
             var fi = new FileInfo(romPath);
-            MyLog($"[NSP] arquivo={fi.Name} tamanhoMB={fi.Length / (1024*1024)}");
+            MyLog($"[NSP] {fi.Name} MB={fi.Length/(1024*1024)}");
 
-            // LOAD NSP COM TITLEID FIXO
             var loadMethods = device.GetType().GetMethods(All).Where(m=>m.Name=="LoadNsp").ToList();
-            MyLog($"LOAD LoadNsp encontrados: {loadMethods.Count}");
-            MethodInfo selected = loadMethods.FirstOrDefault(m=>m.GetParameters().Length>=1);
-            bool ok = false;
-            object result = null;
+            MethodInfo selected = loadMethods.FirstOrDefault();
+            MyLog($"[LOAD] metodos={loadMethods.Count}");
+
+            bool ok = false; object result = null;
             try{
-                MyLog("[LOAD] Tentando com TitleId 01006BB00C6F0000");
-                ulong titleId = 0x01006BB00C6F0000UL;
-                result = selected.Invoke(device, new object[]{ romPath, titleId });
+                MyLog("[LOAD] Tentando 01006BB00C6F0000");
+                result = selected.Invoke(device, new object[]{ romPath, 0x01006BB00C6F0000UL });
                 ok = result is bool b? b : true;
             }catch(Exception ex){
-                MyLog($"[LOAD] TitleId falhou {ex.InnerException?.Message}, tentando 0UL");
+                MyLog($"[LOAD] TitleId fail {ex.InnerException?.Message} -> tentando 0UL");
                 result = selected.Invoke(device, new object[]{ romPath, (ulong)0 });
                 ok = result is bool b2? b2 : true;
             }
             MyLog($"[LOAD] RESULTADO={result} OK={ok}");
-            if(!ok) throw new Exception("LoadNsp retornou false");
+            if(!ok) throw new Exception("LoadNsp false");
             MyLog("LoadNsp OK");
 
             RunOnUiThread(()=>{ logView.Visibility=ViewStates.Gone; });
             int frame=0; MyLog("LOOP INICIADO");
             while(running){
-                try{
-                    device.ProcessFrame();
-                    frame++;
-                    if(frame%60==0) MyLog($"FRAME {frame}");
-                    Thread.Sleep(16);
-                }catch(Exception ex){ MyLog($"[FRAME {frame}] CRASH: {ex.InnerException?.ToString()??ex.ToString()}"); break; }
+                try{ device.ProcessFrame(); frame++; if(frame%60==0) MyLog($"FRAME {frame}"); Thread.Sleep(16); }
+                catch(Exception ex){ MyLog($"[FRAME {frame}] CRASH: {ex.InnerException?.ToString()??ex.ToString()}"); break; }
             }
         }catch(Exception ex){ MyLog("Emu CRASH: "+ex.ToString()); }
     }
@@ -130,7 +111,7 @@ public class GameActivity : Activity
             var methods = lhmType.GetMethods(All).Where(m=>m.Name.Contains("Initialize")).ToList();
             methods.FirstOrDefault(x=>x.Name=="InitializeServer" && x.GetParameters().Length==0)?.Invoke(lhm,null);
             methods.FirstOrDefault(x=>x.Name=="InitializeFsServer" && x.GetParameters().Length==1)?.Invoke(lhm,new object[]{vfs});
-            try{ methods.FirstOrDefault(x=>x.Name=="InitializeSystemClients")?.Invoke(lhm,null); }catch(Exception ex){ MyLog($"SystemClients fail ignorado: {ex.InnerException?.Message}"); }
+            try{ methods.FirstOrDefault(x=>x.Name=="InitializeSystemClients")?.Invoke(lhm,null); }catch(Exception ex){ MyLog($"SystemClients ignorado: {ex.InnerException?.Message}"); }
         }catch{}
         object hc=null; try{ hc=lhm.GetType().GetProperty("Client",All)?.GetValue(lhm)?? lhm.GetType().GetField("_horizonClient",All)?.GetValue(lhm); }catch{}
         var amType=typeof(AccountManager); object accMan=null;
@@ -138,21 +119,11 @@ public class GameActivity : Activity
         var cmType=typeof(ContentManager); object cm=null; foreach(var c in cmType.GetConstructors(All)){ try{ var pr=c.GetParameters(); var ar=new object[pr.Length]; for(int k=0;k<pr.Length;k++){ if(pr[k].ParameterType==typeof(VirtualFileSystem)) ar[k]=vfs; else if(pr[k].ParameterType==typeof(string)) ar[k]=baseDir; else if(pr[k].ParameterType.IsValueType) ar[k]=Activator.CreateInstance(pr[k].ParameterType); } cm=c.Invoke(ar); if(cm!=null) break; }catch{} }
         var ucpType=typeof(UserChannelPersistence); object ucp=Activator.CreateInstance(ucpType,true);
         var hleType=typeof(HleConfiguration); var hleCtor=hleType.GetConstructors(All)[0]; var hps=hleCtor.GetParameters(); var hargs=new object[hps.Length];
-        for(int k=0;k<hps.Length;k++){ var pt=hps[k].ParameterType; if(pt==typeof(string)) hargs[k]="UTC"; else if(pt==typeof(bool)) hargs[k]=true; else if(pt.Name=="MemoryManagerMode"){ try{ hargs[k]=Enum.Parse(pt,"SoftwarePageTable"); MyLog("MEM SoftwarePageTable"); }catch{ hargs[k]=Enum.GetValues(pt).GetValue(0); } } else if(pt.IsEnum) hargs[k]=Enum.GetValues(pt).GetValue(0); else if(pt.IsValueType) hargs[k]=Activator.CreateInstance(pt); }
+        for(int k=0;k<hps.Length;k++){ var pt=hps[k].ParameterType; if(pt==typeof(string)) hargs[k]="UTC"; else if(pt==typeof(bool)) hargs[k]=true; else if(pt.Name=="MemoryManagerMode"){ try{ hargs[k]=Enum.Parse(pt,"SoftwarePageTable"); }catch{ hargs[k]=Enum.GetValues(pt).GetValue(0); } } else if(pt.IsEnum) hargs[k]=Enum.GetValues(pt).GetValue(0); else if(pt.IsValueType) hargs[k]=Activator.CreateInstance(pt); }
         var hle=(HleConfiguration)hleCtor.Invoke(hargs);
-        try{ var memProp=hleType.GetProperties(All).FirstOrDefault(p=>p.Name.Contains("MemoryAllocation")); if(memProp!=null){ var reserve=Enum.Parse(memProp.PropertyType,"Reserve"); memProp.SetValue(hle,reserve); MyLog("MEM Reserve"); } }catch{}
+        try{ var memProp=hleType.GetProperties(All).FirstOrDefault(p=>p.Name.Contains("MemoryAllocation")); if(memProp!=null){ var reserve=Enum.Parse(memProp.PropertyType,"Reserve"); memProp.SetValue(hle,reserve); } }catch{}
         var confM=hleType.GetMethod("Configure",All); var cps=confM.GetParameters(); var cargs=new object[cps.Length];
         for(int k=0;k<cps.Length;k++){ var pt=cps[k].ParameterType; if(pt==typeof(VirtualFileSystem)) cargs[k]=vfs; else if(pt==typeof(LibHacHorizonManager)) cargs[k]=lhm; else if(pt==typeof(ContentManager)) cargs[k]=cm; else if(pt==typeof(AccountManager)) cargs[k]=accMan; else if(pt==typeof(UserChannelPersistence)) cargs[k]=ucp; else if(pt.IsAssignableFrom(gpu.GetType())) cargs[k]=gpu; else if(pt.FullName.Contains("IRenderer")) cargs[k]=gpu; else if(typeof(IHardwareDeviceDriver).IsAssignableFrom(pt)) cargs[k]=audio; }
         return confM.Invoke(hle,cargs) as HleConfiguration;
-    }
-}
-
-public class MyRyuTarget : Ryujinx.Common.Logging.ILogTarget
-{
-    private readonly GameActivity _act;
-    public MyRyuTarget(GameActivity act){ _act = act; }
-    public void Log(object sender, Ryujinx.Common.Logging.LogEventArgs e)
-    {
-        try{ _act.LogPub($"[RYU] {e.Level} {e.Module}: {e.Message}"); }catch{}
     }
 }
