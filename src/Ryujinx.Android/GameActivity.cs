@@ -67,14 +67,14 @@ public class GameActivity : Activity
                     frames++;
                     if(SysEnv.TickCount64-last>1000){
                         MyLog($"RODANDO frames={frames}");
-                        Android.Util.Log.Debug("Ryubing",$"HEARTBEAT frames={frames}");
+                        global::Android.Util.Log.Debug("Ryubing",$"HEARTBEAT frames={frames}");
                         last=SysEnv.TickCount64;
                     }
                     Thread.Sleep(16);
-                }catch(Exception eLoop){ MyLog($"LOOP EX f={frames} {eLoop.Message}"); Android.Util.Log.Debug("Ryubing",$"LOOP EX {eLoop}"); break; }
+                }catch(Exception eLoop){ MyLog($"LOOP EX f={frames} {eLoop.Message}"); global::Android.Util.Log.Debug("Ryubing",$"LOOP EX {eLoop}"); break; }
             }
             MyLog($"LOOP SAIU f={frames}");
-        }catch(Exception eAll){ MyLog($"CRASH {eAll}"); Android.Util.Log.Debug("Ryubing",$"CRASH {eAll}"); } finally{ MyLog($"Emu END id={tid}"); }
+        }catch(Exception eAll){ MyLog($"CRASH {eAll}"); global::Android.Util.Log.Debug("Ryubing",$"CRASH {eAll}"); } finally{ MyLog($"Emu END id={tid}"); }
     }
     unsafe delegate Silk.NET.Vulkan.Result CDel(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
     HleConfiguration BuildHle(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio, string baseDir, string sysDir){
