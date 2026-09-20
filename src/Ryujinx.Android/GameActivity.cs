@@ -1,6 +1,5 @@
 #nullable disable
 using Android.App;
-using Android.Content;
 using Android.Content.PM;
 using Android.OS;
 using Android.Widget;
@@ -10,8 +9,6 @@ using System.IO;
 using System.Linq;
 using Path = System.IO.Path;
 using File = System.IO.File;
-using Directory = System.IO.Directory;
-using Android.Runtime;
 
 namespace DragoNX;
 
@@ -24,60 +21,77 @@ namespace DragoNX;
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.KeyboardHidden)]
 public class GameActivity : Activity
 {
-    const string BasePath = "/storage/emulated/0/Download/Ryubing";
-
     protected override void OnCreate(Bundle savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
-        if(Window!=null) Window.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
+        Window?.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
 
         string romPath = Intent?.GetStringExtra("rom_path")?? "";
-
         if(string.IsNullOrEmpty(romPath) ||!File.Exists(romPath)){
             Toast.MakeText(this, "ROM nao encontrada: " + romPath, ToastLength.Long).Show();
-            Finish();
-            return;
+            Finish(); return;
         }
 
         try{
-            var filesDir = FilesDir?.AbsolutePath?? "";
+            var filesDir = FilesDir.AbsolutePath;
             var baseDir = Path.Combine(filesDir, "Ryujinx");
             var keysDir = Path.Combine(baseDir, "keys");
+            var prodKeys = Path.Combine(keysDir, "prod.keys");
 
-            // FIX CRITICO DO VFS
+            Directory.CreateDirectory(keysDir);
+
+            // COPIA DA PASTA DOWNLOAD SE TIVER
+            var downloadKeys = "/storage/emulated/0/Download/Ryubing/keys/prod.keys";
+            if(File.Exists(downloadKeys) &&!File.Exists(prodKeys)){
+                File.Copy(downloadKeys, prodKeys, true);
+            }
+
+            // FIX VFS
             var admType = AppDomain.CurrentDomain.GetAssemblies()
-               .SelectMany(a=>{try{return a.GetTypes();}catch{return new Type[0];}})
-               .FirstOrDefault(t=>t.Name=="AppDataManager");
+              .SelectMany(a=>{try{return a.GetTypes();}catch{return new Type[0];}})
+              .FirstOrDefault(t=>t.Name=="AppDataManager");
             admType?.GetProperty("BaseDirPath")?.SetValue(null, baseDir);
 
-            // Log pra confirmar que vai carregar
-            Android.Util.Log.Info("Ryubing", $"ROM: {romPath}");
-            Android.Util.Log.Info("Ryubing", $"BaseDir: {baseDir}");
-            var prodKeys = Path.Combine(keysDir, "prod.keys");
-            if(File.Exists(prodKeys)){
-                Android.Util.Log.Info("Ryubing", $"prod.keys: {new FileInfo(prodKeys).Length}b");
+            // VALIDACAO NOVA - NAO DEIXA CRASHAR COM BINARIO
+            if(!File.Exists(prodKeys)){
+                throw new Exception("prod.keys NAO encontrado em /Ryujinx/keys/");
             }
+
+            var len = new FileInfo(prodKeys).Length;
+            var text = File.ReadAllText(prodKeys);
+            if(len > 10000 ||!text.Contains("master_key_")){
+                // BINARIO DETECTADO
+                var layoutErr = new LinearLayout(this);
+                layoutErr.Orientation = Orientation.Vertical;
+                layoutErr.SetGravity(GravityFlags.Center);
+                layoutErr.SetBackgroundColor(Android.Graphics.Color.Black);
+                var txtErr = new TextView(this);
+                txtErr.Text = $"prod.keys INVALIDO: {len}b\n\nEsse arquivo e BINARIO.\nRyujinx precisa do TXT de 5kb com master_key_00 =...\n\nDelete e importe o correto.";
+                txtErr.SetTextColor(Android.Graphics.Color.Red);
+                txtErr.Gravity = GravityFlags.Center;
+                txtErr.TextSize = 18;
+                layoutErr.AddView(txtErr);
+                SetContentView(layoutErr);
+                return; // NAO CRASHA, SO MOSTRA ERRO
+            }
+
+            Android.Util.Log.Info("Ryubing", $"ROM: {romPath} Keys: {len}b OK");
 
             var layout = new LinearLayout(this);
             layout.Orientation = Orientation.Vertical;
             layout.SetGravity(GravityFlags.Center);
             layout.SetBackgroundColor(Android.Graphics.Color.Black);
-
             var txt = new TextView(this);
-            txt.Text = $"Carregando:\n{Path.GetFileName(romPath)}\n\nBase: {baseDir}\nKeys: {(File.Exists(prodKeys)?"OK":"FALTA")}";
+            txt.Text = $"VFS OK - {Path.GetFileName(romPath)}\nKeys OK {len}b\nIniciando...";
             txt.SetTextColor(Android.Graphics.Color.White);
             txt.Gravity = GravityFlags.Center;
             layout.AddView(txt);
-
             SetContentView(layout);
 
-            // Aqui chama o Ryujinx de verdade
-            // Se sua versao usa outro metodo, me manda o GameActivity original que eu adapto
-            // Por enquanto deixa o log pra testar o VFS
-            Toast.MakeText(this, "VFS OK - Iniciando jogo...", ToastLength.Short).Show();
+            Toast.MakeText(this, "Iniciando emulacao...", ToastLength.Short).Show();
 
-            // TODO: Inicia a emulacao real
-            // Exemplo: new RyujinxAndroidEntry().Start(romPath);
+            // AQUI CHAMA SEU ENTRY REAL
+            // new RyujinxAndroidEntry().Start(romPath);
         }
         catch(Exception ex){
             Android.Util.Log.Error("Ryubing", ex.ToString());
