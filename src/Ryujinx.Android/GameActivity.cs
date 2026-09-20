@@ -5,7 +5,7 @@ using AFormat = Android.Graphics.Format; using Ryujinx.HLE; using Ryujinx.HLE.Fi
 using Ryujinx.HLE.HOS.Services.Account.Acc; using Ryujinx.Graphics.Vulkan; using Ryujinx.Audio.Backends.Dummy;
 using Ryujinx.Audio.Integration; using Silk.NET.Vulkan; using System; using System.Collections.Concurrent;
 using System.IO; using System.Linq; using System.Reflection; using System.Runtime.InteropServices; using System.Threading;
-using SysEnv = System.Environment; using Switch = Ryujinx.HLE.Switch;
+using System.Threading.Tasks; using SysEnv = System.Environment; using Switch = Ryujinx.HLE.Switch;
 
 namespace DragoNX;
 [Activity(Name="com.ryubing.android.GameActivity", Theme="@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation=ScreenOrientation.Landscape, Exported=false)]
@@ -21,6 +21,7 @@ public class GameActivity : Activity
     protected override void OnCreate(Bundle saved){ base.OnCreate(saved); if(Window!=null) Window.AddFlags(WindowManagerFlags.Fullscreen|WindowManagerFlags.KeepScreenOn); string extra=Intent.GetStringExtra("rom_path"); if(extra!=null) romPath=extra; if(romPath.Length==0){ string dir="/storage/emulated/0/Download/Ryubing/games"; if(Directory.Exists(dir)) foreach(var f in Directory.EnumerateFiles(dir,"*.*",SearchOption.AllDirectories)) if(f.EndsWith(".nsp",StringComparison.OrdinalIgnoreCase)||f.EndsWith(".xci",StringComparison.OrdinalIgnoreCase)){ romPath=f; break; } } surfaceView=new SurfaceView(this); surfaceView.Holder.SetFormat((AFormat)1); logView=new TextView(this); logView.Text="ROM: "+Path.GetFileName(romPath); logView.SetTextColor(global::Android.Graphics.Color.White); logView.TextSize=9; var root=new FrameLayout(this); root.AddView(surfaceView,new FrameLayout.LayoutParams(-1,-1)); root.AddView(logView,new FrameLayout.LayoutParams(-2,-2){ Gravity=GravityFlags.Top|GravityFlags.Left }); SetContentView(root); surfaceView.Holder.AddCallback(new CB(this)); MyLog("OnCreate OK - "+romPath); }
     class CB : Java.Lang.Object, ISurfaceHolderCallback{ readonly GameActivity a; public CB(GameActivity act){ a=act; } public void SurfaceCreated(ISurfaceHolder h){ var r=h.SurfaceFrame; if(r.Width()<=0) return; a.MyLog("SurfaceCreated "+r.Width()+"x"+r.Height()); a.nativeWindow=ANativeWindow_fromSurface(global::Android.Runtime.JNIEnv.Handle,h.Surface.Handle); ANativeWindow_setBuffersGeometry(a.nativeWindow,r.Width(),r.Height(),1); ANativeWindow_acquire(a.nativeWindow); if(a.emuThread!=null&&a.emuThread.IsAlive) return; a.running=true; a.emuThread=new Thread(a.Emu){ IsBackground=true }; a.emuThread.Start(); } public void SurfaceChanged(ISurfaceHolder h,AFormat f,int w,int ht){ if(a.nativeWindow!=IntPtr.Zero) ANativeWindow_setBuffersGeometry(a.nativeWindow,w,ht,1); } public void SurfaceDestroyed(ISurfaceHolder h){ a.running=false; if(a.nativeWindow!=IntPtr.Zero){ ANativeWindow_release(a.nativeWindow); a.nativeWindow=IntPtr.Zero; } } }
 
+    VirtualFileSystem vfs;
     void Emu(){
         try{
             MyLog("Emu START");
@@ -29,52 +30,63 @@ public class GameActivity : Activity
             Directory.CreateDirectory(sysDir);
             string keysDir=Path.Combine(baseDir,"keys");
             Directory.CreateDirectory(keysDir);
+            string sysKeysDir=Path.Combine(sysDir,"keys");
+            Directory.CreateDirectory(sysKeysDir);
             string jitDir=Path.Combine(CacheDir.AbsolutePath,"jit");
             Directory.CreateDirectory(jitDir);
             SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE",jitDir);
             try{ Directory.SetCurrentDirectory(baseDir); SysEnv.CurrentDirectory=baseDir; }catch{}
 
-            try{ foreach(var f in Directory.GetFiles(keysDir)) File.Delete(f); MyLog("Limpeza keys interna OK"); }catch(Exception ex){ MyLog($"Limpeza FAIL {ex.Message}"); }
+            // FIX 1 - descobre campo real do singleton
+            try{
+                var fields = typeof(VirtualFileSystem).GetFields(All).Where(f=>f.FieldType==typeof(VirtualFileSystem)||f.Name.ToLower().Contains("instance")).ToList();
+                foreach(var f in fields) MyLog($"[VFS] field: {f.Name} static={f.IsStatic}");
+                foreach(var f in fields){ try{ f.SetValue(null,null); MyLog($"[VFS] zerou {f.Name}"); }catch{} }
+            }catch{}
+
+            try{ foreach(var f in Directory.GetFiles(keysDir)) File.Delete(f); }catch{}
+            try{ foreach(var f in Directory.GetFiles(sysKeysDir)) File.Delete(f); }catch{}
+            MyLog("Limpeza keys interna OK");
 
             try{
-                string[] prodSources = new[]{ "/storage/emulated/0/Ryujinx/keys/prod.keys", "/storage/emulated/0/Download/Ryubing/keys/prod.keys", "/storage/emulated/0/Download/Ryubing/prod.keys", "/storage/emulated/0/Download/prod.keys" };
-                string destProd = Path.Combine(keysDir,"prod.keys");
+                string[] prodSources = new[]{ "/storage/emulated/0/Ryubing/keys/prod.keys", "/storage/emulated/0/Download/Ryubing/keys/prod.keys", "/storage/emulated/0/Download/Ryubing/prod.keys", "/storage/emulated/0/Download/prod.keys" };
+                string[] dsts = new[]{ Path.Combine(keysDir,"prod.keys"), Path.Combine(sysKeysDir,"prod.keys") };
                 foreach(var src in prodSources){
                     if(File.Exists(src)){
-                        File.Copy(src, destProd, true);
-                        MyLog($"Keys copiado {src} size={new FileInfo(src).Length}");
+                        foreach(var d in dsts){ try{ File.Copy(src,d,true); }catch{} }
+                        var sz=new FileInfo(src).Length;
+                        MyLog($"Keys copiado {src} size={sz}");
+                        if(sz!=16025 && sz!=14612) MyLog($"[AVISO] size diferente do esperado");
+                        MyLog($"Keys final size={sz}");
                         break;
                     }
                 }
-                MyLog($"Keys final size={(File.Exists(destProd)?new FileInfo(destProd).Length:0)}");
             }catch(Exception ex){ MyLog($"Keys FAIL: {ex.Message}"); }
 
-            try{ typeof(VirtualFileSystem).GetField("_instance",All)?.SetValue(null,null); }catch{}
-            VirtualFileSystem vfs=VirtualFileSystem.CreateInstance();
+            // FIX 2 - singleton com fallback
+            try{
+                vfs = VirtualFileSystem.CreateInstance();
+                MyLog("[VFS] criou novo");
+            }catch(InvalidOperationException){
+                MyLog("[VFS] ja existe, reutilizando");
+                var fi = typeof(VirtualFileSystem).GetFields(All).FirstOrDefault(f=>f.IsStatic && f.FieldType==typeof(VirtualFileSystem));
+                vfs = (VirtualFileSystem)fi?.GetValue(null);
+                if(vfs==null) throw;
+            }
             vfs.ReloadKeySet(); vfs.ReloadKeySet();
 
-            // DIAGNOSTICO COMPATIVEL - SEM.Current
+            int prodCount=0, titleCount=0;
             try{
                 var ks = vfs.KeySet;
                 object cur = ks;
-                try{
-                    var pCur = ks.GetType().GetProperty("Current", All);
-                    if(pCur!=null) cur = pCur.GetValue(ks)?? ks;
-                }catch{}
-                int prodCount = 0; int titleCount = 0;
-                try{
-                    var prodProp = cur.GetType().GetProperty("ProdKeys", All)?? cur.GetType().GetProperty("prod_keys", All);
-                    var prodObj = prodProp?.GetValue(cur);
-                    if(prodObj!=null) prodCount = (int)(prodObj.GetType().GetProperty("Count")?.GetValue(prodObj)?? 0);
-                }catch{}
-                try{
-                    var titleProp = cur.GetType().GetProperty("TitleKeys", All)?? cur.GetType().GetProperty("title_keys", All);
-                    var titleObj = titleProp?.GetValue(cur);
-                    if(titleObj!=null) titleCount = (int)(titleObj.GetType().GetProperty("Count")?.GetValue(titleObj)?? 0);
-                }catch{}
-                MyLog($"VFS OK prodCount={prodCount} titleCount={titleCount}");
-                if(prodCount==0) throw new Exception("prod.keys com 0 keys - formato invalido ou binario");
-            }catch(Exception ex){ MyLog($"[KEYS] FAIL {ex.Message}"); throw; }
+                try{ var pCur = ks.GetType().GetProperty("Current", All); if(pCur!=null) cur = pCur.GetValue(ks)?? ks; }catch{}
+                var prodObj = cur.GetType().GetProperty("ProdKeys", All)?.GetValue(cur);
+                if(prodObj!=null) prodCount = (int)(prodObj.GetType().GetProperty("Count")?.GetValue(prodObj)?? 0);
+                var titleObj = cur.GetType().GetProperty("TitleKeys", All)?.GetValue(cur);
+                if(titleObj!=null) titleCount = (int)(titleObj.GetType().GetProperty("Count")?.GetValue(titleObj)?? 0);
+            }catch{}
+            MyLog($"VFS OK prodCount={prodCount} titleCount={titleCount}");
+            if(prodCount==0) throw new Exception("prod.keys 0 keys - reverte pro de 16025 bytes");
 
             var audio=new DummyHardwareDeviceDriver();
             if(nativeWindow==IntPtr.Zero) return;
@@ -101,8 +113,8 @@ public class GameActivity : Activity
             device=new Switch(conf);
             MyLog("Switch OK");
 
-            var fi = new FileInfo(romPath);
-            MyLog($"[ROM] {fi.Name} MB={fi.Length/(1024*1024)} Ext={fi.Extension}");
+            var fi2 = new FileInfo(romPath);
+            MyLog($"[ROM] {fi2.Name} MB={fi2.Length/(1024*1024)} Ext={fi2.Extension}");
 
             bool isXci = romPath.EndsWith(".xci", StringComparison.OrdinalIgnoreCase);
             string methodName = isXci? "LoadXci" : "LoadNsp";
@@ -125,7 +137,10 @@ public class GameActivity : Activity
                 try{ device.ProcessFrame(); frame++; if(frame%60==0) MyLog($"FRAME {frame}"); Thread.Sleep(16); }
                 catch(Exception ex){ MyLog($"[FRAME {frame}] CRASH: {ex.InnerException?.ToString()??ex.ToString()}"); break; }
             }
-        }catch(Exception ex){ MyLog("Emu CRASH: "+ex.ToString()); }
+        }catch(Exception ex){
+            MyLog("Emu CRASH: "+ex.ToString());
+            Task.Delay(800).ContinueWith(_=>{ Android.OS.Process.KillProcess(Android.OS.Process.MyPid()); });
+        }
     }
 
     unsafe delegate Silk.NET.Vulkan.Result CDel(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
