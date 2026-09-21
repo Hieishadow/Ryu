@@ -41,6 +41,16 @@ jobs:
       - name: Install Android workload
         run: dotnet workload install android --skip-sign-check
 
+      - name: FORCE CLEAN #513 - apaga dll antiga da tela preta
+        run: |
+          echo "Limpando bin/obj antigos..."
+          rm -rf src/Ryujinx.Graphics.Vulkan/bin
+          rm -rf src/Ryujinx.Graphics.Vulkan/obj
+          rm -rf src/Ryujinx.Android/bin
+          rm -rf src/Ryujinx.Android/obj
+          dotnet clean src/Ryujinx.Graphics.Vulkan/Ryujinx.Graphics.Vulkan.csproj -c Release || true
+          echo "Clean OK - vai recompilar Window.cs v7"
+
       - name: Restore
         run: dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj -r android-arm64
 
