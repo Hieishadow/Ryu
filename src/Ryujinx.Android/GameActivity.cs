@@ -137,11 +137,6 @@ public class GameActivity : Activity
                 try{
                     if(frames==0) FileLog("LOOP first ProcessFrame...");
                     Holder.device.ProcessFrame();
-                    try{
-                        var winProp = Holder.gpu?.GetType().GetProperty("Window", All);
-                        var win = winProp?.GetValue(Holder.gpu);
-                        win?.GetType().GetMethod("ForcedPresentMagenta", All)?.Invoke(win, null);
-                    }catch(Exception ex){ FileLog($"[VK] FORCED CALL FAIL {ex.Message}"); }
                     if(frames==0) FileLog("First ProcessFrame OK, calling PresentFrame...");
                     Holder.device.PresentFrame(()=>{ FileLog($"[VK] swapBuffers cb f={frames}"); });
                     frames++;
