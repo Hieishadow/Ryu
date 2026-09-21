@@ -137,7 +137,6 @@ namespace Ryujinx.Graphics.Vulkan
                 if(_swapchainIsDirty) RecreateSwapchain();
                 uint nextImage = 0;
                 int semaphoreIndex = _frameIndex % _imageAvailableSemaphores.Length;
-
                 Result acquireResult;
                 while (true)
                 {
@@ -167,6 +166,33 @@ namespace Ryujinx.Graphics.Vulkan
                 FLog($"[VK] Present OK f={_frameIndex}");
             }
             catch (Exception ex){ FLog($"[VK] Present FAIL: {ex}"); _swapchainIsDirty = true; try{ swapBuffersCallback?.Invoke(); }catch{} }
+        }
+
+        // === FORCED MAGENTA #525 - mata tela preta ===
+        public unsafe void ForcedPresentMagenta()
+        {
+            try
+            {
+                FLog($"[VK] FORCED MAGENTA f={_frameIndex}");
+                if(_swapchainIsDirty) RecreateSwapchain();
+                uint nextImage = 0;
+                int semIdx = _frameIndex % _imageAvailableSemaphores.Length;
+                var acq = _gd.SwapchainApi.AcquireNextImage(_device, _swapchain, 1000000000, _imageAvailableSemaphores[semIdx], new Fence(), ref nextImage);
+                FLog($"[VK] FORCED Acquire {acq} img={nextImage}");
+                var cbs = _gd.CommandBufferPool.Rent();
+                Transition(cbs.CommandBuffer, _swapchainImages[nextImage], 0, AccessFlags.TransferWriteBit, ImageLayout.Undefined, ImageLayout.TransferDstOptimal, PipelineStageFlags.TopOfPipeBit, PipelineStageFlags.TransferBit);
+                ClearColorValue clear = new(); clear.Float32_0 = 1f; clear.Float32_1 = 0f; clear.Float32_2 = 1f; clear.Float32_3 = 1f;
+                ImageSubresourceRange range = new(ImageAspectFlags.ColorBit,0,1,0,1);
+                _gd.Api.CmdClearColorImage(cbs.CommandBuffer, _swapchainImages[nextImage], ImageLayout.TransferDstOptimal, &clear, 1, &range);
+                Transition(cbs.CommandBuffer, _swapchainImages[nextImage], AccessFlags.TransferWriteBit, 0, ImageLayout.TransferDstOptimal, ImageLayout.PresentSrcKhr, PipelineStageFlags.TransferBit, PipelineStageFlags.BottomOfPipeBit);
+                _gd.CommandBufferPool.Return(cbs, [_imageAvailableSemaphores[semIdx]], [PipelineStageFlags.ColorAttachmentOutputBit], [_renderFinishedSemaphores[semIdx]]);
+                Semaphore sem = _renderFinishedSemaphores[semIdx]; SwapchainKHR sc = _swapchain; Result pres;
+                PresentInfoKHR pi = new(){ SType=StructureType.PresentInfoKhr, WaitSemaphoreCount=1, PWaitSemaphores=&sem, SwapchainCount=1, PSwapchains=&sc, PImageIndices=&nextImage, PResults=&pres };
+                Result qr; lock(_gd.QueueLock){ qr = _gd.SwapchainApi.QueuePresent(_gd.Queue, in pi); }
+                FLog($"[VK] FORCED QueuePresent {qr}/{pres} f={_frameIndex}");
+                _frameIndex++;
+            }
+            catch(Exception ex){ FLog($"[VK] FORCED FAIL {ex}"); }
         }
 
         public override void SetAntiAliasing(AntiAliasing effect) { if (_currentAntiAliasing == effect && _effect!= null) return; _currentAntiAliasing = effect; _updateEffect = true; }
