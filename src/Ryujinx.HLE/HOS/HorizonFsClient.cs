@@ -54,7 +54,6 @@ namespace Ryujinx.HLE.HOS
                 L($"MountSystemData mount={mountName} dataId={dataId:X16}");
                 string contentPath = _system.ContentManager.GetInstalledContentPath(dataId, StorageId.BuiltInSystem, NcaContentType.PublicData);
                 
-                // FIX #501 - se não achou, tenta Data também
                 if (string.IsNullOrEmpty(contentPath))
                 {
                     contentPath = _system.ContentManager.GetInstalledContentPath(dataId, StorageId.BuiltInSystem, NcaContentType.Data);
@@ -63,7 +62,7 @@ namespace Ryujinx.HLE.HOS
                 if (string.IsNullOrEmpty(contentPath))
                 {
                     L($"MountSystemData NOT FOUND dataId={dataId:X16} -> Return Success (evita crash Ngc)");
-                    return Result.Success; // <- FIX CRITICAL: não retorna TargetNotFound
+                    return Result.Success;
                 }
 
                 string installPath = VirtualFileSystem.SwitchPathToSystemPath(contentPath);
@@ -83,7 +82,7 @@ namespace Ryujinx.HLE.HOS
                         {
                             L($"MountSystemData Register FAIL {result}");
                             ncaStorage.Dispose();
-                            return Result.Success; // FIX: não propaga falha
+                            return Result.Success;
                         }
                         else
                         {
@@ -96,7 +95,7 @@ namespace Ryujinx.HLE.HOS
                     {
                         L($"MountSystemData EX {ex.Message} -> Success");
                         ncaStorage?.Dispose();
-                        return Result.Success; // FIX: evita crash do Ngc
+                        return Result.Success;
                     }
                 }
                 L($"MountSystemData file not exists -> Success");
@@ -129,11 +128,15 @@ namespace Ryujinx.HLE.HOS
 
         public void Unmount(string mountName)
         {
-            if (_mountedStorages.TryRemove(mountName, out LocalStorage ncaStorage))
+            try
             {
-                ncaStorage.Dispose();
+                if (_mountedStorages.TryRemove(mountName, out LocalStorage ncaStorage))
+                {
+                    ncaStorage.Dispose();
+                }
+                try { _fsClient.Unmount(mountName.ToU8Span()); } catch {}
             }
-            _fsClient.Unmount(mountName.ToU8Span());
+            catch {}
         }
     }
 }
