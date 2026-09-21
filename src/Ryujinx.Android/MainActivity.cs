@@ -7,9 +7,11 @@ using Android.Widget;
 using Android.Views;
 using Android.Database;
 using Android.Provider;
+using Android.Runtime;
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Path = System.IO.Path;
 using File = System.IO.File;
 using Directory = System.IO.Directory;
@@ -39,6 +41,20 @@ public class MainActivity : Activity
 
     protected override void OnCreate(Bundle savedInstanceState)
     {
+        // --- INICIO LOGGER CRASH S20 FE ---
+        try {
+            AppDomain.CurrentDomain.UnhandledException += (s, e) => {
+                try { File.WriteAllText(BasePath + "/crash.txt", $"CRASH {DateTime.Now}\n{e.ExceptionObject}\n"); } catch {}
+            };
+            TaskScheduler.UnobservedTaskException += (s, e) => {
+                try { File.WriteAllText(BasePath + "/crash_task.txt", $"TASK CRASH {DateTime.Now}\n{e.Exception}\n"); e.SetObserved(); } catch {}
+            };
+            AndroidEnvironment.UnhandledExceptionRaiser += (s, e) => {
+                try { File.WriteAllText(BasePath + "/crash_android.txt", $"ANDROID CRASH {DateTime.Now}\n{e.Exception}\n"); } catch {}
+            };
+        } catch {}
+        // --- FIM LOGGER ---
+
         base.OnCreate(savedInstanceState);
         if(Window!=null) Window.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
         layout = new LinearLayout(this);
@@ -83,6 +99,7 @@ public class MainActivity : Activity
                 intentGame.PutExtra("rom_path", selectedRom);
                 StartActivity(intentGame);
             }catch(Exception ex){
+                try { File.WriteAllText(BasePath + "/crash_start.txt", $"START CRASH {DateTime.Now}\n{ex}\n"); } catch {}
                 Toast.MakeText(this, "Erro abrir jogo: "+ex.Message, ToastLength.Long).Show();
             }
         };
