@@ -37,19 +37,30 @@ namespace Ryujinx.HLE.FileSystem
         public ModLoader ModLoader { get; private set; }
 
         private readonly ConcurrentDictionary<ulong, Stream> _romFsByPid;
+
+        // FIX 504 - singleton que permite recriar no Android
+        private static VirtualFileSystem _instance;
         private static bool _isInitialized = false;
 
         public static VirtualFileSystem CreateInstance()
         {
-            if (_isInitialized)
-                throw new InvalidOperationException("VirtualFileSystem can only be instantiated once!");
+            // FIX 504 - ANDROID: permite trocar de jogo sem fechar o app
+            if (_isInitialized && _instance!= null)
+            {
+                try { _instance.Dispose(); } catch { }
+                _instance = null;
+                _isInitialized = false;
+            }
+
+            _instance = new VirtualFileSystem();
             _isInitialized = true;
-            return new VirtualFileSystem();
+            return _instance;
         }
 
-        // FIX ANDROID - permite reutilizar no Android
         public static void ResetForAndroid()
         {
+            try { _instance?.Dispose(); } catch { }
+            _instance = null;
             _isInitialized = false;
         }
 
@@ -124,7 +135,6 @@ namespace Ryujinx.HLE.FileSystem
             if (string.IsNullOrEmpty(baseDir))
                 baseDir = "/data/data/com.DragoNX/files";
 
-            // Garante que termina em Ryujinx
             if (!baseDir.EndsWith("Ryujinx"))
                 baseDir = Path.Combine(baseDir, "Ryujinx");
             return baseDir;
@@ -161,7 +171,6 @@ namespace Ryujinx.HLE.FileSystem
             if (string.IsNullOrEmpty(baseDir))
                 baseDir = GetFallbackBasePath();
 
-            // Se path já for absoluto (começa com /), usa ele direto
             string fullPath;
             if (Path.IsPathRooted(path) &&!string.IsNullOrEmpty(AppDataManager.BaseDirPath) && path.StartsWith(AppDataManager.BaseDirPath))
                 fullPath = path;
@@ -393,7 +402,22 @@ namespace Ryujinx.HLE.FileSystem
 
         struct ExtraDataFixInfo { public ulong StaticSaveDataId; public ulong OwnerId; public SaveDataFlags Flags; public long DataSize; public long JournalSize; }
         private static readonly ExtraDataFixInfo[] _systemExtraDataFixInfo = [ new() { StaticSaveDataId = 0x8000000000000030, OwnerId = 0x010000000000001F, Flags = SaveDataFlags.KeepAfterResettingSystemSaveDataWithoutUserSaveData, DataSize = 0x10000, JournalSize = 0x10000, }, new() { StaticSaveDataId = 0x8000000000001040, OwnerId = 0x0100000000001009, Flags = SaveDataFlags.None, DataSize = 0xC000, JournalSize = 0xC000, } ];
+
+        // FIX 504 - Dispose limpa o static
         public void Dispose() { GC.SuppressFinalize(this); Dispose(true); }
-        protected virtual void Dispose(bool disposing) { if (disposing) { foreach (Stream stream in _romFsByPid.Values) stream.Close(); _romFsByPid.Clear(); } }
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                foreach (Stream stream in _romFsByPid.Values)
+                    try { stream.Close(); } catch {}
+                _romFsByPid.Clear();
+            }
+            if (_instance == this)
+            {
+                _instance = null;
+                _isInitialized = false;
+            }
+        }
     }
 }
