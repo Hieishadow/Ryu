@@ -200,8 +200,9 @@ namespace Ryujinx.Graphics.Vulkan
             ulong minResourceAlignment = Math.Max(Math.Max(properties.Limits.MinStorageBufferOffsetAlignment, properties.Limits.MinUniformBufferOffsetAlignment), properties.Limits.MinTexelBufferOffsetAlignment);
             SampleCountFlags supportedSampleCounts = properties.Limits.FramebufferColorSampleCounts & properties.Limits.FramebufferDepthSampleCounts & properties.Limits.FramebufferStencilSampleCounts;
             Capabilities = new HardwareCapabilities(_physicalDevice.IsDeviceExtensionPresent("VK_EXT_index_type_uint8"), supportsCustomBorderColor, supportsBlendOperationAdvanced, propertiesBlendOperationAdvanced.AdvancedBlendCorrelatedOverlap, propertiesBlendOperationAdvanced.AdvancedBlendNonPremultipliedSrcColor, propertiesBlendOperationAdvanced.AdvancedBlendNonPremultipliedDstColor, _physicalDevice.IsDeviceExtensionPresent(KhrDrawIndirectCount.ExtensionName), _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_shader_interlock"), _physicalDevice.IsDeviceExtensionPresent("VK_NV_geometry_shader_passthrough"), features2.Features.ShaderFloat64, featuresShaderInt8.ShaderInt8, _physicalDevice.IsDeviceExtensionPresent("VK_EXT_shader_stencil_export"), features2.Features.ShaderStorageImageMultisample, _physicalDevice.IsDeviceExtensionPresent(ExtConditionalRendering.ExtensionName), _physicalDevice.IsDeviceExtensionPresent(ExtExtendedDynamicState.ExtensionName), features2.Features.MultiViewport &&!(IsMoltenVk && Vendor == Vendor.Amd), featuresRobustness2.NullDescriptor || IsMoltenVk, supportsPushDescriptors, IsMoltenVk? 16 : propertiesPushDescriptor.MaxPushDescriptors, featuresPrimitiveTopologyListRestart.PrimitiveTopologyListRestart, featuresPrimitiveTopologyListRestart.PrimitiveTopologyPatchListRestart, supportsTransformFeedback, propertiesTransformFeedback.TransformFeedbackQueries, features2.Features.OcclusionQueryPrecise, _physicalDevice.PhysicalDeviceFeatures.PipelineStatisticsQuery, _physicalDevice.PhysicalDeviceFeatures.GeometryShader, _physicalDevice.PhysicalDeviceFeatures.TessellationShader, _physicalDevice.IsDeviceExtensionPresent("VK_NV_viewport_array2"), _physicalDevice.IsDeviceExtensionPresent(ExtExternalMemoryHost.ExtensionName), supportsDepthClipControl && featuresDepthClipControl.DepthClipControl, supportsAttachmentFeedbackLoop && featuresAttachmentFeedbackLoop.AttachmentFeedbackLoopLayout, supportsDynamicAttachmentFeedbackLoop && featuresDynamicAttachmentFeedbackLoop.AttachmentFeedbackLoopDynamicState, propertiesSubgroup.SubgroupSize, supportedSampleCounts, portabilityFlags, vertexBufferAlignment, properties.Limits.SubTexelPrecisionBits, minResourceAlignment);
-            IsSharedMemory = MemoryAllocator.IsDeviceMemoryShared(_physicalDevice);
+            // #522 CORREÇÃO DE ORDEM - MemoryAllocator ANTES de IsSharedMemory
             MemoryAllocator = new MemoryAllocator(Api, _physicalDevice, _device);
+            IsSharedMemory = MemoryAllocator.IsDeviceMemoryShared(_physicalDevice);
             Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtExternalMemoryHost hostMemoryApi);
             HostMemoryAllocator = new HostMemoryAllocator(MemoryAllocator, Api, hostMemoryApi, _device);
             CommandBufferPool = new CommandBufferPool(Api, _device, Queue, QueueLock, queueFamilyIndex, IsQualcommProprietary);
@@ -375,13 +376,13 @@ namespace Ryujinx.Graphics.Vulkan
             try
             {
                 if (_device.Handle == 0) return;
-                try { SyncManager?.Cleanup(); } catch (Exception ex) { Console.WriteLine($"[VK] PreFrame SyncManager ignorado: {ex.Message}"); }
-                try { BufferManager?.StagingBuffer?.FreeCompleted(); } catch {}
-                try { _counters?.Update(); } catch {}
+                try { SyncManager?.Cleanup(); FLog("[VK] PreFrame SyncManager OK"); } catch (Exception ex) { FLog($"[VK] PreFrame SyncManager FAIL: {ex.Message}"); }
+                try { BufferManager?.StagingBuffer?.FreeCompleted(); FLog("[VK] PreFrame Staging OK"); } catch (Exception ex){ FLog($"[VK] PreFrame Staging FAIL: {ex}"); }
+                try { _counters?.Update(); FLog("[VK] PreFrame Counters OK"); } catch (Exception ex){ FLog($"[VK] PreFrame Counters FAIL: {ex}"); }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[VK] PreFrame totalmente ignorado: {ex.Message}");
+                FLog($"[VK] PreFrame TOTAL FAIL: {ex}");
             }
         }
 
@@ -395,7 +396,20 @@ namespace Ryujinx.Graphics.Vulkan
             if (!_initialized) return;
             try{ _counters?.ResetFutureCounters(cmd, count); }catch{}
         }
-        public void BackgroundContextAction(Action action, bool alwaysBackground = false) { try{ action(); }catch{} }
+        public void BackgroundContextAction(Action action, bool alwaysBackground = false)
+        {
+            try
+            {
+                FLog("[VK] BackgroundContextAction START");
+                action();
+                FLog("[VK] BackgroundContextAction END");
+            }
+            catch(Exception ex)
+            {
+                FLog($"[VK] BackgroundContextAction FAIL: {ex}");
+                throw;
+            }
+        }
         public void CreateSync(ulong id, bool strict)
         {
             if (!_initialized) return;
@@ -420,23 +434,41 @@ namespace Ryujinx.Graphics.Vulkan
         public unsafe void Dispose()
         {
             if (!_initialized) return;
-            try{ CommandBufferPool?.Dispose(); }catch{}
-            try{ BackgroundResources?.Dispose(); }catch{}
-            try{ _counters?.Dispose(); }catch{}
-            try{ _window?.Dispose(); }catch{}
-            try{ HelperShader?.Dispose(); }catch{}
-            try{ _pipeline?.Dispose(); }catch{}
-            try{ BufferManager?.Dispose(); }catch{}
-            try{ PipelineLayoutCache?.Dispose(); }catch{}
-            try{ Barriers?.Dispose(); }catch{}
-            try{ MemoryAllocator?.Dispose(); }catch{}
-            foreach (ShaderCollection shader in Shaders) { try{ shader.Dispose(); }catch{} }
-            foreach (ITexture texture in Textures) { try{ texture.Release(); }catch{} }
-            foreach (SamplerHolder sampler in Samplers) { try{ sampler.Dispose(); }catch{} }
-            try{ if(SurfaceApi!=null) SurfaceApi.DestroySurface(_instance.Instance, _surface, null); }catch{}
-            try{ if(Api!=null) Api.DestroyDevice(_device, null); }catch{}
-            try{ _debugMessenger?.Dispose(); }catch{}
-            try{ _instance?.Dispose(); }catch{}
+            FLog("[VK] Dispose START #522");
+            try
+            {
+                try { Api.DeviceWaitIdle(_device); FLog("[VK] Dispose DeviceWaitIdle OK"); } catch (Exception ex) { FLog($"[VK] Dispose DeviceWaitIdle FAIL: {ex}"); }
+
+                try { _window?.Dispose(); FLog("[VK] Window Dispose OK"); } catch (Exception ex) { FLog($"[VK] Window Dispose FAIL: {ex}"); }
+
+                try { CommandBufferPool?.Dispose(); FLog("[VK] Dispose CommandBufferPool OK"); } catch (Exception ex) { FLog($"[VK] Dispose CommandBufferPool FAIL {ex.Message}"); }
+                try { BackgroundResources?.Dispose(); } catch {}
+                try { _counters?.Dispose(); } catch {}
+                try { HelperShader?.Dispose(); } catch {}
+                try { _pipeline?.Dispose(); } catch {}
+                try { BufferManager?.Dispose(); } catch {}
+                try { PipelineLayoutCache?.Dispose(); } catch {}
+                try { Barriers?.Dispose(); } catch {}
+                try { MemoryAllocator?.Dispose(); } catch {}
+
+                foreach (ShaderCollection shader in Shaders) { try { shader.Dispose(); } catch {} }
+                foreach (ITexture texture in Textures) { try { texture.Release(); } catch {} }
+                foreach (SamplerHolder sampler in Samplers) { try { sampler.Dispose(); } catch {} }
+
+                try { if (SurfaceApi!= null) SurfaceApi.DestroySurface(_instance.Instance, _surface, null); FLog("[VK] DestroySurface OK"); } catch {}
+                try { if (Api!= null && _device.Handle!= 0) { Api.DestroyDevice(_device, null); FLog("[VK] DestroyDevice OK"); } } catch {}
+                try { _debugMessenger?.Dispose(); } catch {}
+                try { _instance?.Dispose(); } catch {}
+                FLog("[VK] Dispose END #522");
+            }
+            catch (Exception ex)
+            {
+                FLog($"[VK] Dispose TOTAL FAIL: {ex}");
+            }
+            finally
+            {
+                _initialized = false;
+            }
         }
         public bool PrepareHostMapping(nint address, ulong size) => Capabilities.SupportsHostImportedMemory && HostMemoryAllocator.TryImport(BufferManager.HostImportedBufferMemoryRequirements, BufferManager.DefaultBufferMemoryFlags, address, size);
     }
