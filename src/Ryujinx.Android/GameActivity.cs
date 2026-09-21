@@ -99,12 +99,32 @@ public class GameActivity : Activity
         int tid=SysEnv.CurrentManagedThreadId; MyLog($"Emu START id={tid}");
         try{
             SysEnv.SetEnvironmentVariable("RYUJINX_DISABLE_PPTC", "1");
-            string baseDir=Path.Combine(FilesDir.AbsolutePath,"Ryujinx"); Directory.CreateDirectory(Path.Combine(baseDir,"system")); Directory.CreateDirectory(Path.Combine(baseDir,"keys"));
-            string jitDir=Path.Combine(CacheDir.AbsolutePath,"jit"); Directory.CreateDirectory(jitDir); SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE",jitDir);
+            string baseDir=Path.Combine(FilesDir.AbsolutePath,"Ryujinx");
+            Directory.CreateDirectory(Path.Combine(baseDir,"system"));
+            Directory.CreateDirectory(Path.Combine(baseDir,"keys"));
+            string jitDir=Path.Combine(CacheDir.AbsolutePath,"jit"); Directory.CreateDirectory(jitDir);
+            SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE",jitDir);
+
+            // === FIX #528 COPIA AUTOMATICA DE KEYS ===
+            try{
+                FileLog($"baseDir={baseDir}");
+                var srcProd="/storage/emulated/0/Download/Ryubing/keys/prod.keys";
+                var dstProd=Path.Combine(baseDir,"keys/prod.keys");
+                if(File.Exists(srcProd)){ File.Copy(srcProd,dstProd,true); FileLog($"COPIADO prod.keys {new FileInfo(dstProd).Length} bytes para {dstProd}"); }
+                else FileLog($"SRC prod.keys NAO EXISTE {srcProd}");
+                var srcTitle="/storage/emulated/0/Download/Ryubing/keys/title.keys";
+                var dstTitle=Path.Combine(baseDir,"keys/title.keys");
+                if(File.Exists(srcTitle)){ File.Copy(srcTitle,dstTitle,true); FileLog($"COPIADO title.keys"); }
+                foreach(var f in Directory.GetFiles(Path.Combine(baseDir,"keys"))) FileLog($"KEY FILE FOUND: {Path.GetFileName(f)} {new FileInfo(f).Length} bytes");
+                foreach(var d in Directory.GetDirectories(baseDir)) FileLog($"DIR: {d}");
+            }catch(Exception ex){ FileLog($"COPY/LIST FAIL {ex}"); }
+
             try{ VirtualFileSystem.ResetForAndroid(); }catch{}
             try{ typeof(VirtualFileSystem).GetField("_instance",All)?.SetValue(null,null); }catch{}
             var vfs=VirtualFileSystem.CreateInstance();
             vfs.ReloadKeySet();
+            FileLog($"KEYS count={vfs.KeySet?.Count()}");
+
             var audio=new DummyHardwareDeviceDriver();
             FileLog("ANTES VulkanRenderer.Create");
             Holder.gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)Holder.nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
