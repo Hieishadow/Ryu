@@ -78,8 +78,8 @@ public class GameActivity : Activity
         }
         public void SurfaceChanged(ISurfaceHolder h,AFormat f,int w,int ht){
             a.MyLog($"SurfaceChanged {w}x{ht}");
-            a.FileLog($"[VK] SurfaceChanged {w}x{ht} -> SetSize Window v4");
-            try{ var winProp=Holder.gpu?.GetType().GetProperty("Window",All); var win=winProp?.GetValue(Holder.gpu); win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{2186,1080}); }catch(Exception ex){ a.FileLog($"SetSize Changed FAIL {ex.Message}"); }
+            a.FileLog($"[VK] SurfaceChanged {w}x{ht}");
+            try{ var winProp=Holder.gpu?.GetType().GetProperty("Window",All); var win=winProp?.GetValue(Holder.gpu); win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{w,ht}); }catch(Exception ex){ a.FileLog($"SetSize Changed FAIL {ex.Message}"); }
         }
         public void SurfaceDestroyed(ISurfaceHolder h){
             a.MyLog("SurfaceDestroyed");
@@ -101,58 +101,34 @@ public class GameActivity : Activity
             SysEnv.SetEnvironmentVariable("RYUJINX_DISABLE_PPTC", "1");
             string baseDir=Path.Combine(FilesDir.AbsolutePath,"Ryujinx"); Directory.CreateDirectory(Path.Combine(baseDir,"system")); Directory.CreateDirectory(Path.Combine(baseDir,"keys"));
             string jitDir=Path.Combine(CacheDir.AbsolutePath,"jit"); Directory.CreateDirectory(jitDir); SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE",jitDir);
-            try{ VirtualFileSystem.ResetForAndroid(); FileLog("ResetForAndroid OK"); }catch(Exception ex){ FileLog($"ResetForAndroid FAIL {ex.Message}"); }
+            try{ VirtualFileSystem.ResetForAndroid(); }catch{}
             try{ typeof(VirtualFileSystem).GetField("_instance",All)?.SetValue(null,null); }catch{}
-            FileLog("ANTES Firmware Copy");
-            try {
-                string firmSrc = "/storage/emulated/0/Download/Ryubing/firmware";
-                string sysReg = Path.Combine(baseDir, "system", "Contents", "registered");
-                string bisReg = Path.Combine(baseDir, "bis", "system", "Contents", "registered");
-                Directory.CreateDirectory(sysReg); Directory.CreateDirectory(bisReg);
-                if(Directory.Exists(firmSrc)){
-                    var ncas = Directory.GetFiles(firmSrc, "*.nca", SearchOption.AllDirectories);
-                    FileLog($"Firmware achou {ncas.Length} ncas em {firmSrc}");
-                    foreach(var f in ncas){ var destName = Path.GetFileName(f); try{ File.Copy(f, Path.Combine(sysReg, destName), true); }catch{} try{ File.Copy(f, Path.Combine(bisReg, destName), true); }catch{} }
-                    FileLog($"Firmware copiado para {sysReg} = {Directory.GetFiles(sysReg).Length} arquivos");
-                } else { FileLog($"Firmware PASTA NAO EXISTE: {firmSrc}"); }
-            } catch(Exception ef){ FileLog($"Firmware copy ERR {ef.Message}"); }
-            FileLog("DEPOIS Firmware Copy");
-            FileLog("ANTES CreateInstance");
             var vfs=VirtualFileSystem.CreateInstance();
-            FileLog("DEPOIS CreateInstance OK");
             vfs.ReloadKeySet();
-            FileLog("DEPOIS ReloadKeySet");
             var audio=new DummyHardwareDeviceDriver();
             FileLog("ANTES VulkanRenderer.Create");
             Holder.gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)Holder.nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
             FileLog("DEPOIS Vulkan OK"); MyLog("Vulkan OK");
-            FileLog("ANTES BuildHle");
             var conf=BuildHle(vfs,Holder.gpu,audio,baseDir,Path.Combine(baseDir,"system"));
-            FileLog("DEPOIS BuildHle");
-            FileLog("ANTES new Switch");
             Holder.device=new Switch(conf);
-            FileLog("DEPOIS new Switch"); MyLog("SWITCH CREATED");
             MyLog($"Load {Path.GetFileName(romPath)}");
             FileLog($"ANTES Load {romPath}");
             if(romPath.EndsWith(".xci",StringComparison.OrdinalIgnoreCase)) Holder.device.LoadXci(romPath); else Holder.device.LoadNsp(romPath);
             FileLog("DEPOIS Load END"); MyLog("Load END");
-            int w=2186; int h=1080;
-            try{
-                if(surfaceView!=null && surfaceView.Holder!=null){
-                    var sf = surfaceView.Holder.SurfaceFrame;
-                    if(sf!=null && sf.Width()>0){ w=sf.Width(); h=sf.Height(); if(w<1000) { w=2186; h=1080; } }
-                }
-            }catch(Exception exW){ FileLog($"GetSize FAIL {exW.Message}"); w=2186; h=1080; }
-            FileLog($"[VK] SetSize FORCADO {w}x{h} para Window v4 req={w}x{h}");
-            MyLog($"SetSize {w}x{h}");
+            int w=1280; int h=720;
+            try{ if(surfaceView!=null && surfaceView.Holder!=null){ var sf = surfaceView.Holder.SurfaceFrame; if(sf!=null && sf.Width()>0){ w=sf.Width(); h=sf.Height(); } } }catch{}
+            FileLog($"[VK] SetSize REAL {w}x{h}"); MyLog($"SetSize {w}x{h}");
             try{ var winProp=Holder.gpu.GetType().GetProperty("Window",All); var win=winProp?.GetValue(Holder.gpu); win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{w,h}); MyLog($"SetSize OK {w}x{h}"); }catch(Exception eSz){ MyLog($"SetSize ERR {eSz.Message}"); }
             int frames=0;
             FileLog("LOOP ON"); MyLog("LOOP ON");
             while(Holder.running && Holder.nativeWindow!=IntPtr.Zero){
                 try{
+                    if(frames==0) FileLog("LOOP first ProcessFrame...");
                     Holder.device.ProcessFrame();
-                    Holder.device.PresentFrame(()=>{ if(frames % 60 == 0) FileLog($"[VK] swapBuffers cb f={frames} OK"); });
+                    if(frames==0) FileLog("First ProcessFrame OK, calling PresentFrame...");
+                    Holder.device.PresentFrame(()=>{ FileLog($"[VK] swapBuffers cb f={frames}"); });
                     frames++;
+                    if(frames==1){ FileLog("LOOP FIRST FRAME OK - TELA DEVE APARECER"); MyLog("FIRST FRAME OK"); }
                     if(frames % 60 == 0) FileLog($"LOOP f={frames} OK");
                     Thread.Sleep(16);
                 }catch(Exception eLoop){ FileLog($"LOOP EX f={frames} {eLoop}"); CrashLog("crash_loop", eLoop.ToString()); break; }
