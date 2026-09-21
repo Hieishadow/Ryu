@@ -16,20 +16,15 @@ public class GameActivity : Activity
     string romPath=""; SurfaceView surfaceView; TextView logView;
     [DllImport("android")] static extern IntPtr ANativeWindow_fromSurface(IntPtr env, IntPtr surface);
     [DllImport("android")] static extern void ANativeWindow_release(IntPtr window);
-
     void FileLog(string s){ try{ var p="/storage/emulated/0/Download/Ryubing/ryubing_log.txt"; Directory.CreateDirectory(Path.GetDirectoryName(p)); File.AppendAllText(p, DateTime.Now.ToString("HH:mm:ss.fff")+" [FILE] "+s+"\n"); }catch{} }
     void CrashLog(string name, string s){ try{ var p=$"/storage/emulated/0/Download/Ryubing/{name}.txt"; Directory.CreateDirectory(Path.GetDirectoryName(p)); File.WriteAllText(p, DateTime.Now.ToString()+"\n"+s+"\n"); }catch{} }
-
     void MyLog(string s){ try{ RunOnUiThread(()=>{ if(logView!=null){ logView.Text+="\n"+s; if(logView.Text.Length>4000) logView.Text=logView.Text.Substring(logView.Text.Length-4000);} }); FileLog(s); }catch{ FileLog(s); } }
-
     protected override void OnCreate(Bundle saved){
         base.OnCreate(saved);
-        // LOGGER GLOBAL DENTRO DO GAME TAMBEM
         try {
             AppDomain.CurrentDomain.UnhandledException += (s, e) => { CrashLog("crash_game_domain", e.ExceptionObject.ToString()); };
             TaskScheduler.UnobservedTaskException += (s, e) => { CrashLog("crash_game_task", e.Exception.ToString()); e.SetObserved(); };
         } catch {}
-
         if(Holder.device!=null || Holder.emuThread!=null){ bool ended=false; try{ Holder.running=false; if(Holder.emuThread!=null) ended=Holder.emuThread.Join(3000); }catch{} if(ended){ try{ Holder.device?.Dispose(); }catch{} try{ if(Holder.gpu is IDisposable d) d.Dispose(); }catch{} if(Holder.nativeWindow!=IntPtr.Zero){ try{ ANativeWindow_release(Holder.nativeWindow); }catch{} Holder.nativeWindow=IntPtr.Zero; } Holder.device=null; Holder.gpu=null; Holder.emuThread=null; } }
         if(Window!=null) Window.AddFlags(WindowManagerFlags.Fullscreen|WindowManagerFlags.KeepScreenOn);
         var extraPath=Intent.GetStringExtra("rom_path"); if(extraPath!=null) romPath=extraPath;
@@ -53,6 +48,30 @@ public class GameActivity : Activity
             string baseDir=Path.Combine(FilesDir.AbsolutePath,"Ryujinx"); Directory.CreateDirectory(Path.Combine(baseDir,"system")); Directory.CreateDirectory(Path.Combine(baseDir,"keys"));
             string jitDir=Path.Combine(CacheDir.AbsolutePath,"jit"); Directory.CreateDirectory(jitDir); SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE",jitDir);
             try{ typeof(VirtualFileSystem).GetField("_instance",All)?.SetValue(null,null); }catch{}
+
+            // --- FIX FIRMWARE #497 - COPIA ANTES DO VFS ---
+            FileLog("ANTES Firmware Copy");
+            try {
+                string firmSrc = "/storage/emulated/0/Download/Ryubing/firmware";
+                string sysReg = Path.Combine(baseDir, "system", "Contents", "registered");
+                string bisReg = Path.Combine(baseDir, "bis", "system", "Contents", "registered");
+                Directory.CreateDirectory(sysReg);
+                Directory.CreateDirectory(bisReg);
+                if(Directory.Exists(firmSrc)){
+                    var ncas = Directory.GetFiles(firmSrc, "*.nca", SearchOption.AllDirectories);
+                    FileLog($"Firmware achou {ncas.Length} ncas em {firmSrc}");
+                    foreach(var f in ncas){
+                        var destName = Path.GetFileName(f);
+                        try{ File.Copy(f, Path.Combine(sysReg, destName), true); }catch{}
+                        try{ File.Copy(f, Path.Combine(bisReg, destName), true); }catch{}
+                    }
+                    FileLog($"Firmware copiado para {sysReg} = {Directory.GetFiles(sysReg).Length} arquivos");
+                } else {
+                    FileLog($"Firmware PASTA NAO EXISTE: {firmSrc}");
+                }
+            } catch(Exception ef){ FileLog($"Firmware copy ERR {ef.Message} {ef.StackTrace}"); }
+            FileLog("DEPOIS Firmware Copy");
+
             FileLog("ANTES CreateInstance");
             var vfs=VirtualFileSystem.CreateInstance();
             FileLog("ANTES ReloadKeySet");
@@ -61,20 +80,17 @@ public class GameActivity : Activity
             var audio=new DummyHardwareDeviceDriver();
             FileLog("ANTES VulkanRenderer.Create");
             Holder.gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)Holder.nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
-            FileLog("DEPOIS Vulkan OK");
-            MyLog($"Vulkan OK");
+            FileLog("DEPOIS Vulkan OK"); MyLog($"Vulkan OK");
             FileLog("ANTES BuildHle");
             var conf=BuildHle(vfs,Holder.gpu,audio,baseDir,Path.Combine(baseDir,"system"));
             FileLog("DEPOIS BuildHle");
             FileLog("ANTES new Switch");
             Holder.device=new Switch(conf);
-            FileLog("DEPOIS new Switch");
-            MyLog($"SWITCH CREATED");
+            FileLog("DEPOIS new Switch"); MyLog($"SWITCH CREATED");
             MyLog($"Load {Path.GetFileName(romPath)}");
             FileLog($"ANTES Load {romPath}");
             if(romPath.EndsWith(".xci",StringComparison.OrdinalIgnoreCase)) Holder.device.LoadXci(romPath); else Holder.device.LoadNsp(romPath);
-            FileLog($"DEPOIS Load END");
-            MyLog($"Load END");
+            FileLog($"DEPOIS Load END"); MyLog($"Load END");
             int w=2186; int h=1080;
             MyLog($"SetSize {w}x{h}");
             try{ var winProp=Holder.gpu.GetType().GetProperty("Window",All); var win=winProp?.GetValue(Holder.gpu); win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{w,h}); MyLog($"SetSize OK"); }catch(Exception eSz){ MyLog($"SetSize ERR {eSz.Message}"); }
@@ -88,20 +104,13 @@ public class GameActivity : Activity
                     FileLog($"PF END f={frames}");
                     Holder.device.PresentFrame(()=>{});
                     FileLog($"PR END f={frames}");
-                    frames++;
-                    Thread.Sleep(16);
+                    frames++; Thread.Sleep(16);
                 }catch(Exception eLoop){
-                    FileLog($"LOOP EX f={frames} {eLoop}");
-                    CrashLog("crash_loop", eLoop.ToString());
-                    break;
+                    FileLog($"LOOP EX f={frames} {eLoop}"); CrashLog("crash_loop", eLoop.ToString()); break;
                 }
             }
             FileLog($"LOOP SAIU f={frames}"); MyLog($"LOOP SAIU f={frames}");
-        }catch(Exception eAll){
-            FileLog($"CRASH {eAll}");
-            MyLog($"CRASH {eAll}");
-            CrashLog("crash_emu", eAll.ToString());
-        } finally{ FileLog($"Emu END"); MyLog($"Emu END"); }
+        }catch(Exception eAll){ FileLog($"CRASH {eAll}"); MyLog($"CRASH {eAll}"); CrashLog("crash_emu", eAll.ToString()); } finally{ FileLog($"Emu END"); MyLog($"Emu END"); }
     }
     unsafe delegate Silk.NET.Vulkan.Result CDel(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
     HleConfiguration BuildHle(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio, string baseDir, string sysDir){
@@ -116,12 +125,7 @@ public class GameActivity : Activity
         try{
             foreach(var p in hleType.GetProperties(All)){
                 if(p.Name.Contains("MemoryManager") && p.PropertyType.IsEnum){
-                    try{
-                        p.SetValue(hle, Enum.Parse(p.PropertyType, "Software"));
-                        MyLog($"MemoryManager = Software (S20 FE fix #492)");
-                    }catch{
-                        try{ p.SetValue(hle, Enum.Parse(p.PropertyType, "HostTracked")); }catch{}
-                    }
+                    try{ p.SetValue(hle, Enum.Parse(p.PropertyType, "Software")); MyLog($"MemoryManager = Software (S20 FE fix #492)"); }catch{ try{ p.SetValue(hle, Enum.Parse(p.PropertyType, "HostTracked")); }catch{} }
                 }
                 if(p.Name.Contains("ExpandRam")){ try{ p.SetValue(hle, false); }catch{} }
             }
