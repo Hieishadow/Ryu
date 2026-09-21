@@ -12,6 +12,7 @@ using Silk.NET.Vulkan.Extensions.EXT;
 using Silk.NET.Vulkan.Extensions.KHR;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -23,6 +24,8 @@ namespace Ryujinx.Graphics.Vulkan
 {
     public sealed class VulkanRenderer : IRenderer
     {
+        private static void FLog(string s){ try{ var p="/storage/emulated/0/Download/Ryubing/ryubing_log.txt"; var d=Path.GetDirectoryName(p); if(d!=null){ try{ if(!Directory.Exists(d)) Directory.CreateDirectory(d); }catch{} } File.AppendAllText(p, DateTime.Now.ToString("HH:mm:ss.fff")+" [FILE] "+s+"\n"); Console.WriteLine(s); }catch{} }
+
         private VulkanInstance _instance;
         private SurfaceKHR _surface;
         private VulkanPhysicalDevice _physicalDevice;
@@ -215,21 +218,40 @@ namespace Ryujinx.Graphics.Vulkan
 
         private void SetupContext(GraphicsDebugLevel logLevel)
         {
-            _instance = VulkanInitialization.CreateInstance(Api, logLevel, _getRequiredExtensions());
-            _debugMessenger = new VulkanDebugMessenger(Api, _instance.Instance, logLevel);
-            if (Api.TryGetInstanceExtension(_instance.Instance, out KhrSurface surfaceApi)) SurfaceApi = surfaceApi;
-            _surface = _getSurface(_instance.Instance, Api);
-            _physicalDevice = VulkanInitialization.FindSuitablePhysicalDevice(Api, _instance, _surface, _preferredGpuId);
-            uint queueFamilyIndex = VulkanInitialization.FindSuitableQueueFamily(Api, _physicalDevice, _surface, out uint maxQueueCount);
-            _device = VulkanInitialization.CreateDevice(Api, _physicalDevice, queueFamilyIndex, maxQueueCount);
-            if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrSwapchain swapchainApi)) SwapchainApi = swapchainApi;
-            Api.GetDeviceQueue(_device, queueFamilyIndex, 0, out Queue queue);
-            Queue = queue;
-            QueueLock = new();
-            LoadFeatures(maxQueueCount, queueFamilyIndex);
-            QueueFamilyIndex = queueFamilyIndex;
-            _window = new Window(this, _surface, _physicalDevice.PhysicalDevice, _device);
-            _initialized = true;
+            FLog("[VK] SetupContext START");
+            try
+            {
+                _instance = VulkanInitialization.CreateInstance(Api, logLevel, _getRequiredExtensions());
+                FLog("[VK] Instance OK");
+                _debugMessenger = new VulkanDebugMessenger(Api, _instance.Instance, logLevel);
+                if (Api.TryGetInstanceExtension(_instance.Instance, out KhrSurface surfaceApi)) SurfaceApi = surfaceApi;
+                FLog("[VK] GetSurface START");
+                _surface = _getSurface(_instance.Instance, Api);
+                FLog($"[VK] Surface OK handle={_surface.Handle:X}");
+                _physicalDevice = VulkanInitialization.FindSuitablePhysicalDevice(Api, _instance, _surface, _preferredGpuId);
+                FLog($"[VK] PhysicalDevice OK");
+                uint queueFamilyIndex = VulkanInitialization.FindSuitableQueueFamily(Api, _physicalDevice, _surface, out uint maxQueueCount);
+                FLog($"[VK] QueueFamily idx={queueFamilyIndex} max={maxQueueCount}");
+                _device = VulkanInitialization.CreateDevice(Api, _physicalDevice, queueFamilyIndex, maxQueueCount);
+                FLog($"[VK] Device OK handle={_device.Handle:X}");
+                if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrSwapchain swapchainApi)) SwapchainApi = swapchainApi;
+                Api.GetDeviceQueue(_device, queueFamilyIndex, 0, out Queue queue);
+                Queue = queue;
+                QueueLock = new();
+                LoadFeatures(maxQueueCount, queueFamilyIndex);
+                FLog("[VK] LoadFeatures OK");
+                QueueFamilyIndex = queueFamilyIndex;
+                FLog("[VK] Before new Window");
+                _window = new Window(this, _surface, _physicalDevice.PhysicalDevice, _device);
+                FLog($"[VK] After new Window OK w={_window.Width} h={_window.Height}");
+                _initialized = true;
+                FLog("[VK] SetupContext END OK");
+            }
+            catch(Exception ex)
+            {
+                FLog($"[VK] SetupContext FAIL: {ex}");
+                throw;
+            }
         }
 
         internal int[] GetPushDescriptorReservedBindings(bool isOgl)
@@ -347,7 +369,6 @@ namespace Ryujinx.Graphics.Vulkan
             alignment = 1; return false;
         }
 
-        // === FIX 100% ANDROID - NUNCA PODE DAR NULLREF NO ANDROID ===
         public void PreFrame()
         {
             if (!_initialized) return;
