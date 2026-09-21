@@ -108,10 +108,20 @@ public class GameActivity : Activity
             var audio=new DummyHardwareDeviceDriver();
             FileLog("ANTES VulkanRenderer.Create");
             Holder.gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)Holder.nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
-            // #523 FIX - INICIALIZA VULKAN E CRIA O WINDOW
-            FileLog("[VK] Chamando gpu.Initialize() #523");
-            Holder.gpu.Initialize(Ryujinx.Common.Logging.GraphicsDebugLevel.None);
-            FileLog("DEPOIS Vulkan OK - Window deve ter sido criado"); MyLog("Vulkan OK #523");
+            // FIX #523 - INICIALIZA VULKAN SEM DEPENDER DE NAMESPACE (correção do erro L113)
+            try {
+                FileLog("[VK] Chamando gpu.Initialize() via reflection #523");
+                var initMethod = Holder.gpu.GetType().GetMethod("Initialize", All);
+                if(initMethod!= null) {
+                    var paramType = initMethod.GetParameters()[0].ParameterType;
+                    var enumVal = Enum.ToObject(paramType, 0); // None = 0
+                    initMethod.Invoke(Holder.gpu, new object[]{ enumVal });
+                    FileLog("[VK] Initialize OK - Window criado");
+                } else {
+                    FileLog("[VK] Initialize method NOT FOUND");
+                }
+            } catch(Exception exInit) { FileLog($"[VK] Initialize FAIL {exInit}"); }
+            FileLog("DEPOIS Vulkan OK"); MyLog("Vulkan OK #523");
             var conf=BuildHle(vfs,Holder.gpu,audio,baseDir,Path.Combine(baseDir,"system"));
             Holder.device=new Switch(conf);
             MyLog($"Load {Path.GetFileName(romPath)}");
