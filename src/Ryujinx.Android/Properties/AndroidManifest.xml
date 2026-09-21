@@ -37,19 +37,18 @@
             android:exported="false"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
             android:screenOrientation="landscape"
-            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout" />
+            android:configChanges="orientation|screenSize|keyboardHidden" />
 
-        <provider
-            android:name="com.ryubing.android.RyubingDocumentsProvider"
-            android:authorities="com.ryubing.android.documents"
-            android:enabled="true"
-            android:exported="true"
-            android:grantUriPermissions="true">
-            <intent-filter>
-                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
-            </intent-filter>
+        <!-- ISSO QUE LIBERA IGUAL TERMUX NA SUA PRINT -->
+        <provider android:name="com.ryubing.android.RyubingDocumentsProvider"
+          android:authorities="com.ryubing.android.documents"
+          android:grantUriPermissions="true"
+          android:exported="true"
+          android:permission="android.permission.MANAGE_DOCUMENTS">
+          <intent-filter>
+            <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+          </intent-filter>
         </provider>
 
     </application>
 </manifest>
-Aí vc falou para colocar essa porcaria
