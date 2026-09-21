@@ -122,17 +122,15 @@ public class MainActivity : Activity
                     if(input==null) return;
                     var baseDir = Path.Combine(FilesDir.AbsolutePath, "Ryujinx");
                     var keysDir = Path.Combine(baseDir, "keys");
-                    var sysKeysDir = Path.Combine(baseDir, "system", "keys");
                     Directory.CreateDirectory(keysDir);
-                    Directory.CreateDirectory(sysKeysDir);
                     Directory.CreateDirectory(KeysPath);
                     using(var ms = new MemoryStream()){
                         input.CopyTo(ms);
                         var bytes = ms.ToArray();
+                        // FIX: SÓ 1 LUGAR - Ryujinx/keys
                         File.WriteAllBytes(Path.Combine(keysDir, targetName), bytes);
-                        File.WriteAllBytes(Path.Combine(sysKeysDir, targetName), bytes);
                         File.WriteAllBytes(Path.Combine(KeysPath, targetName), bytes);
-                        Toast.MakeText(this, $"{targetName} importada: {bytes.Length}b OK em 3 lugares", ToastLength.Long).Show();
+                        Toast.MakeText(this, $"{targetName} importada: {bytes.Length}b OK", ToastLength.Long).Show();
                     }
                     UpdateInfo();
                 }
@@ -166,21 +164,30 @@ public class MainActivity : Activity
             Directory.CreateDirectory(FirmwarePath);
             if (FilesDir == null) return;
             var baseDir = Path.Combine(FilesDir.AbsolutePath, "Ryujinx");
-            Directory.CreateDirectory(Path.Combine(baseDir, "keys"));
+            var keysDir = Path.Combine(baseDir, "keys");
+            Directory.CreateDirectory(keysDir);
             Directory.CreateDirectory(Path.Combine(baseDir, "system"));
-            Directory.CreateDirectory(Path.Combine(baseDir, "system", "keys"));
             Directory.CreateDirectory(Path.Combine(baseDir, "system", "Contents", "registered"));
             Directory.CreateDirectory(Path.Combine(baseDir, "bis", "system", "Contents", "registered"));
 
+            // SÓ COPIA PRA 1 LUGAR
             foreach (var k in new[] { "prod.keys", "title.keys" }){
                 var src = Path.Combine(KeysPath, k);
                 if (!File.Exists(src)) continue;
                 try{
-                    File.Copy(src, Path.Combine(baseDir, "keys", k), true);
-                    File.Copy(src, Path.Combine(baseDir, "system", "keys", k), true);
-                    File.Copy(src, Path.Combine(baseDir, "system", k), true);
+                    File.Copy(src, Path.Combine(keysDir, k), true);
                 }catch{}
             }
+
+            // LIMPA OS DUPLICADOS DAS SUAS PRINTS
+            try {
+                var dupFolder = Path.Combine(baseDir, "system", "keys");
+                if(Directory.Exists(dupFolder)) Directory.Delete(dupFolder, true);
+                foreach(var k in new[] { "prod.keys", "title.keys" }){
+                    var dupFile = Path.Combine(baseDir, "system", k);
+                    if(File.Exists(dupFile)) File.Delete(dupFile);
+                }
+            } catch {}
         }catch{}
     }
 
