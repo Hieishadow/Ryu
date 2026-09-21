@@ -25,9 +25,10 @@ public class RyubingDocumentsProvider : DocumentsProvider
         };
         var c = new MatrixCursor(cols);
         var row = c.NewRow();
+        int rootFlags = 1 | 8; // LOCAL_ONLY | SUPPORTS_IS_CHILD
         foreach(var col in cols){
             if(col == DocumentsContract.Root.ColumnRootId) row.Add("ryubing_root");
-            else if(col == DocumentsContract.Root.ColumnFlags) row.Add((int)(DocumentsContract.RootFlags.LocalOnly | DocumentsContract.RootFlags.SupportsIsChild));
+            else if(col == DocumentsContract.Root.ColumnFlags) row.Add(rootFlags);
             else if(col == DocumentsContract.Root.ColumnTitle) row.Add("Ryubing");
             else if(col == DocumentsContract.Root.ColumnDocumentId) row.Add("ryubing:/");
             else if(col == DocumentsContract.Root.ColumnAvailableBytes) row.Add(10000000000L);
@@ -56,11 +57,12 @@ public class RyubingDocumentsProvider : DocumentsProvider
         string path = DocIdToPath(docId);
         bool isDir = Directory.Exists(path);
         var row = c.NewRow();
+        int flags = 2 | 4 | 8;
         foreach(var col in cols){
             if(col == DocumentsContract.Document.ColumnDocumentId) row.Add(docId);
             else if(col == DocumentsContract.Document.ColumnMimeType) row.Add(isDir ? DocumentsContract.Document.MimeTypeDir : "application/octet-stream");
             else if(col == DocumentsContract.Document.ColumnDisplayName) row.Add(docId=="ryubing:/" ? "Ryubing" : (isDir ? new DirectoryInfo(path).Name : Path.GetFileName(path)));
-            else if(col == DocumentsContract.Document.ColumnFlags) row.Add((int)(DocumentFlags.SupportsWrite | DocumentFlags.SupportsDelete | DocumentFlags.DirSupportsCreates));
+            else if(col == DocumentsContract.Document.ColumnFlags) row.Add(flags);
             else if(col == DocumentsContract.Document.ColumnSize) row.Add(isDir ? 0L : (File.Exists(path) ? new FileInfo(path).Length : 0L));
             else if(col == DocumentsContract.Document.ColumnLastModified) row.Add(Java.Lang.JavaSystem.CurrentTimeMillis());
             else row.Add(null);
@@ -81,14 +83,13 @@ public class RyubingDocumentsProvider : DocumentsProvider
         var c = new MatrixCursor(cols);
         string parentPath = DocIdToPath(parentDocId);
         if(!Directory.Exists(parentPath)) return c;
-
         foreach(var d in Directory.GetDirectories(parentPath)){
             var r = c.NewRow();
             foreach(var col in cols){
                 if(col == DocumentsContract.Document.ColumnDocumentId) r.Add("ryubing:"+d);
                 else if(col == DocumentsContract.Document.ColumnMimeType) r.Add(DocumentsContract.Document.MimeTypeDir);
                 else if(col == DocumentsContract.Document.ColumnDisplayName) r.Add(Path.GetFileName(d));
-                else if(col == DocumentsContract.Document.ColumnFlags) r.Add((int)DocumentFlags.DirSupportsCreates);
+                else if(col == DocumentsContract.Document.ColumnFlags) r.Add(8);
                 else if(col == DocumentsContract.Document.ColumnSize) r.Add(0L);
                 else if(col == DocumentsContract.Document.ColumnLastModified) r.Add(Java.Lang.JavaSystem.CurrentTimeMillis());
                 else r.Add(null);
@@ -100,7 +101,7 @@ public class RyubingDocumentsProvider : DocumentsProvider
                 if(col == DocumentsContract.Document.ColumnDocumentId) r.Add("ryubing:"+f);
                 else if(col == DocumentsContract.Document.ColumnMimeType) r.Add("application/octet-stream");
                 else if(col == DocumentsContract.Document.ColumnDisplayName) r.Add(Path.GetFileName(f));
-                else if(col == DocumentsContract.Document.ColumnFlags) r.Add((int)(DocumentFlags.SupportsWrite | DocumentFlags.SupportsDelete));
+                else if(col == DocumentsContract.Document.ColumnFlags) r.Add(2 | 4);
                 else if(col == DocumentsContract.Document.ColumnSize) r.Add(new FileInfo(f).Length);
                 else if(col == DocumentsContract.Document.ColumnLastModified) r.Add(Java.Lang.JavaSystem.CurrentTimeMillis());
                 else r.Add(null);
