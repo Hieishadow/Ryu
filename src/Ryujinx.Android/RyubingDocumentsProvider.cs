@@ -16,38 +16,35 @@ public class RyubingDocumentsProvider : DocumentsProvider
 
     public override ICursor QueryRoots(string[] projection)
     {
-        var columns = projection ?? new[] {
+        var cols = projection ?? new[] {
             DocumentsContract.Root.ColumnRootId,
             DocumentsContract.Root.ColumnFlags,
             DocumentsContract.Root.ColumnTitle,
             DocumentsContract.Root.ColumnDocumentId,
-            DocumentsContract.Root.ColumnAvailableBytes,
-            DocumentsContract.Root.ColumnMimeTypes
+            DocumentsContract.Root.ColumnAvailableBytes
         };
-        var c = new MatrixCursor(columns);
+        var c = new MatrixCursor(cols);
         var row = c.NewRow();
-        foreach(var col in columns){
+        foreach(var col in cols){
             if(col == DocumentsContract.Root.ColumnRootId) row.Add("ryubing_root");
-            else if(col == DocumentsContract.Root.ColumnFlags) row.Add((int)(RootFlags.LocalOnly | RootFlags.SupportsIsChild));
+            else if(col == DocumentsContract.Root.ColumnFlags) row.Add((int)(DocumentsContract.RootFlags.LocalOnly | DocumentsContract.RootFlags.SupportsIsChild));
             else if(col == DocumentsContract.Root.ColumnTitle) row.Add("Ryubing");
             else if(col == DocumentsContract.Root.ColumnDocumentId) row.Add("ryubing:/");
             else if(col == DocumentsContract.Root.ColumnAvailableBytes) row.Add(10000000000L);
-            else if(col == DocumentsContract.Root.ColumnMimeTypes) row.Add("*/*");
             else row.Add(null);
         }
-        c.AddRow(row);
         return c;
     }
 
     string DocIdToPath(string docId){
         if(docId == "ryubing:/") return Context.FilesDir.AbsolutePath;
-        if(docId.StartsWith("ryubing:")) return docId.Substring("ryubing:".Length);
+        if(docId.StartsWith("ryubing:")) return docId.Substring(8);
         return docId;
     }
 
     public override ICursor QueryDocument(string docId, string[] projection)
     {
-        var columns = projection ?? new[] {
+        var cols = projection ?? new[] {
             DocumentsContract.Document.ColumnDocumentId,
             DocumentsContract.Document.ColumnMimeType,
             DocumentsContract.Document.ColumnDisplayName,
@@ -55,26 +52,25 @@ public class RyubingDocumentsProvider : DocumentsProvider
             DocumentsContract.Document.ColumnSize,
             DocumentsContract.Document.ColumnLastModified
         };
-        var c = new MatrixCursor(columns);
+        var c = new MatrixCursor(cols);
         string path = DocIdToPath(docId);
         bool isDir = Directory.Exists(path);
         var row = c.NewRow();
-        foreach(var col in columns){
+        foreach(var col in cols){
             if(col == DocumentsContract.Document.ColumnDocumentId) row.Add(docId);
             else if(col == DocumentsContract.Document.ColumnMimeType) row.Add(isDir ? DocumentsContract.Document.MimeTypeDir : "application/octet-stream");
-            else if(col == DocumentsContract.Document.ColumnDisplayName) row.Add(isDir ? (docId=="ryubing:/" ? "Ryubing" : new DirectoryInfo(path).Name) : Path.GetFileName(path));
-            else if(col == DocumentsContract.Document.ColumnFlags) row.Add((int)(DocumentContractFlags.SupportsWrite | DocumentContractFlags.SupportsDelete | DocumentContractFlags.DirSupportsCreates));
+            else if(col == DocumentsContract.Document.ColumnDisplayName) row.Add(docId=="ryubing:/" ? "Ryubing" : (isDir ? new DirectoryInfo(path).Name : Path.GetFileName(path)));
+            else if(col == DocumentsContract.Document.ColumnFlags) row.Add((int)(DocumentFlags.SupportsWrite | DocumentFlags.SupportsDelete | DocumentFlags.DirSupportsCreates));
             else if(col == DocumentsContract.Document.ColumnSize) row.Add(isDir ? 0L : (File.Exists(path) ? new FileInfo(path).Length : 0L));
             else if(col == DocumentsContract.Document.ColumnLastModified) row.Add(Java.Lang.JavaSystem.CurrentTimeMillis());
             else row.Add(null);
         }
-        c.AddRow(row);
         return c;
     }
 
     public override ICursor QueryChildDocuments(string parentDocId, string[] projection, string sortOrder)
     {
-        var columns = projection ?? new[] {
+        var cols = projection ?? new[] {
             DocumentsContract.Document.ColumnDocumentId,
             DocumentsContract.Document.ColumnMimeType,
             DocumentsContract.Document.ColumnDisplayName,
@@ -82,35 +78,33 @@ public class RyubingDocumentsProvider : DocumentsProvider
             DocumentsContract.Document.ColumnSize,
             DocumentsContract.Document.ColumnLastModified
         };
-        var c = new MatrixCursor(columns);
+        var c = new MatrixCursor(cols);
         string parentPath = DocIdToPath(parentDocId);
         if(!Directory.Exists(parentPath)) return c;
 
         foreach(var d in Directory.GetDirectories(parentPath)){
             var r = c.NewRow();
-            foreach(var col in columns){
+            foreach(var col in cols){
                 if(col == DocumentsContract.Document.ColumnDocumentId) r.Add("ryubing:"+d);
                 else if(col == DocumentsContract.Document.ColumnMimeType) r.Add(DocumentsContract.Document.MimeTypeDir);
                 else if(col == DocumentsContract.Document.ColumnDisplayName) r.Add(Path.GetFileName(d));
-                else if(col == DocumentsContract.Document.ColumnFlags) r.Add((int)(DocumentContractFlags.DirSupportsCreates));
+                else if(col == DocumentsContract.Document.ColumnFlags) r.Add((int)DocumentFlags.DirSupportsCreates);
                 else if(col == DocumentsContract.Document.ColumnSize) r.Add(0L);
                 else if(col == DocumentsContract.Document.ColumnLastModified) r.Add(Java.Lang.JavaSystem.CurrentTimeMillis());
                 else r.Add(null);
             }
-            c.AddRow(r);
         }
         foreach(var f in Directory.GetFiles(parentPath)){
             var r = c.NewRow();
-            foreach(var col in columns){
+            foreach(var col in cols){
                 if(col == DocumentsContract.Document.ColumnDocumentId) r.Add("ryubing:"+f);
                 else if(col == DocumentsContract.Document.ColumnMimeType) r.Add("application/octet-stream");
                 else if(col == DocumentsContract.Document.ColumnDisplayName) r.Add(Path.GetFileName(f));
-                else if(col == DocumentsContract.Document.ColumnFlags) r.Add((int)(DocumentContractFlags.SupportsWrite | DocumentContractFlags.SupportsDelete));
+                else if(col == DocumentsContract.Document.ColumnFlags) r.Add((int)(DocumentFlags.SupportsWrite | DocumentFlags.SupportsDelete));
                 else if(col == DocumentsContract.Document.ColumnSize) r.Add(new FileInfo(f).Length);
                 else if(col == DocumentsContract.Document.ColumnLastModified) r.Add(Java.Lang.JavaSystem.CurrentTimeMillis());
                 else r.Add(null);
             }
-            c.AddRow(r);
         }
         return c;
     }
