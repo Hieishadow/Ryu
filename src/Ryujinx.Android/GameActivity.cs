@@ -33,6 +33,7 @@ public class GameActivity : Activity
     const BindingFlags All = BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
     static class Holder { public static IntPtr nativeWindow=IntPtr.Zero; public static Thread emuThread; public static volatile bool running=false; public static Switch device; public static VulkanRenderer gpu; }
     string romPath=""; SurfaceView surfaceView; TextView logView;
+    const bool TEST_MAGENTA = false; // true = testa rosa, false = jogo normal
     [DllImport("android")] static extern IntPtr ANativeWindow_fromSurface(IntPtr env, IntPtr surface);
     [DllImport("android")] static extern void ANativeWindow_release(IntPtr window);
     void FileLog(string s){ try{ var p="/storage/emulated/0/Download/Ryubing/ryubing_log.txt"; Directory.CreateDirectory(Path.GetDirectoryName(p)); File.AppendAllText(p, DateTime.Now.ToString("HH:mm:ss.fff")+" [FILE] "+s+"\n"); }catch{} }
@@ -152,10 +153,23 @@ public class GameActivity : Activity
             while(Holder.running && Holder.nativeWindow!=IntPtr.Zero){
                 try{
                     Holder.device.ProcessFrame();
-                    Holder.device.PresentFrame(()=>{});
+                    Holder.device.PresentFrame(()=>{ FileLog($"[VK] swapBuffers cb f={frames}"); });
                     frames++;
-                    if(frames==1){ FileLog("FIRST FRAME OK"); MyLog("FIRST FRAME OK"); }
+                    if(frames==1){
+                        FileLog("FIRST FRAME OK - ESCONDENDO LOG");
+                        MyLog("FIRST FRAME OK");
+                        RunOnUiThread(()=>{ try{ logView.Visibility=ViewStates.Gone; }catch{} });
+                    }
                     if(frames % 60 == 0) FileLog($"LOOP f={frames} OK");
+
+                    // TESTE MAGENTA - muda const no topo pra true se quiser testar de novo
+                    if(TEST_MAGENTA){
+                        try{
+                            var win = Holder.gpu?.Window as Window;
+                            win?.ForcedPresentMagenta();
+                        }catch{}
+                    }
+
                     Thread.Sleep(16);
                 }catch(Exception eLoop){ FileLog($"LOOP EX f={frames} {eLoop}"); CrashLog("crash_loop", eLoop.ToString()); break; }
             }
