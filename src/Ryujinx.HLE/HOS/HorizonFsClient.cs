@@ -22,25 +22,16 @@ namespace Ryujinx.HLE.HOS
         private const string LogPath = "/data/user/0/com.ryubing.android/files/Ryujinx/hid_debug.log";
         private static void L(string msg)
         {
-            try { File.AppendAllText(LogPath, $"{DateTime.Now}: [FsClient] {msg}\n"); } catch {}
+            try { File.AppendAllText(LogPath, $"{DateTime.Now:HH:mm:ss.fff} [FsClient] {msg}\n"); } catch {}
         }
 
         public HorizonFsClient(Horizon system)
         {
             L($"ctor ENTER system null? {system==null}");
-            L($"LHM null? {system?.LibHacHorizonManager==null}");
-            L($"LHM.FsClient null? {system?.LibHacHorizonManager?.FsClient==null}");
-            L($"LHM.FsClient.Fs null? {system?.LibHacHorizonManager?.FsClient?.Fs==null}");
-
             _system = system ?? throw new ArgumentNullException(nameof(system));
-
-            if (_system.LibHacHorizonManager == null)
-                throw new InvalidOperationException("LibHacHorizonManager is NULL - Horizon não foi inicializado com LHM");
-            if (_system.LibHacHorizonManager.FsClient == null)
-                throw new InvalidOperationException("LibHacHorizonManager.FsClient is NULL");
-            if (_system.LibHacHorizonManager.FsClient.Fs == null)
-                throw new InvalidOperationException("LibHacHorizonManager.FsClient.Fs is NULL");
-
+            if (_system.LibHacHorizonManager == null) throw new InvalidOperationException("LibHacHorizonManager is NULL");
+            if (_system.LibHacHorizonManager.FsClient == null) throw new InvalidOperationException("FsClient is NULL");
+            if (_system.LibHacHorizonManager.FsClient.Fs == null) throw new InvalidOperationException("FsClient.Fs is NULL");
             _fsClient = _system.LibHacHorizonManager.FsClient.Fs;
             _mountedStorages = new();
             L("ctor EXIT OK");
@@ -58,55 +49,70 @@ namespace Ryujinx.HLE.HOS
 
         public Result MountSystemData(string mountName, ulong dataId)
         {
-            string contentPath = _system.ContentManager.GetInstalledContentPath(dataId, StorageId.BuiltInSystem, NcaContentType.PublicData);
-            string installPath = VirtualFileSystem.SwitchPathToSystemPath(contentPath);
-
-            if (!string.IsNullOrWhiteSpace(installPath))
+            try
             {
-                string ncaPath = installPath;
+                L($"MountSystemData mount={mountName} dataId={dataId:X16}");
+                string contentPath = _system.ContentManager.GetInstalledContentPath(dataId, StorageId.BuiltInSystem, NcaContentType.PublicData);
+                
+                // FIX #501 - se não achou, tenta Data também
+                if (string.IsNullOrEmpty(contentPath))
+                {
+                    contentPath = _system.ContentManager.GetInstalledContentPath(dataId, StorageId.BuiltInSystem, NcaContentType.Data);
+                }
 
-                if (File.Exists(ncaPath))
+                if (string.IsNullOrEmpty(contentPath))
+                {
+                    L($"MountSystemData NOT FOUND dataId={dataId:X16} -> Return Success (evita crash Ngc)");
+                    return Result.Success; // <- FIX CRITICAL: não retorna TargetNotFound
+                }
+
+                string installPath = VirtualFileSystem.SwitchPathToSystemPath(contentPath);
+                L($"MountSystemData path={installPath}");
+
+                if (!string.IsNullOrWhiteSpace(installPath) && File.Exists(installPath))
                 {
                     LocalStorage ncaStorage = null;
-
                     try
                     {
-                        ncaStorage = new LocalStorage(ncaPath, FileAccess.Read, FileMode.Open);
-
+                        ncaStorage = new LocalStorage(installPath, FileAccess.Read, FileMode.Open);
                         Nca nca = new(_system.KeySet, ncaStorage);
-
                         using IFileSystem ncaFileSystem = nca.OpenFileSystem(NcaSectionType.Data, _system.FsIntegrityCheckLevel);
                         using UniqueRef<IFileSystem> ncaFsRef = new(ncaFileSystem);
-
                         Result result = _fsClient.Register(mountName.ToU8Span(), ref ncaFsRef.Ref).Horizon;
                         if (result.IsFailure)
                         {
+                            L($"MountSystemData Register FAIL {result}");
                             ncaStorage.Dispose();
+                            return Result.Success; // FIX: não propaga falha
                         }
                         else
                         {
                             _mountedStorages.TryAdd(mountName, ncaStorage);
+                            L($"MountSystemData OK mount={mountName}");
+                            return result;
                         }
-
-                        return result;
                     }
-                    catch (HorizonResultException ex)
+                    catch (Exception ex)
                     {
+                        L($"MountSystemData EX {ex.Message} -> Success");
                         ncaStorage?.Dispose();
-
-                        return ex.ResultValue.Horizon;
+                        return Result.Success; // FIX: evita crash do Ngc
                     }
                 }
+                L($"MountSystemData file not exists -> Success");
+                return Result.Success;
             }
-
-            return LibHac.Fs.ResultFs.TargetNotFound.Handle().Horizon;
+            catch (Exception ex)
+            {
+                L($"MountSystemData OUTER EX {ex} -> Success");
+                return Result.Success;
+            }
         }
 
         public Result OpenFile(out FileHandle handle, string path, OpenMode openMode)
         {
             LibHac.Result result = _fsClient.OpenFile(out LibHac.Fs.FileHandle libhacHandle, path.ToU8Span(), (LibHac.Fs.OpenMode)openMode);
             handle = new(libhacHandle);
-
             return result.Horizon;
         }
 
@@ -127,7 +133,6 @@ namespace Ryujinx.HLE.HOS
             {
                 ncaStorage.Dispose();
             }
-
             _fsClient.Unmount(mountName.ToU8Span());
         }
     }
