@@ -5,9 +5,7 @@ using Android.Content.PM;
 using Android.OS;
 using Android.Widget;
 using Android.Views;
-using Android.Database;
 using Android.Provider;
-using Android.Runtime;
 using System;
 using System.IO;
 using System.Linq;
@@ -41,7 +39,6 @@ public class MainActivity : Activity
 
     protected override void OnCreate(Bundle savedInstanceState)
     {
-        // --- INICIO LOGGER CRASH S20 FE ---
         try {
             AppDomain.CurrentDomain.UnhandledException += (s, e) => {
                 try { File.WriteAllText(BasePath + "/crash.txt", $"CRASH {DateTime.Now}\n{e.ExceptionObject}\n"); } catch {}
@@ -53,7 +50,6 @@ public class MainActivity : Activity
                 try { File.WriteAllText(BasePath + "/crash_android.txt", $"ANDROID CRASH {DateTime.Now}\n{e.Exception}\n"); } catch {}
             };
         } catch {}
-        // --- FIM LOGGER ---
 
         base.OnCreate(savedInstanceState);
         if(Window!=null) Window.AddFlags(WindowManagerFlags.Fullscreen | WindowManagerFlags.KeepScreenOn);
@@ -86,6 +82,9 @@ public class MainActivity : Activity
             StartActivityForResult(intent, 1001);
         };
         topRow.AddView(btnImport);
+        var btnClear = new Button(this) { Text = "Limpar Log" };
+        btnClear.Click += (s,e)=>{ try{ if(File.Exists(BasePath+"/ryubing_log.txt")) File.Delete(BasePath+"/ryubing_log.txt"); if(File.Exists(BasePath+"/crash.txt")) File.Delete(BasePath+"/crash.txt"); Toast.MakeText(this,"Logs limpos",ToastLength.Short).Show(); UpdateInfo(); }catch{} };
+        topRow.AddView(btnClear);
         btnJogar = new Button(this) { Text = "JOGAR" };
         btnJogar.SetBackgroundColor(global::Android.Graphics.Color.Green);
         btnJogar.Enabled = false;
@@ -179,8 +178,13 @@ public class MainActivity : Activity
             var baseDir = Path.Combine(FilesDir.AbsolutePath, "Ryujinx");
             var keysDir = Path.Combine(baseDir, "keys");
             var sysKeysDir = Path.Combine(baseDir, "system", "keys");
+            var sysReg = Path.Combine(baseDir, "system", "Contents", "registered");
+            var bisReg = Path.Combine(baseDir, "bis", "system", "Contents", "registered");
             Directory.CreateDirectory(keysDir);
             Directory.CreateDirectory(sysKeysDir);
+            Directory.CreateDirectory(sysReg);
+            Directory.CreateDirectory(bisReg);
+
             foreach (var k in new[] { "prod.keys", "title.keys" }){
                 var src = Path.Combine(KeysPath, k);
                 if (!File.Exists(src)) continue;
@@ -189,6 +193,21 @@ public class MainActivity : Activity
                     File.Copy(src, Path.Combine(sysKeysDir, k), true);
                 }catch{}
             }
+
+            // --- COPIA FIRMWARE AUTOMATICO ---
+            try {
+                if(Directory.Exists(FirmwarePath)){
+                    var ncas = Directory.GetFiles(FirmwarePath, "*.nca", SearchOption.AllDirectories);
+                    if(ncas.Length > 0){
+                        foreach(var f in ncas){
+                            var destName = Path.GetFileName(f);
+                            try{ File.Copy(f, Path.Combine(sysReg, destName), true); }catch{}
+                            try{ File.Copy(f, Path.Combine(bisReg, destName), true); }catch{}
+                        }
+                    }
+                }
+            } catch {}
+
             try{
                 var admType = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a=>{try{return a.GetTypes();}catch{return new Type[0];}}).FirstOrDefault(t=>t.Name=="AppDataManager");
                 admType?.GetProperty("BaseDirPath")?.SetValue(null, baseDir);
@@ -205,16 +224,24 @@ public class MainActivity : Activity
         var prodExt = new FileInfo(Path.Combine(KeysPath, "prod.keys"));
         var prodInt = new FileInfo(Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "keys", "prod.keys"));
         var titleInt = new FileInfo(Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "keys", "title.keys"));
+        
+        int firmExtCount = 0;
+        int firmIntCount = 0;
+        try{ if(Directory.Exists(FirmwarePath)) firmExtCount = Directory.GetFiles(FirmwarePath, "*.nca", SearchOption.AllDirectories).Length; }catch{}
+        try{ var p = Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "system", "Contents", "registered"); if(Directory.Exists(p)) firmIntCount = Directory.GetFiles(p, "*.nca").Length; }catch{}
+
         if(!prodInt.Exists && !prodExt.Exists){
             info.Text = "keys NAO encontradas - usa Importar Keys";
             info.SetTextColor(global::Android.Graphics.Color.Red);
         }else{
             string txt = "";
-            if(prodInt.Exists) txt += $"interno {prodInt.Length}b ";
-            if(prodExt.Exists) txt += $"ext {prodExt.Length}b ";
-            txt += titleInt.Exists ? $"| title {titleInt.Length}b" : "| title FALTA";
+            if(prodInt.Exists) txt += $"interno {prodInt.Length/1024}KB ";
+            if(firmIntCount>0) txt += $"| Firm {firmIntCount} NCAs ";
+            else if(firmExtCount>0) txt += $"| Firm ext {firmExtCount} -> copie ";
+            else txt += "| Firm FALTA ";
+            txt += titleInt.Exists ? $"| title {titleInt.Length/1024}KB" : "| title FALTA";
             info.Text = txt;
-            info.SetTextColor(global::Android.Graphics.Color.Green);
+            info.SetTextColor(firmIntCount>0 ? global::Android.Graphics.Color.Green : global::Android.Graphics.Color.Yellow);
         }
     }
 
