@@ -61,14 +61,13 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 SwapchainKHR oldSwapchain = _swapchain;
                 _swapchainIsDirty = false;
-                FLog($"[VK] RecreateSwapchain BEGIN - waiting device idle");
+                FLog($"[VK] RecreateSwapchain BEGIN");
                 try { _gd.Api.DeviceWaitIdle(_device); } catch(Exception ex){ FLog($"[VK] DeviceWaitIdle fail {ex.Message}"); }
 
                 if (_swapchainImageViews!= null)
-                {
                     for (int i = 0; i < _swapchainImageViews.Length; i++)
-                    { try { _swapchainImageViews[i]?.Dispose(); } catch {} }
-                }
+                        try { _swapchainImageViews[i]?.Dispose(); } catch {}
+
                 unsafe
                 {
                     if (_frameFences!= null)
@@ -111,7 +110,7 @@ namespace Ryujinx.Graphics.Vulkan
             _width = (int)extent.Width;
             _height = (int)extent.Height;
             _format = surfaceFormat.Format;
-            FLog($"[VK] CreateSwapchain {_width}x{_height} req={_requestedWidth}x{_requestedHeight} imgCount={imageCount} format={_format}");
+            FLog($"[VK] CreateSwapchain {_width}x{_height} req={_requestedWidth}x{_requestedHeight} imgCount={imageCount}");
 
             SwapchainCreateInfoKHR swapchainCreateInfo = new()
             {
@@ -149,14 +148,14 @@ namespace Ryujinx.Graphics.Vulkan
 
             _frameFences = new Fence[imageCount];
             _fenceInitialized = new bool[imageCount];
-            FenceCreateInfo fenceInfo = new() { SType = StructureType.FenceCreateInfo, Flags = FenceCreateFlags.SignaledBitKhr };
+            FenceCreateInfo fenceInfo = new() { SType = StructureType.FenceCreateInfo, Flags = FenceCreateFlags.SignaledBit };
             for (int i = 0; i < _frameFences.Length; i++)
             {
                 _gd.Api.CreateFence(_device, in fenceInfo, null, out _frameFences[i]).ThrowOnError();
                 _fenceInitialized[i] = true;
             }
 
-            FLog($"[VK] CreateSwapchain OK {_width}x{_height} fences={imageCount}");
+            FLog($"[VK] CreateSwapchain OK {_width}x{_height}");
         }
 
         private unsafe TextureView CreateSwapchainImageView(Image swapchainImage, VkFormat format, TextureCreateInfo info)
@@ -211,10 +210,10 @@ namespace Ryujinx.Graphics.Vulkan
 
                 if (_fenceInitialized[frameIdx])
                 {
-                    FLog($"[VK] Fence Wait BEGIN f={_frameIndex} idx={frameIdx}");
+                    FLog($"[VK] Fence Wait BEGIN idx={frameIdx}");
                     _gd.Api.WaitForFences(_device, 1, in _frameFences[frameIdx], true, 1000000000).ThrowOnError();
                     _gd.Api.ResetFences(_device, 1, in _frameFences[frameIdx]).ThrowOnError();
-                    FLog($"[VK] Fence Wait OK f={_frameIndex}");
+                    FLog($"[VK] Fence Wait OK");
                 }
 
                 int semaphoreIndex = frameIdx;
@@ -256,8 +255,8 @@ namespace Ryujinx.Graphics.Vulkan
                 FLog($"[VK] Transition TRANSFER_DST->PRESENT");
                 Transition(cbs.CommandBuffer, swapchainImage, AccessFlags.TransferWriteBit, 0, ImageLayout.TransferDstOptimal, ImageLayout.PresentSrcKhr, PipelineStageFlags.TransferBit, PipelineStageFlags.BottomOfPipeBit);
 
-                FLog($"[VK] Submit BEGIN wait=TRANSFER fenceIdx={frameIdx}");
-                _gd.CommandBufferPool.Return(cbs, [_imageAvailableSemaphores[semaphoreIndex]], [PipelineStageFlags.TransferBit], [_renderFinishedSemaphores[semaphoreIndex]], _frameFences[frameIdx]);
+                FLog($"[VK] Submit BEGIN wait=TRANSFER");
+                _gd.CommandBufferPool.Return(cbs, [_imageAvailableSemaphores[semaphoreIndex]], [PipelineStageFlags.TransferBit], [_renderFinishedSemaphores[semaphoreIndex]]);
 
                 Semaphore semaphore = _renderFinishedSemaphores[semaphoreIndex];
                 SwapchainKHR swapchain = _swapchain;
@@ -294,7 +293,7 @@ namespace Ryujinx.Graphics.Vulkan
         private unsafe void Transition(CommandBuffer commandBuffer, Image image, AccessFlags srcAccess, AccessFlags dstAccess, ImageLayout srcLayout, ImageLayout dstLayout, PipelineStageFlags srcStage, PipelineStageFlags dstStage)
         { ImageSubresourceRange subresourceRange = new(ImageAspectFlags.ColorBit, 0, 1, 0, 1); ImageMemoryBarrier barrier = new(){ SType = StructureType.ImageMemoryBarrier, SrcAccessMask = srcAccess, DstAccessMask = dstAccess, OldLayout = srcLayout, NewLayout = dstLayout, SrcQueueFamilyIndex = Vk.QueueFamilyIgnored, DstQueueFamilyIndex = Vk.QueueFamilyIgnored, Image = image, SubresourceRange = subresourceRange, }; _gd.Api.CmdPipelineBarrier(commandBuffer, srcStage, dstStage, 0,0,null,0,null,1, in barrier); }
         private void CaptureFrame(TextureView texture, int x, int y, int width, int height, bool isBgra, bool flipX, bool flipY){ try{ byte[] bitmap = texture.GetData(x, y, width, height); _gd.OnScreenCaptured(new ScreenCaptureImageInfo(width, height, isBgra, bitmap, flipX, flipY)); }catch{} }
-        public override void SetSize(int width, int height) { FLog($"[VK] SetSize {width}x{height} -> dirty v10"); if(width<=0 || height<=0) return; _requestedWidth=width; _requestedHeight=height; _swapchainIsDirty = true; }
+        public override void SetSize(int width, int height) { FLog($"[VK] SetSize {width}x{height} -> dirty v10.1"); if(width<=0 || height<=0) return; _requestedWidth=width; _requestedHeight=height; _swapchainIsDirty = true; }
         public override void ChangeVSyncMode(VSyncMode vSyncMode) { _vSyncMode = vSyncMode; _swapchainIsDirty = true; }
         protected virtual void Dispose(bool disposing){ if (disposing){ unsafe{ try{ if (_swapchainImageViews!= null) for (int i = 0; i < _swapchainImageViews.Length; i++) { try { _swapchainImageViews[i]?.Dispose(); } catch {} } if (_frameFences!= null) for (int i = 0; i < _frameFences.Length; i++) { try { if(_fenceInitialized!=null && _fenceInitialized[i]) _gd.Api.DestroyFence(_device, _frameFences[i], null); } catch {} } if (_imageAvailableSemaphores!= null) for (int i = 0; i < _imageAvailableSemaphores.Length; i++) { try { _gd.Api.DestroySemaphore(_device, _imageAvailableSemaphores[i], null); } catch {} } if (_renderFinishedSemaphores!= null) for (int i = 0; i < _renderFinishedSemaphores.Length; i++) { try { _gd.Api.DestroySemaphore(_device, _renderFinishedSemaphores[i], null); } catch {} } try { _gd.SwapchainApi.DestroySwapchain(_device, _swapchain, null); } catch {} }catch{} } try { _effect?.Dispose(); } catch {} try { _scalingFilter?.Dispose(); } catch {} } }
         public override void Dispose() { Dispose(true); }
