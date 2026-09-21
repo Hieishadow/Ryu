@@ -121,13 +121,13 @@ public class GameActivity : Activity
             try{ typeof(VirtualFileSystem).GetField("_instance",All)?.SetValue(null,null); }catch{}
             var vfs=VirtualFileSystem.CreateInstance();
             vfs.ReloadKeySet();
-            try{ FileLog($"KEYS count={vfs.KeySet.Count}"); }catch(Exception ex){ FileLog($"KEYS count FAIL {ex.Message}"); }
+            FileLog("ReloadKeySet OK #532");
 
             var audio=new DummyHardwareDeviceDriver();
             FileLog("ANTES VulkanRenderer.Create");
             Holder.gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)Holder.nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
             try {
-                FileLog("[VK] Initialize via reflection #531");
+                FileLog("[VK] Initialize via reflection #532");
                 var initMethod = Holder.gpu.GetType().GetMethod("Initialize", All);
                 if(initMethod!= null) {
                     var paramType = initMethod.GetParameters()[0].ParameterType;
@@ -136,7 +136,7 @@ public class GameActivity : Activity
                     FileLog("[VK] Initialize OK");
                 }
             } catch(Exception exInit) { FileLog($"[VK] Initialize FAIL {exInit}"); }
-            FileLog("DEPOIS Vulkan OK"); MyLog("Vulkan OK #531");
+            FileLog("DEPOIS Vulkan OK"); MyLog("Vulkan OK #532");
             var conf=BuildHle(vfs,Holder.gpu,audio,baseDir,Path.Combine(baseDir,"system"));
             Holder.device=new Switch(conf);
             MyLog($"Load {Path.GetFileName(romPath)}");
