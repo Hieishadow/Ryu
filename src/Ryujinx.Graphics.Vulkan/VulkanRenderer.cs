@@ -169,10 +169,10 @@ namespace Ryujinx.Graphics.Vulkan
             if (usePortability)
             {
                 vertexBufferAlignment = propertiesPortabilitySubset.MinVertexInputBindingStrideAlignment;
-                portabilityFlags |= featuresPortabilitySubset.TriangleFans ? 0 : PortabilitySubsetFlags.NoTriangleFans;
-                portabilityFlags |= featuresPortabilitySubset.PointPolygons ? 0 : PortabilitySubsetFlags.NoPointMode;
-                portabilityFlags |= featuresPortabilitySubset.ImageView2DOn3DImage ? 0 : PortabilitySubsetFlags.No3DImageView;
-                portabilityFlags |= featuresPortabilitySubset.SamplerMipLodBias ? 0 : PortabilitySubsetFlags.NoLodBias;
+                portabilityFlags |= featuresPortabilitySubset.TriangleFans? 0 : PortabilitySubsetFlags.NoTriangleFans;
+                portabilityFlags |= featuresPortabilitySubset.PointPolygons? 0 : PortabilitySubsetFlags.NoPointMode;
+                portabilityFlags |= featuresPortabilitySubset.ImageView2DOn3DImage? 0 : PortabilitySubsetFlags.No3DImageView;
+                portabilityFlags |= featuresPortabilitySubset.SamplerMipLodBias? 0 : PortabilitySubsetFlags.NoLodBias;
             }
             bool supportsCustomBorderColor = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_custom_border_color") && featuresCustomBorderColor.CustomBorderColors && featuresCustomBorderColor.CustomBorderColorWithoutFormat;
             ref PhysicalDeviceProperties properties = ref properties2.Properties;
@@ -183,23 +183,23 @@ namespace Ryujinx.Graphics.Vulkan
             IsIntelLinux = Vendor == Vendor.Intel && OperatingSystem.IsLinux();
             IsTBDR = Vendor is Vendor.Apple or Vendor.Qualcomm or Vendor.ARM or Vendor.Broadcom or Vendor.ImgTec;
             GpuVendor = VendorUtils.GetNameFromId(properties.VendorID);
-            GpuDriver = hasDriverProperties && !OperatingSystem.IsMacOS() ? VendorUtils.GetFriendlyDriverName(driverProperties.DriverID) : GpuVendor;
-            GpuDriverVersion = TryGetIntelWindowsDriverVersionFromUuid(ref propertiesId, out string intelDriverVersion) ? intelDriverVersion : hasDriverProperties ? GetDriverInfo(ref driverProperties) ?? ParseDriverVersion(ref properties) : ParseDriverVersion(ref properties);
+            GpuDriver = hasDriverProperties &&!OperatingSystem.IsMacOS()? VendorUtils.GetFriendlyDriverName(driverProperties.DriverID) : GpuVendor;
+            GpuDriverVersion = TryGetIntelWindowsDriverVersionFromUuid(ref propertiesId, out string intelDriverVersion)? intelDriverVersion : hasDriverProperties? GetDriverInfo(ref driverProperties)?? ParseDriverVersion(ref properties) : ParseDriverVersion(ref properties);
             fixed (byte* deviceName = properties.DeviceName) { GpuRenderer = Marshal.PtrToStringAnsi((nint)deviceName); }
             GpuVersion = $"Vulkan v{ParseStandardVulkanVersion(properties.ApiVersion)}";
-            IsAmdGcn = !IsMoltenVk && Vendor == Vendor.Amd && Patterns.AmdGcn.IsMatch(GpuRenderer);
+            IsAmdGcn =!IsMoltenVk && Vendor == Vendor.Amd && Patterns.AmdGcn.IsMatch(GpuRenderer);
             IsAmdRdna3 = Vendor == Vendor.Amd && (Patterns.AmdRdna3.IsMatch(GpuRenderer) || properties.DeviceID is 0x15BF or 0x15C8);
             if (Vendor == Vendor.Nvidia)
             {
                 Match match = Patterns.NvidiaConsumerClass.Match(GpuRenderer);
-                if (match != null && int.TryParse(match.Groups[2].Value, out int gpuNumber)) IsNvidiaPreTuring = gpuNumber < 2000;
-                else if (GpuRenderer.Contains("TITAN") && !GpuRenderer.Contains("RTX")) IsNvidiaPreTuring = true;
+                if (match!= null && int.TryParse(match.Groups[2].Value, out int gpuNumber)) IsNvidiaPreTuring = gpuNumber < 2000;
+                else if (GpuRenderer.Contains("TITAN") &&!GpuRenderer.Contains("RTX")) IsNvidiaPreTuring = true;
             }
             else if (Vendor == Vendor.Intel) IsIntelArc = GpuRenderer.StartsWithIgnoreCase("Intel(R) Arc(TM)");
             IsQualcommProprietary = hasDriverProperties && driverProperties.DriverID == DriverId.QualcommProprietary;
             ulong minResourceAlignment = Math.Max(Math.Max(properties.Limits.MinStorageBufferOffsetAlignment, properties.Limits.MinUniformBufferOffsetAlignment), properties.Limits.MinTexelBufferOffsetAlignment);
             SampleCountFlags supportedSampleCounts = properties.Limits.FramebufferColorSampleCounts & properties.Limits.FramebufferDepthSampleCounts & properties.Limits.FramebufferStencilSampleCounts;
-            Capabilities = new HardwareCapabilities(_physicalDevice.IsDeviceExtensionPresent("VK_EXT_index_type_uint8"), supportsCustomBorderColor, supportsBlendOperationAdvanced, propertiesBlendOperationAdvanced.AdvancedBlendCorrelatedOverlap, propertiesBlendOperationAdvanced.AdvancedBlendNonPremultipliedSrcColor, propertiesBlendOperationAdvanced.AdvancedBlendNonPremultipliedDstColor, _physicalDevice.IsDeviceExtensionPresent(KhrDrawIndirectCount.ExtensionName), _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_shader_interlock"), _physicalDevice.IsDeviceExtensionPresent("VK_NV_geometry_shader_passthrough"), features2.Features.ShaderFloat64, featuresShaderInt8.ShaderInt8, _physicalDevice.IsDeviceExtensionPresent("VK_EXT_shader_stencil_export"), features2.Features.ShaderStorageImageMultisample, _physicalDevice.IsDeviceExtensionPresent(ExtConditionalRendering.ExtensionName), _physicalDevice.IsDeviceExtensionPresent(ExtExtendedDynamicState.ExtensionName), features2.Features.MultiViewport && !(IsMoltenVk && Vendor == Vendor.Amd), featuresRobustness2.NullDescriptor || IsMoltenVk, supportsPushDescriptors, IsMoltenVk ? 16 : propertiesPushDescriptor.MaxPushDescriptors, featuresPrimitiveTopologyListRestart.PrimitiveTopologyListRestart, featuresPrimitiveTopologyListRestart.PrimitiveTopologyPatchListRestart, supportsTransformFeedback, propertiesTransformFeedback.TransformFeedbackQueries, features2.Features.OcclusionQueryPrecise, _physicalDevice.PhysicalDeviceFeatures.PipelineStatisticsQuery, _physicalDevice.PhysicalDeviceFeatures.GeometryShader, _physicalDevice.PhysicalDeviceFeatures.TessellationShader, _physicalDevice.IsDeviceExtensionPresent("VK_NV_viewport_array2"), _physicalDevice.IsDeviceExtensionPresent(ExtExternalMemoryHost.ExtensionName), supportsDepthClipControl && featuresDepthClipControl.DepthClipControl, supportsAttachmentFeedbackLoop && featuresAttachmentFeedbackLoop.AttachmentFeedbackLoopLayout, supportsDynamicAttachmentFeedbackLoop && featuresDynamicAttachmentFeedbackLoop.AttachmentFeedbackLoopDynamicState, propertiesSubgroup.SubgroupSize, supportedSampleCounts, portabilityFlags, vertexBufferAlignment, properties.Limits.SubTexelPrecisionBits, minResourceAlignment);
+            Capabilities = new HardwareCapabilities(_physicalDevice.IsDeviceExtensionPresent("VK_EXT_index_type_uint8"), supportsCustomBorderColor, supportsBlendOperationAdvanced, propertiesBlendOperationAdvanced.AdvancedBlendCorrelatedOverlap, propertiesBlendOperationAdvanced.AdvancedBlendNonPremultipliedSrcColor, propertiesBlendOperationAdvanced.AdvancedBlendNonPremultipliedDstColor, _physicalDevice.IsDeviceExtensionPresent(KhrDrawIndirectCount.ExtensionName), _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_shader_interlock"), _physicalDevice.IsDeviceExtensionPresent("VK_NV_geometry_shader_passthrough"), features2.Features.ShaderFloat64, featuresShaderInt8.ShaderInt8, _physicalDevice.IsDeviceExtensionPresent("VK_EXT_shader_stencil_export"), features2.Features.ShaderStorageImageMultisample, _physicalDevice.IsDeviceExtensionPresent(ExtConditionalRendering.ExtensionName), _physicalDevice.IsDeviceExtensionPresent(ExtExtendedDynamicState.ExtensionName), features2.Features.MultiViewport &&!(IsMoltenVk && Vendor == Vendor.Amd), featuresRobustness2.NullDescriptor || IsMoltenVk, supportsPushDescriptors, IsMoltenVk? 16 : propertiesPushDescriptor.MaxPushDescriptors, featuresPrimitiveTopologyListRestart.PrimitiveTopologyListRestart, featuresPrimitiveTopologyListRestart.PrimitiveTopologyPatchListRestart, supportsTransformFeedback, propertiesTransformFeedback.TransformFeedbackQueries, features2.Features.OcclusionQueryPrecise, _physicalDevice.PhysicalDeviceFeatures.PipelineStatisticsQuery, _physicalDevice.PhysicalDeviceFeatures.GeometryShader, _physicalDevice.PhysicalDeviceFeatures.TessellationShader, _physicalDevice.IsDeviceExtensionPresent("VK_NV_viewport_array2"), _physicalDevice.IsDeviceExtensionPresent(ExtExternalMemoryHost.ExtensionName), supportsDepthClipControl && featuresDepthClipControl.DepthClipControl, supportsAttachmentFeedbackLoop && featuresAttachmentFeedbackLoop.AttachmentFeedbackLoopLayout, supportsDynamicAttachmentFeedbackLoop && featuresDynamicAttachmentFeedbackLoop.AttachmentFeedbackLoopDynamicState, propertiesSubgroup.SubgroupSize, supportedSampleCounts, portabilityFlags, vertexBufferAlignment, properties.Limits.SubTexelPrecisionBits, minResourceAlignment);
             IsSharedMemory = MemoryAllocator.IsDeviceMemoryShared(_physicalDevice);
             MemoryAllocator = new MemoryAllocator(Api, _physicalDevice, _device);
             Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtExternalMemoryHost hostMemoryApi);
@@ -243,7 +243,7 @@ namespace Ryujinx.Graphics.Vulkan
                 QueueFamilyIndex = queueFamilyIndex;
                 FLog("[VK] Before new Window");
                 _window = new Window(this, _surface, _physicalDevice.PhysicalDevice, _device);
-                FLog($"[VK] After new Window OK w={_window.Width} h={_window.Height}");
+                FLog($"[VK] After new Window OK");
                 _initialized = true;
                 FLog("[VK] SetupContext END OK");
             }
@@ -258,7 +258,7 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (_pdReservedBindings == null)
             {
-                if (Capabilities.MaxPushDescriptors <= Constants.MaxUniformBuffersPerStage * 2) _pdReservedBindings = isOgl ? _pdReservedBindingsOgl : _pdReservedBindingsNvn;
+                if (Capabilities.MaxPushDescriptors <= Constants.MaxUniformBuffersPerStage * 2) _pdReservedBindings = isOgl? _pdReservedBindingsOgl : _pdReservedBindingsNvn;
                 else _pdReservedBindings = [];
             }
             return _pdReservedBindings;
@@ -272,7 +272,7 @@ namespace Ryujinx.Graphics.Vulkan
         {
             ProgramCount++;
             bool isCompute = sources.Length == 1 && sources[0].Stage == ShaderStage.Compute;
-            if (info.State.HasValue || isCompute) return new ShaderCollection(this, _device, sources, info.ResourceLayout, info.State ?? default, info.FromCache);
+            if (info.State.HasValue || isCompute) return new ShaderCollection(this, _device, sources, info.ResourceLayout, info.State?? default, info.FromCache);
             return new ShaderCollection(this, _device, sources, info.ResourceLayout);
         }
         internal ShaderCollection CreateProgramWithMinimalLayout(ShaderSource[] sources, ResourceLayout resourceLayout, SpecDescription[] specDescription = null) => new ShaderCollection(this, _device, sources, resourceLayout, specDescription, isMinimal: true);
@@ -305,8 +305,8 @@ namespace Ryujinx.Graphics.Vulkan
             Api.GetPhysicalDeviceFeatures2(_physicalDevice.PhysicalDevice, &features2);
             PhysicalDeviceLimits limits = _physicalDevice.PhysicalDeviceProperties.Limits;
             QueueFamilyProperties mainQueueProperties = _physicalDevice.QueueFamilyProperties[QueueFamilyIndex];
-            SystemMemoryType memoryType = IsSharedMemory ? SystemMemoryType.UnifiedMemory : Vendor == Vendor.Nvidia ? SystemMemoryType.DedicatedMemorySlowStorage : SystemMemoryType.DedicatedMemory;
-            return new Capabilities(TargetApi.Vulkan, GpuVendor, memoryType: memoryType, hasFrontFacingBug: IsIntelWindows, hasVectorIndexingBug: IsQualcommProprietary, needsFragmentOutputSpecialization: IsMoltenVk, reduceShaderPrecision: IsMoltenVk, supportsAstcCompression: features2.Features.TextureCompressionAstcLdr && supportsAstcFormats, supportsBc123Compression: supportsBc123CompressionFormat, supportsBc45Compression: supportsBc45CompressionFormat, supportsBc67Compression: supportsBc67CompressionFormat, supportsEtc2Compression: supportsEtc2CompressionFormat, supports3DTextureCompression: true, supportsBgraFormat: true, supportsR4G4Format: false, supportsR4G4B4A4Format: supportsR4G4B4A4Format, supportsScaledVertexFormats: FormatCapabilities.SupportsScaledVertexFormats(), supportsSnormBufferTextureFormat: true, supports5BitComponentFormat: supports5BitComponentFormat, supportsSparseBuffer: features2.Features.SparseBinding && mainQueueProperties.QueueFlags.HasFlag(QueueFlags.SparseBindingBit), supportsBlendEquationAdvanced: Capabilities.SupportsBlendEquationAdvanced, supportsFragmentShaderInterlock: Capabilities.SupportsFragmentShaderInterlock, supportsFragmentShaderOrderingIntel: false, supportsGeometryShader: Capabilities.SupportsGeometryShader, supportsGeometryShaderPassthrough: Capabilities.SupportsGeometryShaderPassthrough, supportsTransformFeedback: Capabilities.SupportsTransformFeedback, supportsImageLoadFormatted: features2.Features.ShaderStorageImageReadWithoutFormat, supportsLayerVertexTessellation: featuresVk12.ShaderOutputLayer, supportsMismatchingViewFormat: true, supportsCubemapView: !IsAmdGcn, supportsNonConstantTextureOffset: false, supportsQuads: false, supportsSeparateSampler: true, supportsShaderBallot: false, supportsShaderBarrierDivergence: Vendor != Vendor.Intel, supportsShaderFloat64: Capabilities.SupportsShaderFloat64, supportsShaderNonUniformIndexing: featuresVk12.ShaderSampledImageArrayNonUniformIndexing && featuresVk12.ShaderStorageImageArrayNonUniformIndexing, supportsTextureGatherOffsets: features2.Features.ShaderImageGatherExtended, supportsTextureShadowLod: false, supportsVertexStoreAndAtomics: features2.Features.VertexPipelineStoresAndAtomics, supportsViewportIndexVertexTessellation: featuresVk12.ShaderOutputViewportIndex, supportsViewportMask: Capabilities.SupportsViewportArray2, supportsViewportSwizzle: false, supportsIndirectParameters: true, supportsDepthClipControl: Capabilities.SupportsDepthClipControl, uniformBufferSetIndex: PipelineBase.UniformSetIndex, storageBufferSetIndex: PipelineBase.StorageSetIndex, textureSetIndex: PipelineBase.TextureSetIndex, imageSetIndex: PipelineBase.ImageSetIndex, extraSetBaseIndex: PipelineBase.DescriptorSetLayouts, maximumExtraSets: Math.Max(0, (int)limits.MaxBoundDescriptorSets - PipelineBase.DescriptorSetLayouts), maximumUniformBuffersPerStage: Constants.MaxUniformBuffersPerStage, maximumStorageBuffersPerStage: Constants.MaxStorageBuffersPerStage, maximumTexturesPerStage: Constants.MaxTexturesPerStage, maximumImagesPerStage: Constants.MaxImagesPerStage, maximumComputeSharedMemorySize: (int)limits.MaxComputeSharedMemorySize, maximumSupportedAnisotropy: (int)limits.MaxSamplerAnisotropy, shaderSubgroupSize: (int)Capabilities.SubgroupSize, storageBufferOffsetAlignment: (int)limits.MinStorageBufferOffsetAlignment, textureBufferOffsetAlignment: (int)limits.MinTexelBufferOffsetAlignment, gatherBiasPrecision: IsIntelWindows || IsAmdWindows ? (int)Capabilities.SubTexelPrecisionBits : 0, maximumGpuMemory: GetTotalGPUMemory());
+            SystemMemoryType memoryType = IsSharedMemory? SystemMemoryType.UnifiedMemory : Vendor == Vendor.Nvidia? SystemMemoryType.DedicatedMemorySlowStorage : SystemMemoryType.DedicatedMemory;
+            return new Capabilities(TargetApi.Vulkan, GpuVendor, memoryType: memoryType, hasFrontFacingBug: IsIntelWindows, hasVectorIndexingBug: IsQualcommProprietary, needsFragmentOutputSpecialization: IsMoltenVk, reduceShaderPrecision: IsMoltenVk, supportsAstcCompression: features2.Features.TextureCompressionAstcLdr && supportsAstcFormats, supportsBc123Compression: supportsBc123CompressionFormat, supportsBc45Compression: supportsBc45CompressionFormat, supportsBc67Compression: supportsBc67CompressionFormat, supportsEtc2Compression: supportsEtc2CompressionFormat, supports3DTextureCompression: true, supportsBgraFormat: true, supportsR4G4Format: false, supportsR4G4B4A4Format: supportsR4G4B4A4Format, supportsScaledVertexFormats: FormatCapabilities.SupportsScaledVertexFormats(), supportsSnormBufferTextureFormat: true, supports5BitComponentFormat: supports5BitComponentFormat, supportsSparseBuffer: features2.Features.SparseBinding && mainQueueProperties.QueueFlags.HasFlag(QueueFlags.SparseBindingBit), supportsBlendEquationAdvanced: Capabilities.SupportsBlendEquationAdvanced, supportsFragmentShaderInterlock: Capabilities.SupportsFragmentShaderInterlock, supportsFragmentShaderOrderingIntel: false, supportsGeometryShader: Capabilities.SupportsGeometryShader, supportsGeometryShaderPassthrough: Capabilities.SupportsGeometryShaderPassthrough, supportsTransformFeedback: Capabilities.SupportsTransformFeedback, supportsImageLoadFormatted: features2.Features.ShaderStorageImageReadWithoutFormat, supportsLayerVertexTessellation: featuresVk12.ShaderOutputLayer, supportsMismatchingViewFormat: true, supportsCubemapView:!IsAmdGcn, supportsNonConstantTextureOffset: false, supportsQuads: false, supportsSeparateSampler: true, supportsShaderBallot: false, supportsShaderBarrierDivergence: Vendor!= Vendor.Intel, supportsShaderFloat64: Capabilities.SupportsShaderFloat64, supportsShaderNonUniformIndexing: featuresVk12.ShaderSampledImageArrayNonUniformIndexing && featuresVk12.ShaderStorageImageArrayNonUniformIndexing, supportsTextureGatherOffsets: features2.Features.ShaderImageGatherExtended, supportsTextureShadowLod: false, supportsVertexStoreAndAtomics: features2.Features.VertexPipelineStoresAndAtomics, supportsViewportIndexVertexTessellation: featuresVk12.ShaderOutputViewportIndex, supportsViewportMask: Capabilities.SupportsViewportArray2, supportsViewportSwizzle: false, supportsIndirectParameters: true, supportsDepthClipControl: Capabilities.SupportsDepthClipControl, uniformBufferSetIndex: PipelineBase.UniformSetIndex, storageBufferSetIndex: PipelineBase.StorageSetIndex, textureSetIndex: PipelineBase.TextureSetIndex, imageSetIndex: PipelineBase.ImageSetIndex, extraSetBaseIndex: PipelineBase.DescriptorSetLayouts, maximumExtraSets: Math.Max(0, (int)limits.MaxBoundDescriptorSets - PipelineBase.DescriptorSetLayouts), maximumUniformBuffersPerStage: Constants.MaxUniformBuffersPerStage, maximumStorageBuffersPerStage: Constants.MaxStorageBuffersPerStage, maximumTexturesPerStage: Constants.MaxTexturesPerStage, maximumImagesPerStage: Constants.MaxImagesPerStage, maximumComputeSharedMemorySize: (int)limits.MaxComputeSharedMemorySize, maximumSupportedAnisotropy: (int)limits.MaxSamplerAnisotropy, shaderSubgroupSize: (int)Capabilities.SubgroupSize, storageBufferOffsetAlignment: (int)limits.MinStorageBufferOffsetAlignment, textureBufferOffsetAlignment: (int)limits.MinTexelBufferOffsetAlignment, gatherBiasPrecision: IsIntelWindows || IsAmdWindows? (int)Capabilities.SubTexelPrecisionBits : 0, maximumGpuMemory: GetTotalGPUMemory());
         }
 
         private ulong GetTotalGPUMemory()
@@ -337,7 +337,7 @@ namespace Ryujinx.Graphics.Vulkan
         }
         private static unsafe string GetDriverInfo(ref PhysicalDeviceDriverPropertiesKHR driverProperties)
         {
-            fixed (byte* driverInfo = driverProperties.DriverInfo) { string driverInfoString = Marshal.PtrToStringAnsi((nint)driverInfo); return string.IsNullOrWhiteSpace(driverInfoString) ? null : driverInfoString; }
+            fixed (byte* driverInfo = driverProperties.DriverInfo) { string driverInfoString = Marshal.PtrToStringAnsi((nint)driverInfo); return string.IsNullOrWhiteSpace(driverInfoString)? null : driverInfoString; }
         }
         private static unsafe bool TryGetIntelWindowsDriverVersionFromUuid(ref PhysicalDeviceIDProperties propertiesId, out string driverVersion)
         {
@@ -352,7 +352,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
             return false;
         }
-        internal PrimitiveTopology TopologyRemap(PrimitiveTopology topology) => topology switch { PrimitiveTopology.Quads => PrimitiveTopology.Triangles, PrimitiveTopology.QuadStrip => PrimitiveTopology.TriangleStrip, PrimitiveTopology.TriangleFan or PrimitiveTopology.Polygon => Capabilities.PortabilitySubset.HasFlag(PortabilitySubsetFlags.NoTriangleFans) ? PrimitiveTopology.Triangles : topology, _ => topology };
+        internal PrimitiveTopology TopologyRemap(PrimitiveTopology topology) => topology switch { PrimitiveTopology.Quads => PrimitiveTopology.Triangles, PrimitiveTopology.QuadStrip => PrimitiveTopology.TriangleStrip, PrimitiveTopology.TriangleFan or PrimitiveTopology.Polygon => Capabilities.PortabilitySubset.HasFlag(PortabilitySubsetFlags.NoTriangleFans)? PrimitiveTopology.Triangles : topology, _ => topology };
         internal bool TopologyUnsupported(PrimitiveTopology topology) => topology switch { PrimitiveTopology.Quads => true, PrimitiveTopology.TriangleFan or PrimitiveTopology.Polygon => Capabilities.PortabilitySubset.HasFlag(PortabilitySubsetFlags.NoTriangleFans), _ => false };
         private void PrintGpuInformation()
         {
@@ -365,7 +365,7 @@ namespace Ryujinx.Graphics.Vulkan
         internal bool NeedsVertexBufferAlignment(int attrScalarAlignment, out int alignment)
         {
             if (Capabilities.VertexBufferAlignment > 1) { alignment = (int)Capabilities.VertexBufferAlignment; return true; }
-            else if (Vendor != Vendor.Nvidia) { alignment = attrScalarAlignment; return true; }
+            else if (Vendor!= Vendor.Nvidia) { alignment = attrScalarAlignment; return true; }
             alignment = 1; return false;
         }
 
@@ -415,7 +415,7 @@ namespace Ryujinx.Graphics.Vulkan
         public void SetInterruptAction(Action<Action> interruptAction) => InterruptAction = interruptAction;
         public void Screenshot() { try{ _window.ScreenCaptureRequested = true; }catch{} }
         public void OnScreenCaptured(ScreenCaptureImageInfo bitmap) => ScreenCaptured?.Invoke(this, bitmap);
-        public bool SupportsRenderPassBarrier(PipelineStageFlags flags) => !(IsMoltenVk || IsQualcommProprietary);
+        public bool SupportsRenderPassBarrier(PipelineStageFlags flags) =>!(IsMoltenVk || IsQualcommProprietary);
 
         public unsafe void Dispose()
         {
