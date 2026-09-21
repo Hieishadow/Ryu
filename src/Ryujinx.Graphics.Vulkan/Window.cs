@@ -27,7 +27,6 @@ namespace Ryujinx.Graphics.Vulkan
         private Semaphore[] _renderFinishedSemaphores;
 
         private int _frameIndex;
-
         private int _width;
         private int _height;
         private VSyncMode _vSyncMode;
@@ -49,40 +48,52 @@ namespace Ryujinx.Graphics.Vulkan
             _physicalDevice = physicalDevice;
             _device = device;
             _surface = surface;
-
-            CreateSwapchain();
+            try { CreateSwapchain(); } catch (Exception ex) { Console.WriteLine($"[VK] CreateSwapchain initial fail: {ex}"); }
         }
 
         private void RecreateSwapchain()
         {
-            SwapchainKHR oldSwapchain = _swapchain;
-            _swapchainIsDirty = false;
-
-            for (int i = 0; i < _swapchainImageViews.Length; i++)
+            try
             {
-                _swapchainImageViews[i].Dispose();
-            }
+                SwapchainKHR oldSwapchain = _swapchain;
+                _swapchainIsDirty = false;
 
-            // Destroy old Swapchain.
-
-            _gd.Api.DeviceWaitIdle(_device);
-
-            unsafe
-            {
-                for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
+                if (_swapchainImageViews!= null)
                 {
-                    _gd.Api.DestroySemaphore(_device, _imageAvailableSemaphores[i], null);
+                    for (int i = 0; i < _swapchainImageViews.Length; i++)
+                    {
+                        try { _swapchainImageViews[i]?.Dispose(); } catch {}
+                    }
                 }
 
-                for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
+                try { _gd.Api.DeviceWaitIdle(_device); } catch {}
+
+                unsafe
                 {
-                    _gd.Api.DestroySemaphore(_device, _renderFinishedSemaphores[i], null);
+                    if (_imageAvailableSemaphores!= null)
+                    {
+                        for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
+                        {
+                            try { _gd.Api.DestroySemaphore(_device, _imageAvailableSemaphores[i], null); } catch {}
+                        }
+                    }
+                    if (_renderFinishedSemaphores!= null)
+                    {
+                        for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
+                        {
+                            try { _gd.Api.DestroySemaphore(_device, _renderFinishedSemaphores[i], null); } catch {}
+                        }
+                    }
                 }
+
+                try { _gd.SwapchainApi.DestroySwapchain(_device, oldSwapchain, Span<AllocationCallbacks>.Empty); } catch {}
+
+                CreateSwapchain();
             }
-
-            _gd.SwapchainApi.DestroySwapchain(_device, oldSwapchain, Span<AllocationCallbacks>.Empty);
-
-            CreateSwapchain();
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[VK] RecreateSwapchain fail: {ex}");
+            }
         }
 
         private unsafe void CreateSwapchain()
@@ -90,22 +101,16 @@ namespace Ryujinx.Graphics.Vulkan
             _gd.SurfaceApi.GetPhysicalDeviceSurfaceCapabilities(_physicalDevice, _surface, out SurfaceCapabilitiesKHR capabilities);
 
             uint surfaceFormatsCount;
-
             _gd.SurfaceApi.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, &surfaceFormatsCount, null);
-
             SurfaceFormatKHR[] surfaceFormats = new SurfaceFormatKHR[surfaceFormatsCount];
-
             fixed (SurfaceFormatKHR* pSurfaceFormats = surfaceFormats)
             {
                 _gd.SurfaceApi.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, &surfaceFormatsCount, pSurfaceFormats);
             }
 
             uint presentModesCount;
-
             _gd.SurfaceApi.GetPhysicalDeviceSurfacePresentModes(_physicalDevice, _surface, &presentModesCount, null);
-
             PresentModeKHR[] presentModes = new PresentModeKHR[presentModesCount];
-
             fixed (PresentModeKHR* pPresentModes = presentModes)
             {
                 _gd.SurfaceApi.GetPhysicalDeviceSurfacePresentModes(_physicalDevice, _surface, &presentModesCount, pPresentModes);
@@ -113,19 +118,16 @@ namespace Ryujinx.Graphics.Vulkan
 
             uint imageCount = capabilities.MinImageCount + 1;
             if (capabilities.MaxImageCount > 0 && imageCount > capabilities.MaxImageCount)
-            {
                 imageCount = capabilities.MaxImageCount;
-            }
 
             SurfaceFormatKHR surfaceFormat = ChooseSwapSurfaceFormat(surfaceFormats, _colorSpacePassthroughEnabled);
-
             Extent2D extent = ChooseSwapExtent(capabilities);
 
             _width = (int)extent.Width;
             _height = (int)extent.Height;
             _format = surfaceFormat.Format;
 
-            SwapchainKHR oldSwapchain = _swapchain;
+            Console.WriteLine($"[VK] CreateSwapchain {_width}x{_height} format={_format}");
 
             SwapchainCreateInfoKHR swapchainCreateInfo = new()
             {
@@ -145,72 +147,41 @@ namespace Ryujinx.Graphics.Vulkan
             };
 
             TextureCreateInfo textureCreateInfo = new(
-                _width,
-                _height,
-                1,
-                1,
-                1,
-                1,
-                1,
-                1,
+                _width, _height, 1,1,1,1,1,1,
                 FormatTable.GetFormat(surfaceFormat.Format),
                 DepthStencilMode.Depth,
                 Target.Texture2D,
-                SwizzleComponent.Red,
-                SwizzleComponent.Green,
-                SwizzleComponent.Blue,
-                SwizzleComponent.Alpha);
+                SwizzleComponent.Red, SwizzleComponent.Green, SwizzleComponent.Blue, SwizzleComponent.Alpha);
 
             _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain).ThrowOnError();
-
             _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &imageCount, null);
-
             _swapchainImages = new Image[imageCount];
-
             fixed (Image* pSwapchainImages = _swapchainImages)
             {
                 _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &imageCount, pSwapchainImages);
             }
 
             _swapchainImageViews = new TextureView[imageCount];
-
             for (int i = 0; i < _swapchainImageViews.Length; i++)
             {
                 _swapchainImageViews[i] = CreateSwapchainImageView(_swapchainImages[i], surfaceFormat.Format, textureCreateInfo);
             }
 
-            SemaphoreCreateInfo semaphoreCreateInfo = new()
-            {
-                SType = StructureType.SemaphoreCreateInfo,
-            };
-
+            SemaphoreCreateInfo semaphoreCreateInfo = new() { SType = StructureType.SemaphoreCreateInfo };
             _imageAvailableSemaphores = new Semaphore[imageCount];
-
             for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
-            {
                 _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _imageAvailableSemaphores[i]).ThrowOnError();
-            }
 
             _renderFinishedSemaphores = new Semaphore[imageCount];
-
             for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
-            {
                 _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _renderFinishedSemaphores[i]).ThrowOnError();
-            }
         }
 
         private unsafe TextureView CreateSwapchainImageView(Image swapchainImage, VkFormat format, TextureCreateInfo info)
         {
-            ComponentMapping componentMapping = new(
-                ComponentSwizzle.R,
-                ComponentSwizzle.G,
-                ComponentSwizzle.B,
-                ComponentSwizzle.A);
-
+            ComponentMapping componentMapping = new(ComponentSwizzle.R, ComponentSwizzle.G, ComponentSwizzle.B, ComponentSwizzle.A);
             ImageAspectFlags aspectFlags = ImageAspectFlags.ColorBit;
-
             ImageSubresourceRange subresourceRange = new(aspectFlags, 0, 1, 0, 1);
-
             ImageViewCreateInfo imageCreateInfo = new()
             {
                 SType = StructureType.ImageViewCreateInfo,
@@ -220,18 +191,14 @@ namespace Ryujinx.Graphics.Vulkan
                 Components = componentMapping,
                 SubresourceRange = subresourceRange,
             };
-
             _gd.Api.CreateImageView(_device, in imageCreateInfo, null, out ImageView imageView).ThrowOnError();
-
             return new TextureView(_gd, _device, new DisposableImageView(_gd.Api, _device, imageView), info, format);
         }
 
         private static SurfaceFormatKHR ChooseSwapSurfaceFormat(SurfaceFormatKHR[] availableFormats, bool colorSpacePassthroughEnabled)
         {
             if (availableFormats.Length == 1 && availableFormats[0].Format == VkFormat.Undefined)
-            {
                 return new SurfaceFormatKHR(VkFormat.B8G8R8A8Unorm, ColorSpaceKHR.PaceSrgbNonlinearKhr);
-            }
 
             SurfaceFormatKHR formatToReturn = availableFormats[0];
             if (colorSpacePassthroughEnabled)
@@ -239,14 +206,9 @@ namespace Ryujinx.Graphics.Vulkan
                 foreach (SurfaceFormatKHR format in availableFormats)
                 {
                     if (format.Format == VkFormat.B8G8R8A8Unorm && format.ColorSpace == ColorSpaceKHR.SpacePassThroughExt)
-                    {
-                        formatToReturn = format;
-                        break;
-                    }
+                    { formatToReturn = format; break; }
                     else if (format.Format == VkFormat.B8G8R8A8Unorm && format.ColorSpace == ColorSpaceKHR.PaceSrgbNonlinearKhr)
-                    {
                         formatToReturn = format;
-                    }
                 }
             }
             else
@@ -254,397 +216,213 @@ namespace Ryujinx.Graphics.Vulkan
                 foreach (SurfaceFormatKHR format in availableFormats)
                 {
                     if (format.Format == VkFormat.B8G8R8A8Unorm && format.ColorSpace == ColorSpaceKHR.PaceSrgbNonlinearKhr)
-                    {
-                        formatToReturn = format;
-                        break;
-                    }
+                    { formatToReturn = format; break; }
                 }
             }
-
             return formatToReturn;
         }
 
         private static CompositeAlphaFlagsKHR ChooseCompositeAlpha(CompositeAlphaFlagsKHR supportedFlags)
         {
-            if (supportedFlags.HasFlag(CompositeAlphaFlagsKHR.OpaqueBitKhr))
-            {
-                return CompositeAlphaFlagsKHR.OpaqueBitKhr;
-            }
-            else if (supportedFlags.HasFlag(CompositeAlphaFlagsKHR.PreMultipliedBitKhr))
-            {
-                return CompositeAlphaFlagsKHR.PreMultipliedBitKhr;
-            }
-            else
-            {
-                return CompositeAlphaFlagsKHR.InheritBitKhr;
-            }
+            if (supportedFlags.HasFlag(CompositeAlphaFlagsKHR.OpaqueBitKhr)) return CompositeAlphaFlagsKHR.OpaqueBitKhr;
+            else if (supportedFlags.HasFlag(CompositeAlphaFlagsKHR.PreMultipliedBitKhr)) return CompositeAlphaFlagsKHR.PreMultipliedBitKhr;
+            else return CompositeAlphaFlagsKHR.InheritBitKhr;
         }
 
         private static PresentModeKHR ChooseSwapPresentMode(PresentModeKHR[] availablePresentModes, VSyncMode vSyncMode)
         {
             if (vSyncMode == VSyncMode.Unbounded && availablePresentModes.Contains(PresentModeKHR.ImmediateKhr))
-            {
                 return PresentModeKHR.ImmediateKhr;
-            }
             else if (availablePresentModes.Contains(PresentModeKHR.MailboxKhr))
-            {
                 return PresentModeKHR.MailboxKhr;
-            }
-            else
-            {
-                return PresentModeKHR.FifoKhr;
-            }
+            else return PresentModeKHR.FifoKhr;
         }
 
         public static Extent2D ChooseSwapExtent(SurfaceCapabilitiesKHR capabilities)
         {
-            if (capabilities.CurrentExtent.Width != uint.MaxValue)
-            {
+            if (capabilities.CurrentExtent.Width!= uint.MaxValue)
                 return capabilities.CurrentExtent;
-            }
 
             uint width = Math.Max(capabilities.MinImageExtent.Width, Math.Min(capabilities.MaxImageExtent.Width, SurfaceWidth));
             uint height = Math.Max(capabilities.MinImageExtent.Height, Math.Min(capabilities.MaxImageExtent.Height, SurfaceHeight));
-
             return new Extent2D(width, height);
         }
 
         public unsafe override void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback)
         {
-            _gd.PipelineInternal.AutoFlush.Present();
-
-            uint nextImage = 0;
-            int semaphoreIndex = _frameIndex++ % _imageAvailableSemaphores.Length;
-
-            while (true)
+            try
             {
-                Result acquireResult = _gd.SwapchainApi.AcquireNextImage(
-                    _device,
-                    _swapchain,
-                    ulong.MaxValue,
-                    _imageAvailableSemaphores[semaphoreIndex],
-                    new Fence(),
-                    ref nextImage);
-
-                if (acquireResult == Result.ErrorOutOfDateKhr ||
-                    acquireResult == Result.SuboptimalKhr ||
-                    _swapchainIsDirty)
+                if (texture == null)
                 {
-                    RecreateSwapchain();
-                    semaphoreIndex = (_frameIndex - 1) % _imageAvailableSemaphores.Length;
+                    Console.WriteLine("[VK] Present texture NULL - skip");
+                    return;
+                }
+
+                _gd.PipelineInternal.AutoFlush.Present();
+
+                uint nextImage = 0;
+                int semaphoreIndex = _frameIndex++ % _imageAvailableSemaphores.Length;
+
+                while (true)
+                {
+                    Result acquireResult = _gd.SwapchainApi.AcquireNextImage(
+                        _device, _swapchain, ulong.MaxValue,
+                        _imageAvailableSemaphores[semaphoreIndex],
+                        new Fence(), ref nextImage);
+
+                    if (acquireResult == Result.ErrorOutOfDateKhr || acquireResult == Result.SuboptimalKhr || _swapchainIsDirty)
+                    {
+                        RecreateSwapchain();
+                        semaphoreIndex = (_frameIndex - 1) % _imageAvailableSemaphores.Length;
+                        if (_swapchainIsDirty) continue;
+                    }
+                    else
+                    {
+                        acquireResult.ThrowOnError();
+                        break;
+                    }
+                }
+
+                Image swapchainImage = _swapchainImages[nextImage];
+                _gd.FlushAllCommands();
+                CommandBufferScoped cbs = _gd.CommandBufferPool.Rent();
+
+                Transition(cbs.CommandBuffer, swapchainImage, 0, AccessFlags.TransferWriteBit, ImageLayout.Undefined, ImageLayout.General);
+
+                TextureView view = (TextureView)texture;
+                UpdateEffect();
+                if (_effect!= null) view = _effect.Run(view, cbs, _width, _height);
+
+                int srcX0, srcX1, srcY0, srcY1;
+                if (crop.Left == 0 && crop.Right == 0) { srcX0 = 0; srcX1 = view.Width; }
+                else { srcX0 = crop.Left; srcX1 = crop.Right; }
+                if (crop.Top == 0 && crop.Bottom == 0) { srcY0 = 0; srcY1 = view.Height; }
+                else { srcY0 = crop.Top; srcY1 = crop.Bottom; }
+
+                if (ScreenCaptureRequested)
+                {
+                    if (_effect!= null)
+                    {
+                        _gd.FlushAllCommands();
+                        _gd.CommandBufferPool.Return(cbs, null, [PipelineStageFlags.ColorAttachmentOutputBit], null);
+                        cbs.GetFence().Wait();
+                        cbs = _gd.CommandBufferPool.Rent();
+                    }
+                    CaptureFrame(view, srcX0, srcY0, srcX1 - srcX0, srcY1 - srcY0, view.Info.Format.IsBgr, crop.FlipX, crop.FlipY);
+                    ScreenCaptureRequested = false;
+                }
+
+                float ratioX = crop.IsStretched? 1.0f : MathF.Min(1.0f, _height * crop.AspectRatioX / (_width * crop.AspectRatioY));
+                float ratioY = crop.IsStretched? 1.0f : MathF.Min(1.0f, _width * crop.AspectRatioY / (_height * crop.AspectRatioX));
+                int dstWidth = (int)(_width * ratioX);
+                int dstHeight = (int)(_height * ratioY);
+                int dstPaddingX = (_width - dstWidth) / 2;
+                int dstPaddingY = (_height - dstHeight) / 2;
+                int dstX0 = crop.FlipX? _width - dstPaddingX : dstPaddingX;
+                int dstX1 = crop.FlipX? dstPaddingX : _width - dstPaddingX;
+                int dstY0 = crop.FlipY? dstPaddingY : _height - dstPaddingY;
+                int dstY1 = crop.FlipY? _height - dstPaddingY : dstPaddingY;
+
+                if (_scalingFilter!= null)
+                {
+                    _scalingFilter.Run(view, cbs, _swapchainImageViews[nextImage].GetImageViewForAttachment(), _format, _width, _height,
+                        new Extents2D(srcX0, srcY0, srcX1, srcY1), new Extents2D(dstX0, dstY0, dstX1, dstY1));
                 }
                 else
                 {
-                    acquireResult.ThrowOnError();
-                    break;
+                    _gd.HelperShader.BlitColor(_gd, cbs, view, _swapchainImageViews[nextImage],
+                        new Extents2D(srcX0, srcY0, srcX1, srcY1), new Extents2D(dstX0, dstY1, dstX1, dstY0), _isLinear, true);
                 }
-            }
 
-            Image swapchainImage = _swapchainImages[nextImage];
+                Transition(cbs.CommandBuffer, swapchainImage, 0, 0, ImageLayout.General, ImageLayout.PresentSrcKhr);
+                _gd.FlushAllCommands();
+                _gd.CommandBufferPool.Return(cbs, [_imageAvailableSemaphores[semaphoreIndex]], [PipelineStageFlags.ColorAttachmentOutputBit], [_renderFinishedSemaphores[semaphoreIndex]]);
 
-            _gd.FlushAllCommands();
-
-            CommandBufferScoped cbs = _gd.CommandBufferPool.Rent();
-
-            Transition(
-                cbs.CommandBuffer,
-                swapchainImage,
-                0,
-                AccessFlags.TransferWriteBit,
-                ImageLayout.Undefined,
-                ImageLayout.General);
-
-            TextureView view = (TextureView)texture;
-
-            UpdateEffect();
-
-            if (_effect != null)
-            {
-                view = _effect.Run(view, cbs, _width, _height);
-            }
-
-            int srcX0, srcX1, srcY0, srcY1;
-
-            if (crop.Left == 0 && crop.Right == 0)
-            {
-                srcX0 = 0;
-                srcX1 = view.Width;
-            }
-            else
-            {
-                srcX0 = crop.Left;
-                srcX1 = crop.Right;
-            }
-
-            if (crop.Top == 0 && crop.Bottom == 0)
-            {
-                srcY0 = 0;
-                srcY1 = view.Height;
-            }
-            else
-            {
-                srcY0 = crop.Top;
-                srcY1 = crop.Bottom;
-            }
-
-            if (ScreenCaptureRequested)
-            {
-                if (_effect != null)
+                Semaphore semaphore = _renderFinishedSemaphores[semaphoreIndex];
+                SwapchainKHR swapchain = _swapchain;
+                Result result;
+                PresentInfoKHR presentInfo = new()
                 {
-                    _gd.FlushAllCommands();
-                    _gd.CommandBufferPool.Return(
-                        cbs,
-                        null,
-                        [PipelineStageFlags.ColorAttachmentOutputBit],
-                        null);
-                    cbs.GetFence().Wait();
-                    cbs = _gd.CommandBufferPool.Rent();
+                    SType = StructureType.PresentInfoKhr,
+                    WaitSemaphoreCount = 1,
+                    PWaitSemaphores = &semaphore,
+                    SwapchainCount = 1,
+                    PSwapchains = &swapchain,
+                    PImageIndices = &nextImage,
+                    PResults = &result,
+                };
+                lock (_gd.QueueLock)
+                {
+                    _gd.SwapchainApi.QueuePresent(_gd.Queue, in presentInfo);
                 }
-
-                CaptureFrame(view, srcX0, srcY0, srcX1 - srcX0, srcY1 - srcY0, view.Info.Format.IsBgr, crop.FlipX, crop.FlipY);
-
-                ScreenCaptureRequested = false;
             }
-
-            float ratioX = crop.IsStretched ? 1.0f : MathF.Min(1.0f, _height * crop.AspectRatioX / (_width * crop.AspectRatioY));
-            float ratioY = crop.IsStretched ? 1.0f : MathF.Min(1.0f, _width * crop.AspectRatioY / (_height * crop.AspectRatioX));
-
-            int dstWidth = (int)(_width * ratioX);
-            int dstHeight = (int)(_height * ratioY);
-
-            int dstPaddingX = (_width - dstWidth) / 2;
-            int dstPaddingY = (_height - dstHeight) / 2;
-
-            int dstX0 = crop.FlipX ? _width - dstPaddingX : dstPaddingX;
-            int dstX1 = crop.FlipX ? dstPaddingX : _width - dstPaddingX;
-
-            int dstY0 = crop.FlipY ? dstPaddingY : _height - dstPaddingY;
-            int dstY1 = crop.FlipY ? _height - dstPaddingY : dstPaddingY;
-
-            if (_scalingFilter != null)
+            catch (Exception ex)
             {
-                _scalingFilter.Run(
-                    view,
-                    cbs,
-                    _swapchainImageViews[nextImage].GetImageViewForAttachment(),
-                    _format,
-                    _width,
-                    _height,
-                    new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                    new Extents2D(dstX0, dstY0, dstX1, dstY1)
-                    );
-            }
-            else
-            {
-                _gd.HelperShader.BlitColor(
-                    _gd,
-                    cbs,
-                    view,
-                    _swapchainImageViews[nextImage],
-                    new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                    new Extents2D(dstX0, dstY1, dstX1, dstY0),
-                    _isLinear,
-                    true);
-            }
-
-            Transition(
-                cbs.CommandBuffer,
-                swapchainImage,
-                0,
-                0,
-                ImageLayout.General,
-                ImageLayout.PresentSrcKhr);
-
-            _gd.FlushAllCommands();
-
-            _gd.CommandBufferPool.Return(
-                cbs,
-                [_imageAvailableSemaphores[semaphoreIndex]],
-                [PipelineStageFlags.ColorAttachmentOutputBit],
-                [_renderFinishedSemaphores[semaphoreIndex]]);
-
-            // TODO: Present queue.
-            Semaphore semaphore = _renderFinishedSemaphores[semaphoreIndex];
-            SwapchainKHR swapchain = _swapchain;
-
-            Result result;
-
-            PresentInfoKHR presentInfo = new()
-            {
-                SType = StructureType.PresentInfoKhr,
-                WaitSemaphoreCount = 1,
-                PWaitSemaphores = &semaphore,
-                SwapchainCount = 1,
-                PSwapchains = &swapchain,
-                PImageIndices = &nextImage,
-                PResults = &result,
-            };
-
-            lock (_gd.QueueLock)
-            {
-                _gd.SwapchainApi.QueuePresent(_gd.Queue, in presentInfo);
+                Console.WriteLine($"[VK] Present FAIL: {ex.Message}");
+                _swapchainIsDirty = true;
             }
         }
 
-        public override void SetAntiAliasing(AntiAliasing effect)
-        {
-            if (_currentAntiAliasing == effect && _effect != null)
-            {
-                return;
-            }
-
-            _currentAntiAliasing = effect;
-
-            _updateEffect = true;
-        }
-
-        public override void SetScalingFilter(ScalingFilter type)
-        {
-            if (_currentScalingFilter == type && _effect != null)
-            {
-                return;
-            }
-
-            _currentScalingFilter = type;
-
-            _updateScalingFilter = true;
-        }
-
-        public override void SetColorSpacePassthrough(bool colorSpacePassthroughEnabled)
-        {
-            _colorSpacePassthroughEnabled = colorSpacePassthroughEnabled;
-            _swapchainIsDirty = true;
-        }
+        public override void SetAntiAliasing(AntiAliasing effect) { if (_currentAntiAliasing == effect && _effect!= null) return; _currentAntiAliasing = effect; _updateEffect = true; }
+        public override void SetScalingFilter(ScalingFilter type) { if (_currentScalingFilter == type && _effect!= null) return; _currentScalingFilter = type; _updateScalingFilter = true; }
+        public override void SetColorSpacePassthrough(bool colorSpacePassthroughEnabled) { _colorSpacePassthroughEnabled = colorSpacePassthroughEnabled; _swapchainIsDirty = true; }
 
         private void UpdateEffect()
         {
             if (_updateEffect)
             {
                 _updateEffect = false;
-
                 switch (_currentAntiAliasing)
                 {
-                    case AntiAliasing.Fxaa:
-                        _effect?.Dispose();
-                        _effect = new FxaaPostProcessingEffect(_gd, _device);
-                        break;
-                    case AntiAliasing.None:
-                        _effect?.Dispose();
-                        _effect = null;
-                        break;
-                    case AntiAliasing.SmaaLow:
-                    case AntiAliasing.SmaaMedium:
-                    case AntiAliasing.SmaaHigh:
-                    case AntiAliasing.SmaaUltra:
+                    case AntiAliasing.Fxaa: _effect?.Dispose(); _effect = new FxaaPostProcessingEffect(_gd, _device); break;
+                    case AntiAliasing.None: _effect?.Dispose(); _effect = null; break;
+                    case AntiAliasing.SmaaLow: case AntiAliasing.SmaaMedium: case AntiAliasing.SmaaHigh: case AntiAliasing.SmaaUltra:
                         int quality = _currentAntiAliasing - AntiAliasing.SmaaLow;
-                        if (_effect is SmaaPostProcessingEffect smaa)
-                        {
-                            smaa.Quality = quality;
-                        }
-                        else
-                        {
-                            _effect?.Dispose();
-                            _effect = new SmaaPostProcessingEffect(_gd, _device, quality);
-                        }
-
+                        if (_effect is SmaaPostProcessingEffect smaa) smaa.Quality = quality;
+                        else { _effect?.Dispose(); _effect = new SmaaPostProcessingEffect(_gd, _device, quality); }
                         break;
                 }
             }
-
             if (_updateScalingFilter)
             {
                 _updateScalingFilter = false;
-
                 switch (_currentScalingFilter)
                 {
-                    case ScalingFilter.Bilinear:
-                    case ScalingFilter.Nearest:
-                        _scalingFilter?.Dispose();
-                        _scalingFilter = null;
-                        _isLinear = _currentScalingFilter == ScalingFilter.Bilinear;
-                        break;
+                    case ScalingFilter.Bilinear: case ScalingFilter.Nearest: _scalingFilter?.Dispose(); _scalingFilter = null; _isLinear = _currentScalingFilter == ScalingFilter.Bilinear; break;
                     case ScalingFilter.Fsr:
-                        if (_scalingFilter is not FsrScalingFilter)
-                        {
-                            _scalingFilter?.Dispose();
-                            _scalingFilter = new FsrScalingFilter(_gd, _device);
-                        }
-
-                        _scalingFilter.Level = _scalingFilterLevel;
-                        break;
+                        if (_scalingFilter is not FsrScalingFilter) { _scalingFilter?.Dispose(); _scalingFilter = new FsrScalingFilter(_gd, _device); }
+                        _scalingFilter.Level = _scalingFilterLevel; break;
                     case ScalingFilter.Area:
-                        if (_scalingFilter is not AreaScalingFilter)
-                        {
-                            _scalingFilter?.Dispose();
-                            _scalingFilter = new AreaScalingFilter(_gd, _device);
-                        }
-
+                        if (_scalingFilter is not AreaScalingFilter) { _scalingFilter?.Dispose(); _scalingFilter = new AreaScalingFilter(_gd, _device); }
                         break;
                 }
             }
         }
 
-        public override void SetScalingFilterLevel(float level)
-        {
-            _scalingFilterLevel = level;
-            _updateScalingFilter = true;
-        }
+        public override void SetScalingFilterLevel(float level) { _scalingFilterLevel = level; _updateScalingFilter = true; }
 
-        private unsafe void Transition(
-            CommandBuffer commandBuffer,
-            Image image,
-            AccessFlags srcAccess,
-            AccessFlags dstAccess,
-            ImageLayout srcLayout,
-            ImageLayout dstLayout)
+        private unsafe void Transition(CommandBuffer commandBuffer, Image image, AccessFlags srcAccess, AccessFlags dstAccess, ImageLayout srcLayout, ImageLayout dstLayout)
         {
             ImageSubresourceRange subresourceRange = new(ImageAspectFlags.ColorBit, 0, 1, 0, 1);
-
             ImageMemoryBarrier barrier = new()
             {
                 SType = StructureType.ImageMemoryBarrier,
-                SrcAccessMask = srcAccess,
-                DstAccessMask = dstAccess,
-                OldLayout = srcLayout,
-                NewLayout = dstLayout,
-                SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
-                DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
-                Image = image,
-                SubresourceRange = subresourceRange,
+                SrcAccessMask = srcAccess, DstAccessMask = dstAccess,
+                OldLayout = srcLayout, NewLayout = dstLayout,
+                SrcQueueFamilyIndex = Vk.QueueFamilyIgnored, DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
+                Image = image, SubresourceRange = subresourceRange,
             };
-
-            _gd.Api.CmdPipelineBarrier(
-                commandBuffer,
-                PipelineStageFlags.TopOfPipeBit,
-                PipelineStageFlags.AllCommandsBit,
-                0,
-                0,
-                null,
-                0,
-                null,
-                1,
-                in barrier);
+            _gd.Api.CmdPipelineBarrier(commandBuffer, PipelineStageFlags.TopOfPipeBit, PipelineStageFlags.AllCommandsBit, 0,0,null,0,null,1, in barrier);
         }
 
         private void CaptureFrame(TextureView texture, int x, int y, int width, int height, bool isBgra, bool flipX, bool flipY)
         {
             byte[] bitmap = texture.GetData(x, y, width, height);
-
             _gd.OnScreenCaptured(new ScreenCaptureImageInfo(width, height, isBgra, bitmap, flipX, flipY));
         }
 
-        public override void SetSize(int width, int height)
-        {
-            // We don't need to use width and height as we can get the size from the surface.
-            _swapchainIsDirty = true;
-        }
-
-        public override void ChangeVSyncMode(VSyncMode vSyncMode)
-        {
-            _vSyncMode = vSyncMode;
-            //present mode may change, so mark the swapchain for recreation
-            _swapchainIsDirty = true;
-        }
+        public override void SetSize(int width, int height) { _swapchainIsDirty = true; }
+        public override void ChangeVSyncMode(VSyncMode vSyncMode) { _vSyncMode = vSyncMode; _swapchainIsDirty = true; }
 
         protected virtual void Dispose(bool disposing)
         {
@@ -652,32 +430,22 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 unsafe
                 {
-                    for (int i = 0; i < _swapchainImageViews.Length; i++)
+                    try
                     {
-                        _swapchainImageViews[i].Dispose();
+                        if (_swapchainImageViews!= null)
+                            for (int i = 0; i < _swapchainImageViews.Length; i++) { try { _swapchainImageViews[i]?.Dispose(); } catch {} }
+                        if (_imageAvailableSemaphores!= null)
+                            for (int i = 0; i < _imageAvailableSemaphores.Length; i++) { try { _gd.Api.DestroySemaphore(_device, _imageAvailableSemaphores[i], null); } catch {} }
+                        if (_renderFinishedSemaphores!= null)
+                            for (int i = 0; i < _renderFinishedSemaphores.Length; i++) { try { _gd.Api.DestroySemaphore(_device, _renderFinishedSemaphores[i], null); } catch {} }
+                        try { _gd.SwapchainApi.DestroySwapchain(_device, _swapchain, null); } catch {}
                     }
-
-                    for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
-                    {
-                        _gd.Api.DestroySemaphore(_device, _imageAvailableSemaphores[i], null);
-                    }
-
-                    for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
-                    {
-                        _gd.Api.DestroySemaphore(_device, _renderFinishedSemaphores[i], null);
-                    }
-
-                    _gd.SwapchainApi.DestroySwapchain(_device, _swapchain, null);
+                    catch {}
                 }
-
-                _effect?.Dispose();
-                _scalingFilter?.Dispose();
+                try { _effect?.Dispose(); } catch {}
+                try { _scalingFilter?.Dispose(); } catch {}
             }
         }
-
-        public override void Dispose()
-        {
-            Dispose(true);
-        }
+        public override void Dispose() { Dispose(true); }
     }
 }
