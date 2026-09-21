@@ -47,7 +47,7 @@ jobs:
             echo "$KEYSTORE_BASE64" | base64 -d > $RUNNER_TEMP/ryubing.keystore
             dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -f net10.0-android -r android-arm64 --no-restore -p:AndroidKeyStore=true -p:AndroidSigningKeyStore=$RUNNER_TEMP/ryubing.keystore -p:AndroidSigningKeyAlias=$KEY_ALIAS -p:AndroidSigningKeyPass=$RYU_KEY_PASS -p:AndroidSigningStorePass=$RYU_STORE_PASS -p:AndroidPackageFormat=apk
           fi
-      - run: find src -name "*.apk" -lh
+      - run: find src -name "*.apk" -exec ls -lh {} \;
       - uses: actions/upload-artifact@v4.6.2
         continue-on-error: true
         with:
