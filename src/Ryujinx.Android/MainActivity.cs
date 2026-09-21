@@ -6,6 +6,7 @@ using Android.OS;
 using Android.Widget;
 using Android.Views;
 using Android.Provider;
+using Android.Runtime; // <-- FALTAVA ESSE
 using System;
 using System.IO;
 using System.Linq;
@@ -46,7 +47,7 @@ public class MainActivity : Activity
             TaskScheduler.UnobservedTaskException += (s, e) => {
                 try { File.WriteAllText(BasePath + "/crash_task.txt", $"TASK CRASH {DateTime.Now}\n{e.Exception}\n"); e.SetObserved(); } catch {}
             };
-            AndroidEnvironment.UnhandledExceptionRaiser += (s, e) => {
+            global::Android.Runtime.AndroidEnvironment.UnhandledExceptionRaiser += (s, e) => {
                 try { File.WriteAllText(BasePath + "/crash_android.txt", $"ANDROID CRASH {DateTime.Now}\n{e.Exception}\n"); } catch {}
             };
         } catch {}
@@ -194,7 +195,6 @@ public class MainActivity : Activity
                 }catch{}
             }
 
-            // --- COPIA FIRMWARE AUTOMATICO ---
             try {
                 if(Directory.Exists(FirmwarePath)){
                     var ncas = Directory.GetFiles(FirmwarePath, "*.nca", SearchOption.AllDirectories);
