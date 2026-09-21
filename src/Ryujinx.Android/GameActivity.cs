@@ -79,7 +79,7 @@ public class GameActivity : Activity
         public void SurfaceChanged(ISurfaceHolder h,AFormat f,int w,int ht){
             a.MyLog($"SurfaceChanged {w}x{ht}");
             a.FileLog($"[VK] SurfaceChanged {w}x{ht} -> SetSize Window v4");
-            try{ var winProp=Holder.gpu?.GetType().GetProperty("Window",All); var win=winProp?.GetValue(Holder.gpu); win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{w,ht}); }catch(Exception ex){ a.FileLog($"SetSize Changed FAIL {ex.Message}"); }
+            try{ var winProp=Holder.gpu?.GetType().GetProperty("Window",All); var win=winProp?.GetValue(Holder.gpu); win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{2186,1080}); }catch(Exception ex){ a.FileLog($"SetSize Changed FAIL {ex.Message}"); }
         }
         public void SurfaceDestroyed(ISurfaceHolder h){
             a.MyLog("SurfaceDestroyed");
@@ -136,14 +136,13 @@ public class GameActivity : Activity
             FileLog($"ANTES Load {romPath}");
             if(romPath.EndsWith(".xci",StringComparison.OrdinalIgnoreCase)) Holder.device.LoadXci(romPath); else Holder.device.LoadNsp(romPath);
             FileLog("DEPOIS Load END"); MyLog("Load END");
-            int w=1280; int h=720;
+            int w=2186; int h=1080;
             try{
                 if(surfaceView!=null && surfaceView.Holder!=null){
                     var sf = surfaceView.Holder.SurfaceFrame;
-                    if(sf!=null && sf.Width()>0){ w=sf.Width(); h=sf.Height(); }
-                    else if(surfaceView.Width>0){ w=surfaceView.Width; h=surfaceView.Height; }
+                    if(sf!=null && sf.Width()>0){ w=sf.Width(); h=sf.Height(); if(w<1000) { w=2186; h=1080; } }
                 }
-            }catch(Exception exW){ FileLog($"GetSize FAIL {exW.Message}"); }
+            }catch(Exception exW){ FileLog($"GetSize FAIL {exW.Message}"); w=2186; h=1080; }
             FileLog($"[VK] SetSize FORCADO {w}x{h} para Window v4 req={w}x{h}");
             MyLog($"SetSize {w}x{h}");
             try{ var winProp=Holder.gpu.GetType().GetProperty("Window",All); var win=winProp?.GetValue(Holder.gpu); win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{w,h}); MyLog($"SetSize OK {w}x{h}"); }catch(Exception eSz){ MyLog($"SetSize ERR {eSz.Message}"); }
