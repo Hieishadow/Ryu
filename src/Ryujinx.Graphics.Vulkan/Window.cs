@@ -12,9 +12,9 @@ namespace Ryujinx.Graphics.Vulkan
 {
     class Window : WindowBase, IDisposable
     {
-        private const int SurfaceWidth = 1280;
-        private const int SurfaceHeight = 720;
-        private static void FLog(string s){ try{ File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", DateTime.Now.ToString("HH:mm:ss.fff")+" "+s+"\n"); }catch{} }
+        private const int SurfaceWidth = 2186;
+        private const int SurfaceHeight = 1080;
+        private static void FLog(string s){ try{ var d="/storage/emulated/0/Download/Ryubing"; Directory.CreateDirectory(d); File.AppendAllText(d+"/ryubing_log.txt", DateTime.Now.ToString("HH:mm:ss.fff")+" "+s+"\n"); }catch{} }
 
         private readonly VulkanRenderer _gd;
         private readonly SurfaceKHR _surface;
@@ -31,8 +31,8 @@ namespace Ryujinx.Graphics.Vulkan
         private int _frameIndex;
         private int _width;
         private int _height;
-        private int _requestedWidth = 1280;
-        private int _requestedHeight = 720;
+        private int _requestedWidth = 2186;
+        private int _requestedHeight = 1080;
         private VSyncMode _vSyncMode;
         private bool _swapchainIsDirty;
         private VkFormat _format;
@@ -66,7 +66,8 @@ namespace Ryujinx.Graphics.Vulkan
                     for (int i = 0; i < _swapchainImageViews.Length; i++)
                     { try { _swapchainImageViews[i]?.Dispose(); } catch {} }
                 }
-                try { _gd.Api.DeviceWaitIdle(_device); } catch {}
+                // FIX 865 - TRAVA NO ADRENO, COMENTADO:
+                // try { _gd.Api.DeviceWaitIdle(_device); } catch {}
                 unsafe
                 {
                     if (_imageAvailableSemaphores!= null)
@@ -178,7 +179,7 @@ namespace Ryujinx.Graphics.Vulkan
             if (capabilities.CurrentExtent.Width!= uint.MaxValue) return capabilities.CurrentExtent;
             uint width = Math.Max(capabilities.MinImageExtent.Width, Math.Min(capabilities.MaxImageExtent.Width, (uint)reqW));
             uint height = Math.Max(capabilities.MinImageExtent.Height, Math.Min(capabilities.MaxImageExtent.Height, (uint)reqH));
-            if(width==0) width=1280; if(height==0) height=720;
+            if(width==0) width=2186; if(height==0) height=1080;
             return new Extent2D(width, height);
         }
         public static Extent2D ChooseSwapExtent(SurfaceCapabilitiesKHR capabilities) => ChooseSwapExtent(capabilities, SurfaceWidth, SurfaceHeight);
@@ -187,7 +188,7 @@ namespace Ryujinx.Graphics.Vulkan
         {
             try
             {
-                if (texture == null){ FLog("[VK] Present texture NULL"); return; }
+                if (texture == null){ FLog("[VK] Present texture NULL - callback"); try{ swapBuffersCallback?.Invoke(); }catch{} return; }
                 if(_swapchainIsDirty) RecreateSwapchain();
 
                 uint nextImage = 0;
@@ -202,7 +203,6 @@ namespace Ryujinx.Graphics.Vulkan
                 }
 
                 Image swapchainImage = _swapchainImages[nextImage];
-                // FIX 865 - só 1 Flush por frame
                 _gd.FlushAllCommands();
                 CommandBufferScoped cbs = _gd.CommandBufferPool.Rent();
                 Transition(cbs.CommandBuffer, swapchainImage, 0, AccessFlags.TransferWriteBit, ImageLayout.Undefined, ImageLayout.TransferDstOptimal);
@@ -233,7 +233,6 @@ namespace Ryujinx.Graphics.Vulkan
                 PresentInfoKHR presentInfo = new(){ SType = StructureType.PresentInfoKhr, WaitSemaphoreCount = 1, PWaitSemaphores = &semaphore, SwapchainCount = 1, PSwapchains = &swapchain, PImageIndices = &nextImage, PResults = &result, };
                 lock (_gd.QueueLock){ _gd.SwapchainApi.QueuePresent(_gd.Queue, in presentInfo); }
 
-                // FIX 506 - CHAMA CALLBACK OBRIGATORIO
                 try{ swapBuffersCallback?.Invoke(); }catch(Exception cbEx){ FLog($"[VK] cb FAIL {cbEx.Message}"); }
 
                 if(_frameIndex % 60 == 0){ FLog($"[VK] Present OK {view.Width}x{view.Height} -> {_width}x{_height}"); Console.WriteLine($"[VK] Present OK {view.Width}x{view.Height} -> {_width}x{_height}"); }
