@@ -36,10 +36,10 @@ namespace Ryujinx.Graphics.Vulkan
         private bool _updateEffect;
         private IPostProcessingEffect _effect;
         private IScalingFilter _scalingFilter;
-        private bool _isLinear;
+        private bool _isLinear = true;
         private float _scalingFilterLevel;
         private bool _updateScalingFilter;
-        private ScalingFilter _currentScalingFilter;
+        private ScalingFilter _currentScalingFilter = ScalingFilter.Bilinear;
         private bool _colorSpacePassthroughEnabled;
 
         public unsafe Window(VulkanRenderer gd, SurfaceKHR surface, PhysicalDevice physicalDevice, Device device)
@@ -137,7 +137,7 @@ namespace Ryujinx.Graphics.Vulkan
                 ImageFormat = surfaceFormat.Format,
                 ImageColorSpace = surfaceFormat.ColorSpace,
                 ImageExtent = extent,
-                ImageUsage = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit | ImageUsageFlags.StorageBit,
+                ImageUsage = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit,
                 ImageSharingMode = SharingMode.Exclusive,
                 ImageArrayLayers = 1,
                 PreTransform = capabilities.CurrentTransform,
@@ -272,6 +272,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                     if (acquireResult == Result.ErrorOutOfDateKhr || acquireResult == Result.SuboptimalKhr || _swapchainIsDirty)
                     {
+                        Console.WriteLine($"[VK] Acquire dirty {acquireResult} -> Recreate");
                         RecreateSwapchain();
                         semaphoreIndex = (_frameIndex - 1) % _imageAvailableSemaphores.Length;
                         if (_swapchainIsDirty) continue;
@@ -287,7 +288,7 @@ namespace Ryujinx.Graphics.Vulkan
                 _gd.FlushAllCommands();
                 CommandBufferScoped cbs = _gd.CommandBufferPool.Rent();
 
-                Transition(cbs.CommandBuffer, swapchainImage, 0, AccessFlags.TransferWriteBit, ImageLayout.Undefined, ImageLayout.General);
+                Transition(cbs.CommandBuffer, swapchainImage, 0, AccessFlags.TransferWriteBit, ImageLayout.Undefined, ImageLayout.TransferDstOptimal);
 
                 TextureView view = (TextureView)texture;
                 UpdateEffect();
@@ -312,16 +313,19 @@ namespace Ryujinx.Graphics.Vulkan
                     ScreenCaptureRequested = false;
                 }
 
-                float ratioX = crop.IsStretched? 1.0f : MathF.Min(1.0f, _height * crop.AspectRatioX / (_width * crop.AspectRatioY));
-                float ratioY = crop.IsStretched? 1.0f : MathF.Min(1.0f, _width * crop.AspectRatioY / (_height * crop.AspectRatioX));
-                int dstWidth = (int)(_width * ratioX);
-                int dstHeight = (int)(_height * ratioY);
-                int dstPaddingX = (_width - dstWidth) / 2;
-                int dstPaddingY = (_height - dstHeight) / 2;
-                int dstX0 = crop.FlipX? _width - dstPaddingX : dstPaddingX;
-                int dstX1 = crop.FlipX? dstPaddingX : _width - dstPaddingX;
-                int dstY0 = crop.FlipY? dstPaddingY : _height - dstPaddingY;
-                int dstY1 = crop.FlipY? _height - dstPaddingY : dstPaddingY;
+                // FIX 865 - full screen blit sem aspect ratio bug
+                int dstX0 = 0;
+                int dstY0 = 0;
+                int dstX1 = _width;
+                int dstY1 = _height;
+
+                // FIX 865 - desativa FSR, força bilinear
+                if (_scalingFilter!= null && _scalingFilter is FsrScalingFilter)
+                {
+                    try { _scalingFilter.Dispose(); } catch {}
+                    _scalingFilter = null;
+                    _isLinear = true;
+                }
 
                 if (_scalingFilter!= null)
                 {
@@ -330,11 +334,12 @@ namespace Ryujinx.Graphics.Vulkan
                 }
                 else
                 {
+                    // FIX 865 - Y não invertido aqui, Vulkan já inverte no swapchain
                     _gd.HelperShader.BlitColor(_gd, cbs, view, _swapchainImageViews[nextImage],
-                        new Extents2D(srcX0, srcY0, srcX1, srcY1), new Extents2D(dstX0, dstY1, dstX1, dstY0), _isLinear, true);
+                        new Extents2D(srcX0, srcY0, srcX1, srcY1), new Extents2D(dstX0, dstY0, dstX1, dstY1), _isLinear, true);
                 }
 
-                Transition(cbs.CommandBuffer, swapchainImage, 0, 0, ImageLayout.General, ImageLayout.PresentSrcKhr);
+                Transition(cbs.CommandBuffer, swapchainImage, AccessFlags.TransferWriteBit, 0, ImageLayout.TransferDstOptimal, ImageLayout.PresentSrcKhr);
                 _gd.FlushAllCommands();
                 _gd.CommandBufferPool.Return(cbs, [_imageAvailableSemaphores[semaphoreIndex]], [PipelineStageFlags.ColorAttachmentOutputBit], [_renderFinishedSemaphores[semaphoreIndex]]);
 
@@ -355,16 +360,24 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     _gd.SwapchainApi.QueuePresent(_gd.Queue, in presentInfo);
                 }
+                Console.WriteLine($"[VK] Present OK {view.Width}x{view.Height} -> {_width}x{_height}");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[VK] Present FAIL: {ex.Message}");
+                Console.WriteLine($"[VK] Present FAIL: {ex}");
                 _swapchainIsDirty = true;
             }
         }
 
         public override void SetAntiAliasing(AntiAliasing effect) { if (_currentAntiAliasing == effect && _effect!= null) return; _currentAntiAliasing = effect; _updateEffect = true; }
-        public override void SetScalingFilter(ScalingFilter type) { if (_currentScalingFilter == type && _effect!= null) return; _currentScalingFilter = type; _updateScalingFilter = true; }
+        public override void SetScalingFilter(ScalingFilter type)
+        {
+            // FIX 865 - força bilinear, bloqueia FSR que dá tela preta no Adreno
+            if (type == ScalingFilter.Fsr) type = ScalingFilter.Bilinear;
+            if (_currentScalingFilter == type && _scalingFilter!= null) return;
+            _currentScalingFilter = type;
+            _updateScalingFilter = true;
+        }
         public override void SetColorSpacePassthrough(bool colorSpacePassthroughEnabled) { _colorSpacePassthroughEnabled = colorSpacePassthroughEnabled; _swapchainIsDirty = true; }
 
         private void UpdateEffect()
@@ -390,8 +403,8 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     case ScalingFilter.Bilinear: case ScalingFilter.Nearest: _scalingFilter?.Dispose(); _scalingFilter = null; _isLinear = _currentScalingFilter == ScalingFilter.Bilinear; break;
                     case ScalingFilter.Fsr:
-                        if (_scalingFilter is not FsrScalingFilter) { _scalingFilter?.Dispose(); _scalingFilter = new FsrScalingFilter(_gd, _device); }
-                        _scalingFilter.Level = _scalingFilterLevel; break;
+                        // FIX 865 - FSR desabilitado
+                        _scalingFilter?.Dispose(); _scalingFilter = null; _isLinear = true; break;
                     case ScalingFilter.Area:
                         if (_scalingFilter is not AreaScalingFilter) { _scalingFilter?.Dispose(); _scalingFilter = new AreaScalingFilter(_gd, _device); }
                         break;
@@ -412,7 +425,7 @@ namespace Ryujinx.Graphics.Vulkan
                 SrcQueueFamilyIndex = Vk.QueueFamilyIgnored, DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
                 Image = image, SubresourceRange = subresourceRange,
             };
-            _gd.Api.CmdPipelineBarrier(commandBuffer, PipelineStageFlags.TopOfPipeBit, PipelineStageFlags.AllCommandsBit, 0,0,null,0,null,1, in barrier);
+            _gd.Api.CmdPipelineBarrier(commandBuffer, PipelineStageFlags.TopOfPipeBit, PipelineStageFlags.TransferBit, 0,0,null,0,null,1, in barrier);
         }
 
         private void CaptureFrame(TextureView texture, int x, int y, int width, int height, bool isBgra, bool flipX, bool flipY)
@@ -421,7 +434,7 @@ namespace Ryujinx.Graphics.Vulkan
             _gd.OnScreenCaptured(new ScreenCaptureImageInfo(width, height, isBgra, bitmap, flipX, flipY));
         }
 
-        public override void SetSize(int width, int height) { _swapchainIsDirty = true; }
+        public override void SetSize(int width, int height) { Console.WriteLine($"[VK] SetSize {width}x{height}"); _swapchainIsDirty = true; }
         public override void ChangeVSyncMode(VSyncMode vSyncMode) { _vSyncMode = vSyncMode; _swapchainIsDirty = true; }
 
         protected virtual void Dispose(bool disposing)
