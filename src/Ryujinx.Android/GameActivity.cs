@@ -105,42 +105,38 @@ public class GameActivity : Activity
             string jitDir=Path.Combine(CacheDir.AbsolutePath,"jit"); Directory.CreateDirectory(jitDir);
             SysEnv.SetEnvironmentVariable("RYUJINX_JIT_CACHE",jitDir);
 
-            // === FIX #528 COPIA AUTOMATICA DE KEYS ===
             try{
                 FileLog($"baseDir={baseDir}");
                 var srcProd="/storage/emulated/0/Download/Ryubing/keys/prod.keys";
                 var dstProd=Path.Combine(baseDir,"keys/prod.keys");
-                if(File.Exists(srcProd)){ File.Copy(srcProd,dstProd,true); FileLog($"COPIADO prod.keys {new FileInfo(dstProd).Length} bytes para {dstProd}"); }
+                if(File.Exists(srcProd)){ File.Copy(srcProd,dstProd,true); FileLog($"COPIADO prod.keys {new FileInfo(dstProd).Length} bytes"); }
                 else FileLog($"SRC prod.keys NAO EXISTE {srcProd}");
                 var srcTitle="/storage/emulated/0/Download/Ryubing/keys/title.keys";
                 var dstTitle=Path.Combine(baseDir,"keys/title.keys");
                 if(File.Exists(srcTitle)){ File.Copy(srcTitle,dstTitle,true); FileLog($"COPIADO title.keys"); }
-                foreach(var f in Directory.GetFiles(Path.Combine(baseDir,"keys"))) FileLog($"KEY FILE FOUND: {Path.GetFileName(f)} {new FileInfo(f).Length} bytes");
-                foreach(var d in Directory.GetDirectories(baseDir)) FileLog($"DIR: {d}");
-            }catch(Exception ex){ FileLog($"COPY/LIST FAIL {ex}"); }
+                foreach(var f in Directory.GetFiles(Path.Combine(baseDir,"keys"))) FileLog($"KEY FILE: {Path.GetFileName(f)} {new FileInfo(f).Length} bytes");
+            }catch(Exception ex){ FileLog($"COPY FAIL {ex}"); }
 
             try{ VirtualFileSystem.ResetForAndroid(); }catch{}
             try{ typeof(VirtualFileSystem).GetField("_instance",All)?.SetValue(null,null); }catch{}
             var vfs=VirtualFileSystem.CreateInstance();
             vfs.ReloadKeySet();
-            FileLog($"KEYS count={vfs.KeySet?.Count()}");
+            try{ FileLog($"KEYS count={vfs.KeySet.Count}"); }catch(Exception ex){ FileLog($"KEYS count FAIL {ex.Message}"); }
 
             var audio=new DummyHardwareDeviceDriver();
             FileLog("ANTES VulkanRenderer.Create");
             Holder.gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)Holder.nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
             try {
-                FileLog("[VK] Chamando gpu.Initialize() via reflection #523");
+                FileLog("[VK] Initialize via reflection #531");
                 var initMethod = Holder.gpu.GetType().GetMethod("Initialize", All);
                 if(initMethod!= null) {
                     var paramType = initMethod.GetParameters()[0].ParameterType;
                     var enumVal = Enum.ToObject(paramType, 0);
                     initMethod.Invoke(Holder.gpu, new object[]{ enumVal });
-                    FileLog("[VK] Initialize OK - Window criado");
-                } else {
-                    FileLog("[VK] Initialize method NOT FOUND");
+                    FileLog("[VK] Initialize OK");
                 }
             } catch(Exception exInit) { FileLog($"[VK] Initialize FAIL {exInit}"); }
-            FileLog("DEPOIS Vulkan OK"); MyLog("Vulkan OK #523");
+            FileLog("DEPOIS Vulkan OK"); MyLog("Vulkan OK #531");
             var conf=BuildHle(vfs,Holder.gpu,audio,baseDir,Path.Combine(baseDir,"system"));
             Holder.device=new Switch(conf);
             MyLog($"Load {Path.GetFileName(romPath)}");
@@ -149,24 +145,22 @@ public class GameActivity : Activity
             FileLog("DEPOIS Load END"); MyLog("Load END");
             int w=1280; int h=720;
             try{ if(surfaceView!=null && surfaceView.Holder!=null){ var sf = surfaceView.Holder.SurfaceFrame; if(sf!=null && sf.Width()>0){ w=sf.Width(); h=sf.Height(); } } }catch{}
-            FileLog($"[VK] SetSize REAL {w}x{h}"); MyLog($"SetSize {w}x{h}");
+            FileLog($"[VK] SetSize REAL {w}x{h}");
             try{ var winProp=Holder.gpu.GetType().GetProperty("Window",All); var win=winProp?.GetValue(Holder.gpu); win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{w,h}); MyLog($"SetSize OK {w}x{h}"); }catch(Exception eSz){ MyLog($"SetSize ERR {eSz.Message}"); }
             int frames=0;
             FileLog("LOOP ON"); MyLog("LOOP ON");
             while(Holder.running && Holder.nativeWindow!=IntPtr.Zero){
                 try{
-                    if(frames==0) FileLog("LOOP first ProcessFrame...");
                     Holder.device.ProcessFrame();
-                    if(frames==0) FileLog("First ProcessFrame OK, calling PresentFrame...");
-                    Holder.device.PresentFrame(()=>{ FileLog($"[VK] swapBuffers cb f={frames}"); });
+                    Holder.device.PresentFrame(()=>{});
                     frames++;
-                    if(frames==1){ FileLog("LOOP FIRST FRAME OK - TELA DEVE APARECER"); MyLog("FIRST FRAME OK"); }
+                    if(frames==1){ FileLog("FIRST FRAME OK"); MyLog("FIRST FRAME OK"); }
                     if(frames % 60 == 0) FileLog($"LOOP f={frames} OK");
                     Thread.Sleep(16);
                 }catch(Exception eLoop){ FileLog($"LOOP EX f={frames} {eLoop}"); CrashLog("crash_loop", eLoop.ToString()); break; }
             }
-            FileLog($"LOOP SAIU f={frames}"); MyLog($"LOOP SAIU f={frames}");
-        }catch(Exception eAll){ FileLog($"CRASH {eAll}"); MyLog($"CRASH {eAll}"); CrashLog("crash_emu", eAll.ToString()); } finally{ FileLog("Emu END"); MyLog("Emu END"); }
+            FileLog($"LOOP SAIU f={frames}");
+        }catch(Exception eAll){ FileLog($"CRASH {eAll}"); CrashLog("crash_emu", eAll.ToString()); } finally{ FileLog("Emu END"); }
     }
     unsafe delegate Silk.NET.Vulkan.Result CDel(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
     HleConfiguration BuildHle(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio, string baseDir, string sysDir){
