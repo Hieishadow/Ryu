@@ -165,12 +165,15 @@ public class MainActivity : Activity
             if (FilesDir == null) return;
             var baseDir = Path.Combine(FilesDir.AbsolutePath, "Ryujinx");
             var keysDir = Path.Combine(baseDir, "keys");
+            var bisRegistered = Path.Combine(baseDir, "bis", "system", "Contents", "registered");
+            var sysRegistered = Path.Combine(baseDir, "system", "Contents", "registered");
+            
             Directory.CreateDirectory(keysDir);
             Directory.CreateDirectory(Path.Combine(baseDir, "system"));
-            Directory.CreateDirectory(Path.Combine(baseDir, "system", "Contents", "registered"));
-            Directory.CreateDirectory(Path.Combine(baseDir, "bis", "system", "Contents", "registered"));
+            Directory.CreateDirectory(sysRegistered);
+            Directory.CreateDirectory(bisRegistered);
 
-            // SÓ COPIA PRA 1 LUGAR
+            // 1. KEYS - SÓ 1 LUGAR
             foreach (var k in new[] { "prod.keys", "title.keys" }){
                 var src = Path.Combine(KeysPath, k);
                 if (!File.Exists(src)) continue;
@@ -179,7 +182,23 @@ public class MainActivity : Activity
                 }catch{}
             }
 
-            // LIMPA OS DUPLICADOS DAS SUAS PRINTS
+            // 2. FIRMWARE - AGORA COPIA DE VERDADE
+            try {
+                if (Directory.Exists(FirmwarePath)) {
+                    var ncas = Directory.GetFiles(FirmwarePath, "*.nca", SearchOption.AllDirectories);
+                    foreach(var nca in ncas) {
+                        try {
+                            var name = Path.GetFileName(nca);
+                            var dest1 = Path.Combine(bisRegistered, name);
+                            var dest2 = Path.Combine(sysRegistered, name);
+                            if (!File.Exists(dest1)) File.Copy(nca, dest1, true);
+                            if (!File.Exists(dest2)) File.Copy(nca, dest2, true);
+                        } catch {}
+                    }
+                }
+            } catch {}
+
+            // LIMPA OS DUPLICADOS
             try {
                 var dupFolder = Path.Combine(baseDir, "system", "keys");
                 if(Directory.Exists(dupFolder)) Directory.Delete(dupFolder, true);
@@ -197,7 +216,12 @@ public class MainActivity : Activity
         if (info == null) return;
         var prodInt = new FileInfo(Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "keys", "prod.keys"));
         int firmIntCount = 0;
-        try{ var p = Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "system", "Contents", "registered"); if(Directory.Exists(p)) firmIntCount = Directory.GetFiles(p, "*.nca").Length; }catch{}
+        try{ 
+            var p1 = Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "bis", "system", "Contents", "registered"); 
+            var p2 = Path.Combine(FilesDir.AbsolutePath, "Ryujinx", "system", "Contents", "registered");
+            if(Directory.Exists(p1)) firmIntCount = Directory.GetFiles(p1, "*.nca").Length;
+            if(firmIntCount==0 && Directory.Exists(p2)) firmIntCount = Directory.GetFiles(p2, "*.nca").Length;
+        }catch{}
         
         if(!prodInt.Exists){
             info.Text = "keys NAO encontradas - usa Importar Keys";
