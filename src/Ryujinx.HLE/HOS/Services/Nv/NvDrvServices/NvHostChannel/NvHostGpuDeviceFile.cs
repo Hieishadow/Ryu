@@ -13,6 +13,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel
             Path = "/dev/nvhost-gpu";
             _channel = new NvChannel(context);
         }
+
         public NvHostGpuDeviceFile(ServiceCtx context, ulong owner) : this(context, null, owner) { }
 
         public override NvInternalResult Ioctl(NvIoctl command, Span<byte> arguments)
@@ -21,12 +22,13 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel
                 return CallIoctlMethod<Types.SubmitGpfifoArguments>(_channel.SubmitGpfifo, arguments);
             if (command.Number == 0x2 || command.Number == 0x9)
                 return CallIoctlMethod<Types.AllocGpfifoExArguments>(_channel.AllocGpfifoEx, arguments);
-            
+
             return NvInternalResult.Success;
         }
+
         public override NvInternalResult Ioctl2(NvIoctl command, Span<byte> arguments, Span<byte> inlineInBuffer) => Ioctl(command, arguments);
         public override NvInternalResult Ioctl3(NvIoctl command, Span<byte> arguments, Span<byte> inlineOutBuffer) => Ioctl(command, arguments);
-        public override void Close(){ }
-        public static void Destroy(){ }
+        public override void Close() { }
+        public static void Destroy() { }
     }
 }
