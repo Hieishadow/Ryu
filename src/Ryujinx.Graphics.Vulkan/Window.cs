@@ -15,6 +15,7 @@ namespace Ryujinx.Graphics.Vulkan
         private const int SurfaceWidth = 2186;
         private const int SurfaceHeight = 1080;
         private static void FLog(string s){ try{ var p="/storage/emulated/0/Download/Ryubing/ryubing_log.txt"; var d=Path.GetDirectoryName(p); if(d!=null){ try{ if(!Directory.Exists(d)) Directory.CreateDirectory(d); }catch{} } File.AppendAllText(p, DateTime.Now.ToString("HH:mm:ss.fff")+" [FILE] "+s+"\n"); Console.WriteLine(s); }catch{} }
+        private static void FLogPresent(string s){ try{ var p="/storage/emulated/0/Download/Ryubing/ryubing_present.txt"; var d=Path.GetDirectoryName(p); if(d!=null){ try{ if(!Directory.Exists(d)) Directory.CreateDirectory(d); }catch{} } File.AppendAllText(p, DateTime.Now.ToString("HH:mm:ss.fff")+" "+s+"\n"); }catch{} }
 
         private readonly VulkanRenderer _gd;
         private readonly SurfaceKHR _surface;
@@ -46,8 +47,9 @@ namespace Ryujinx.Graphics.Vulkan
         public unsafe Window(VulkanRenderer gd, SurfaceKHR surface, PhysicalDevice physicalDevice, Device device)
         {
             _gd = gd; _physicalDevice = physicalDevice; _device = device; _surface = surface;
-            FLog($"[VK] Window ctor v10.5 #554 req={_requestedWidth}x{_requestedHeight}");
-            try { CreateSwapchain(); FLog($"[VK] Window ctor OK {_width}x{_height}"); } catch (Exception ex) { FLog($"[VK] CreateSwapchain initial fail: {ex}"); throw; }
+            FLog($"[VK] Window ctor v10.5 #555 req={_requestedWidth}x{_requestedHeight}");
+            FLogPresent($"[VK] Window ctor v10.5 #555 req={_requestedWidth}x{_requestedHeight}");
+            try { CreateSwapchain(); FLog($"[VK] Window ctor OK {_width}x{_height}"); FLogPresent($"[VK] Window ctor OK {_width}x{_height}"); } catch (Exception ex) { FLog($"[VK] CreateSwapchain initial fail: {ex}"); throw; }
         }
 
         private void RecreateSwapchain()
@@ -56,6 +58,7 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 SwapchainKHR oldSwapchain = _swapchain; _swapchainIsDirty = false;
                 FLog($"[VK] RecreateSwapchain BEGIN old={_width}x{_height} newReq={_requestedWidth}x{_requestedHeight}");
+                FLogPresent($"[VK] RecreateSwapchain BEGIN old={_width}x{_height} newReq={_requestedWidth}x{_requestedHeight}");
                 try { _gd.Api.DeviceWaitIdle(_device); } catch(Exception ex){ FLog($"[VK] DeviceWaitIdle fail {ex.Message}"); }
                 if (_swapchainImageViews!= null) for (int i = 0; i < _swapchainImageViews.Length; i++) try { _swapchainImageViews[i]?.Dispose(); } catch {}
                 unsafe
@@ -64,9 +67,9 @@ namespace Ryujinx.Graphics.Vulkan
                     if (_renderFinishedSemaphores!= null) for (int i = 0; i < _renderFinishedSemaphores.Length; i++) try { _gd.Api.DestroySemaphore(_device, _renderFinishedSemaphores[i], null); } catch {}
                 }
                 try { _gd.SwapchainApi.DestroySwapchain(_device, oldSwapchain, Span<AllocationCallbacks>.Empty); } catch {}
-                CreateSwapchain(); FLog($"[VK] RecreateSwapchain OK {_width}x{_height}");
+                CreateSwapchain(); FLog($"[VK] RecreateSwapchain OK {_width}x{_height}"); FLogPresent($"[VK] RecreateSwapchain OK {_width}x{_height}");
             }
-            catch (Exception ex){ FLog($"[VK] RecreateSwapchain fail: {ex}"); }
+            catch (Exception ex){ FLog($"[VK] RecreateSwapchain fail: {ex}"); FLogPresent($"[VK] RecreateSwapchain fail: {ex}"); }
         }
 
         private unsafe void CreateSwapchain()
@@ -97,7 +100,7 @@ namespace Ryujinx.Graphics.Vulkan
             for (int i = 0; i < _imageAvailableSemaphores.Length; i++) _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _imageAvailableSemaphores[i]).ThrowOnError();
             _renderFinishedSemaphores = new Semaphore[imageCount];
             for (int i = 0; i < _renderFinishedSemaphores.Length; i++) _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _renderFinishedSemaphores[i]).ThrowOnError();
-            FLog($"[VK] CreateSwapchain OK {_width}x{_height} - NO FENCES v10.5 #554");
+            FLog($"[VK] CreateSwapchain OK {_width}x{_height} - NO FENCES v10.5 #555");
         }
 
         private unsafe TextureView CreateSwapchainImageView(Image swapchainImage, VkFormat format, TextureCreateInfo info)
@@ -130,25 +133,24 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe override void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback)
         {
-            FLog($"[VK] Present CALLED f={_frameIndex} tex={(texture==null?"NULL":"OK")} crop L{crop.Left} R{crop.Right} T{crop.Top} B{crop.Bottom} dirty={_swapchainIsDirty}");
+            FLogPresent($"[VK] Present CALLED f={_frameIndex} tex={(texture==null?"NULL":"OK")} dirty={_swapchainIsDirty}");
             try
             {
                 if(_swapchainIsDirty) RecreateSwapchain();
                 uint nextImage = 0;
                 int semIdx = _frameIndex % _imageAvailableSemaphores.Length;
-                FLog($"[VK] AcquireNextImage START f={_frameIndex} semIdx={semIdx}");
+                FLogPresent($"[VK] AcquireNextImage START f={_frameIndex} semIdx={semIdx}");
                 Result acq = _gd.SwapchainApi.AcquireNextImage(_device, _swapchain, 1000000000, _imageAvailableSemaphores[semIdx], new Fence(), ref nextImage);
-                FLog($"[VK] Acquire {acq} img={nextImage} semIdx={semIdx}");
+                FLogPresent($"[VK] Acquire {acq} img={nextImage} semIdx={semIdx} f={_frameIndex}");
                 if (acq == Result.ErrorOutOfDateKhr || acq == Result.SuboptimalKhr) { _swapchainIsDirty = true; RecreateSwapchain(); acq = _gd.SwapchainApi.AcquireNextImage(_device, _swapchain, 1000000000, _imageAvailableSemaphores[semIdx], new Fence(), ref nextImage); }
 
-                FLog($"[VK] Rent START f={_frameIndex}");
+                FLogPresent($"[VK] Rent START f={_frameIndex}");
                 CommandBufferScoped cbs = _gd.CommandBufferPool.Rent();
-                FLog($"[VK] Rent OK f={_frameIndex}");
+                FLogPresent($"[VK] Rent OK f={_frameIndex}");
                 Transition(cbs.CommandBuffer, _swapchainImages[nextImage], 0, AccessFlags.TransferWriteBit, ImageLayout.Undefined, ImageLayout.General, PipelineStageFlags.TopOfPipeBit, PipelineStageFlags.TransferBit);
 
                 if (texture == null)
                 {
-                    FLog($"[VK] tex NULL -> MAGENTA f={_frameIndex}");
                     ClearColorValue clear = new(); clear.Float32_0 = 1f; clear.Float32_1 = 0f; clear.Float32_2 = 1f; clear.Float32_3 = 1f;
                     ImageSubresourceRange range = new(ImageAspectFlags.ColorBit,0,1,0,1);
                     _gd.Api.CmdClearColorImage(cbs.CommandBuffer, _swapchainImages[nextImage], ImageLayout.General, &clear, 1, &range);
@@ -156,7 +158,6 @@ namespace Ryujinx.Graphics.Vulkan
                 else
                 {
                     TextureView view = (TextureView)texture;
-                    FLog($"[VK] view {view.Width}x{view.Height} f={_frameIndex}");
                     ClearColorValue clear = new(); clear.Float32_0 = 1f; clear.Float32_1 = 0f; clear.Float32_2 = 1f; clear.Float32_3 = 1f;
                     ImageSubresourceRange range = new(ImageAspectFlags.ColorBit,0,1,0,1);
                     _gd.Api.CmdClearColorImage(cbs.CommandBuffer, _swapchainImages[nextImage], ImageLayout.General, &clear, 1, &range);
@@ -169,39 +170,37 @@ namespace Ryujinx.Graphics.Vulkan
                         int sy0 = crop.Top == 0 && crop.Bottom == 0? 0 : crop.Top;
                         int sy1 = crop.Bottom == 0? src.Height : crop.Bottom;
                         if(sx1>0 && sy1>0){
-                            FLog($"[VK] BLIT [{sx0},{sy0}-{sx1},{sy1}] -> {_width}x{_height} f={_frameIndex}");
                             _gd.HelperShader.BlitColor(_gd, cbs, src, _swapchainImageViews[nextImage], new Extents2D(sx0, sy0, sx1, sy1), new Extents2D(0, 0, _width, _height), true, true);
-                            FLog($"[VK] BLIT OK f={_frameIndex}");
                         }
-                    } catch(Exception ex){ FLog($"[VK] BLIT FAIL f={_frameIndex} {ex}"); }
+                    } catch(Exception ex){ FLogPresent($"[VK] BLIT FAIL f={_frameIndex} {ex}"); }
                 }
 
                 Transition(cbs.CommandBuffer, _swapchainImages[nextImage], AccessFlags.TransferWriteBit, 0, ImageLayout.General, ImageLayout.PresentSrcKhr, PipelineStageFlags.TransferBit, PipelineStageFlags.BottomOfPipeBit);
-                FLog($"[VK] Return START f={_frameIndex}");
+                FLogPresent($"[VK] Return START f={_frameIndex}");
                 _gd.CommandBufferPool.Return(cbs, [_imageAvailableSemaphores[semIdx]], [PipelineStageFlags.ColorAttachmentOutputBit], [_renderFinishedSemaphores[semIdx]]);
-                FLog($"[VK] Return OK f={_frameIndex}");
+                FLogPresent($"[VK] Return OK f={_frameIndex}");
 
                 Semaphore sem = _renderFinishedSemaphores[semIdx]; SwapchainKHR sc = _swapchain; Result pres;
                 PresentInfoKHR pi = new(){ SType=StructureType.PresentInfoKhr, WaitSemaphoreCount=1, PWaitSemaphores=&sem, SwapchainCount=1, PSwapchains=&sc, PImageIndices=&nextImage, PResults=&pres };
-                FLog($"[VK] QueuePresent START f={_frameIndex}");
+                FLogPresent($"[VK] QueuePresent START f={_frameIndex}");
                 Result qr; lock(_gd.QueueLock){ qr = _gd.SwapchainApi.QueuePresent(_gd.Queue, in pi); }
-                FLog($"[VK] QueuePresent q={qr} p={pres} f={_frameIndex}");
+                FLogPresent($"[VK] QueuePresent q={qr} p={pres} f={_frameIndex}");
 
-                FLog($"[VK] swapBuffers CALLBACK START f={_frameIndex}");
-                try{ swapBuffersCallback?.Invoke(); }catch(Exception ex){ FLog($"[VK] swapBuffers CALLBACK EX {ex}"); }
-                FLog($"[VK] swapBuffers CALLBACK END f={_frameIndex}");
+                FLogPresent($"[VK] swapBuffers CALLBACK START f={_frameIndex}");
+                try{ swapBuffersCallback?.Invoke(); }catch(Exception ex){ FLogPresent($"[VK] swapBuffers CALLBACK EX f={_frameIndex} {ex}"); }
+                FLogPresent($"[VK] swapBuffers CALLBACK END f={_frameIndex}");
 
                 _frameIndex++;
-                FLog($"[VK] Present END f={_frameIndex-1} -> next={_frameIndex}");
+                FLogPresent($"[VK] Present END f={_frameIndex-1} -> next={_frameIndex}");
             }
-            catch(Exception ex){ FLog($"[VK] Present FAIL f={_frameIndex} {ex}"); _swapchainIsDirty = true; try{ FLog($"[VK] swapBuffers CALLBACK START (FAIL PATH) f={_frameIndex}"); swapBuffersCallback?.Invoke(); FLog($"[VK] swapBuffers CALLBACK END (FAIL PATH) f={_frameIndex}"); }catch{} }
+            catch(Exception ex){ FLogPresent($"[VK] Present FAIL f={_frameIndex} {ex}"); _swapchainIsDirty = true; try{ FLogPresent($"[VK] swapBuffers CALLBACK START (FAIL PATH) f={_frameIndex}"); swapBuffersCallback?.Invoke(); FLogPresent($"[VK] swapBuffers CALLBACK END (FAIL PATH) f={_frameIndex}"); }catch{} }
         }
 
         public unsafe void ForcedPresentMagenta()
         {
             try
             {
-                FLog($"[VK] FORCED MAGENTA f={_frameIndex}");
+                FLogPresent($"[VK] FORCED MAGENTA f={_frameIndex}");
                 if(_swapchainIsDirty) RecreateSwapchain();
                 uint nextImage = 0;
                 int semIdx = _frameIndex % _imageAvailableSemaphores.Length;
@@ -216,10 +215,10 @@ namespace Ryujinx.Graphics.Vulkan
                 Semaphore sem = _renderFinishedSemaphores[semIdx]; SwapchainKHR sc = _swapchain; Result pres;
                 PresentInfoKHR pi = new(){ SType=StructureType.PresentInfoKhr, WaitSemaphoreCount=1, PWaitSemaphores=&sem, SwapchainCount=1, PSwapchains=&sc, PImageIndices=&nextImage, PResults=&pres };
                 Result qr; lock(_gd.QueueLock){ qr = _gd.SwapchainApi.QueuePresent(_gd.Queue, in pi); }
-                FLog($"[VK] FORCED QueuePresent {qr}/{pres} f={_frameIndex}");
+                FLogPresent($"[VK] FORCED QueuePresent {qr}/{pres} f={_frameIndex}");
                 _frameIndex++;
             }
-            catch(Exception ex){ FLog($"[VK] FORCED FAIL {ex}"); }
+            catch(Exception ex){ FLogPresent($"[VK] FORCED FAIL {ex}"); }
         }
 
         public override void SetAntiAliasing(AntiAliasing effect) { if (_currentAntiAliasing == effect && _effect!= null) return; _currentAntiAliasing = effect; _updateEffect = true; }
@@ -232,7 +231,7 @@ namespace Ryujinx.Graphics.Vulkan
         }
         public override void SetScalingFilterLevel(float level) { _scalingFilterLevel = level; _updateScalingFilter = true; }
         private unsafe void Transition(CommandBuffer commandBuffer, Image image, AccessFlags srcAccess, AccessFlags dstAccess, ImageLayout srcLayout, ImageLayout dstLayout, PipelineStageFlags srcStage, PipelineStageFlags dstStage) { ImageSubresourceRange subresourceRange = new(ImageAspectFlags.ColorBit, 0, 1, 0, 1); ImageMemoryBarrier barrier = new(){ SType = StructureType.ImageMemoryBarrier, SrcAccessMask = srcAccess, DstAccessMask = dstAccess, OldLayout = srcLayout, NewLayout = dstLayout, SrcQueueFamilyIndex = Vk.QueueFamilyIgnored, DstQueueFamilyIndex = Vk.QueueFamilyIgnored, Image = image, SubresourceRange = subresourceRange, }; _gd.Api.CmdPipelineBarrier(commandBuffer, srcStage, dstStage, 0,0,null,0,null,1, in barrier); }
-        public override void SetSize(int width, int height) { FLog($"[VK] SetSize {width}x{height} -> dirty v10.5 #554"); if(width<=0 || height<=0) return; _requestedWidth=width; _requestedHeight=height; _swapchainIsDirty = true; }
+        public override void SetSize(int width, int height) { FLog($"[VK] SetSize {width}x{height} -> dirty v10.5 #555"); FLogPresent($"[VK] SetSize {width}x{height} -> dirty v10.5 #555"); if(width<=0 || height<=0) return; _requestedWidth=width; _requestedHeight=height; _swapchainIsDirty = true; }
         public override void ChangeVSyncMode(VSyncMode vSyncMode) { _vSyncMode = vSyncMode; _swapchainIsDirty = true; }
         protected virtual void Dispose(bool disposing){ if (disposing){ unsafe{ try{ if (_swapchainImageViews!= null) for (int i = 0; i < _swapchainImageViews.Length; i++) try { _swapchainImageViews[i]?.Dispose(); } catch {} if (_imageAvailableSemaphores!= null) for (int i = 0; i < _imageAvailableSemaphores.Length; i++) try { _gd.Api.DestroySemaphore(_device, _imageAvailableSemaphores[i], null); } catch {} if (_renderFinishedSemaphores!= null) for (int i = 0; i < _renderFinishedSemaphores.Length; i++) try { _gd.Api.DestroySemaphore(_device, _renderFinishedSemaphores[i], null); } catch {} try { _gd.SwapchainApi.DestroySwapchain(_device, _swapchain, null); } catch {} }catch{} } try { _effect?.Dispose(); } catch {} try { _scalingFilter?.Dispose(); } catch {} } }
         public override void Dispose() { Dispose(true); }
