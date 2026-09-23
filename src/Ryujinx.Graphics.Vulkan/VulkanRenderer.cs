@@ -25,6 +25,7 @@ namespace Ryujinx.Graphics.Vulkan
     public sealed class VulkanRenderer : IRenderer
     {
         private static void FLog(string s){ try{ var p="/storage/emulated/0/Download/Ryubing/ryubing_log.txt"; var d=Path.GetDirectoryName(p); if(d!=null){ try{ if(!Directory.Exists(d)) Directory.CreateDirectory(d); }catch{} } File.AppendAllText(p, DateTime.Now.ToString("HH:mm:ss.fff")+" [FILE] "+s+"\n"); Console.WriteLine(s); }catch{} }
+        private static void FLogPresent(string s){ try{ var p="/storage/emulated/0/Download/Ryubing/ryubing_present.txt"; var d=Path.GetDirectoryName(p); if(d!=null){ try{ if(!Directory.Exists(d)) Directory.CreateDirectory(d); }catch{} } File.AppendAllText(p, DateTime.Now.ToString("HH:mm:ss.fff")+" "+s+"\n"); }catch{} }
 
         private VulkanInstance _instance;
         private SurfaceKHR _surface;
@@ -218,7 +219,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         private void SetupContext(GraphicsDebugLevel logLevel)
         {
-            FLog("[VK] SetupContext START #554");
+            FLog("[VK] SetupContext START #556");
+            FLogPresent("[VK] SetupContext START #556");
             try
             {
                 _instance = VulkanInitialization.CreateInstance(Api, logLevel, _getRequiredExtensions());
@@ -245,11 +247,13 @@ namespace Ryujinx.Graphics.Vulkan
                 _window = new Window(this, _surface, _physicalDevice.PhysicalDevice, _device);
                 FLog($"[VK] After new Window OK");
                 _initialized = true;
-                FLog("[VK] SetupContext END OK #554");
+                FLog("[VK] SetupContext END OK #556");
+                FLogPresent("[VK] SetupContext END OK #556");
             }
             catch(Exception ex)
             {
                 FLog($"[VK] SetupContext FAIL: {ex}");
+                FLogPresent($"[VK] SetupContext FAIL: {ex}");
                 throw;
             }
         }
@@ -289,7 +293,7 @@ namespace Ryujinx.Graphics.Vulkan
             try{ BufferManager?.StagingBuffer?.FreeCompleted(); }catch{}
         }
         public PinnedSpan<byte> GetBufferData(BufferHandle buffer, int offset, int size) => BufferManager.GetData(buffer, offset, size);
-        public unsafe Capabilities GetCapabilities() { /*... same as your file... */
+        public unsafe Capabilities GetCapabilities() {
             FormatFeatureFlags compressedFormatFeatureFlags = FormatFeatureFlags.SampledImageBit | FormatFeatureFlags.SampledImageFilterLinearBit | FormatFeatureFlags.BlitSrcBit | FormatFeatureFlags.TransferDstBit;
             bool supportsBc123CompressionFormat = FormatCapabilities.OptimalFormatsSupport(compressedFormatFeatureFlags, Format.Bc1RgbaSrgb, Format.Bc1RgbaUnorm, Format.Bc2Srgb, Format.Bc2Unorm, Format.Bc3Srgb, Format.Bc3Unorm);
             bool supportsBc45CompressionFormat = FormatCapabilities.OptimalFormatsSupport(compressedFormatFeatureFlags, Format.Bc4Snorm, Format.Bc4Unorm, Format.Bc5Snorm, Format.Bc5Unorm);
@@ -326,9 +330,9 @@ namespace Ryujinx.Graphics.Vulkan
             try
             {
                 if (_device.Handle == 0) return;
-                try { SyncManager?.Cleanup(); FLog("[VK] PreFrame SyncManager OK"); } catch (Exception ex) { FLog($"[VK] PreFrame SyncManager FAIL: {ex.Message}"); }
-                try { BufferManager?.StagingBuffer?.FreeCompleted(); FLog("[VK] PreFrame Staging OK"); } catch (Exception ex){ FLog($"[VK] PreFrame Staging FAIL: {ex}"); }
-                try { _counters?.Update(); FLog("[VK] PreFrame Counters OK"); } catch (Exception ex){ FLog($"[VK] PreFrame Counters FAIL: {ex}"); }
+                try { SyncManager?.Cleanup(); } catch {}
+                try { BufferManager?.StagingBuffer?.FreeCompleted(); } catch {}
+                try { _counters?.Update(); } catch {}
             }
             catch (Exception ex) { FLog($"[VK] PreFrame TOTAL FAIL: {ex}"); }
         }
@@ -341,13 +345,36 @@ namespace Ryujinx.Graphics.Vulkan
         public void ResetFutureCounters(CommandBuffer cmd, int count) { if (!_initialized) return; try{ _counters?.ResetFutureCounters(cmd, count); }catch{} }
         public void BackgroundContextAction(Action action, bool alwaysBackground = false)
         {
-            try { FLog("[VK] BackgroundContextAction START"); action(); FLog("[VK] BackgroundContextAction END"); }
-            catch(Exception ex) { FLog($"[VK] BackgroundContextAction FAIL: {ex}"); throw; }
+            try { action(); } catch { throw; }
         }
-        public void CreateSync(ulong id, bool strict) { if (!_initialized) return; try{ SyncManager?.Create(id, strict); }catch{} }
+        public void CreateSync(ulong id, bool strict)
+        {
+            if (!_initialized) return;
+            FLogPresent($"[VK] CreateSync START id={id} strict={strict}");
+            FLogPresent($"[VK] CreateSync BEFORE SyncManager.Create id={id}");
+            try{ SyncManager?.Create(id, strict); }catch(Exception ex){ FLogPresent($"[VK] CreateSync EX id={id} {ex}"); }
+            FLogPresent($"[VK] CreateSync AFTER SyncManager.Create id={id}");
+            FLogPresent($"[VK] CreateSync END id={id}");
+        }
         public IProgram LoadProgramBinary(byte[] programBinary, bool isFragment, ShaderInfo info) => throw new NotImplementedException();
-        public void WaitSync(ulong id) { if (!_initialized) return; try{ SyncManager?.Wait(id); }catch{} }
-        public ulong GetCurrentSync() { if (!_initialized) return 0; try{ if(SyncManager==null) return 0; return SyncManager.GetCurrent(); }catch{ return 0; } }
+        public void WaitSync(ulong id)
+        {
+            if (!_initialized) return;
+            FLogPresent($"[VK] WaitSync START id={id}");
+            FLogPresent($"[VK] WaitSync BEFORE SyncManager.Wait id={id}");
+            try{ SyncManager?.Wait(id); }catch(Exception ex){ FLogPresent($"[VK] WaitSync EX id={id} {ex}"); }
+            FLogPresent($"[VK] WaitSync AFTER SyncManager.Wait id={id}");
+            FLogPresent($"[VK] WaitSync END id={id}");
+        }
+        public ulong GetCurrentSync()
+        {
+            if (!_initialized) return 0;
+            FLogPresent($"[VK] GetCurrentSync START");
+            ulong r = 0;
+            try{ if(SyncManager!=null) r = SyncManager.GetCurrent(); }catch(Exception ex){ FLogPresent($"[VK] GetCurrentSync EX {ex}"); }
+            FLogPresent($"[VK] GetCurrentSync END r={r}");
+            return r;
+        }
         public void SetInterruptAction(Action<Action> interruptAction) => InterruptAction = interruptAction;
         public void Screenshot() { try{ _window.ScreenCaptureRequested = true; }catch{} }
         public void OnScreenCaptured(ScreenCaptureImageInfo bitmap) => ScreenCaptured?.Invoke(this, bitmap);
@@ -356,12 +383,13 @@ namespace Ryujinx.Graphics.Vulkan
         public unsafe void Dispose()
         {
             if (!_initialized) return;
-            FLog("[VK] Dispose START #554");
+            FLog("[VK] Dispose START #556");
+            FLogPresent("[VK] Dispose START #556");
             try
             {
-                try { Api.DeviceWaitIdle(_device); FLog("[VK] Dispose DeviceWaitIdle OK"); } catch (Exception ex) { FLog($"[VK] Dispose DeviceWaitIdle FAIL: {ex}"); }
-                try { _window?.Dispose(); FLog("[VK] Window Dispose OK"); } catch (Exception ex) { FLog($"[VK] Window Dispose FAIL: {ex}"); }
-                try { CommandBufferPool?.Dispose(); FLog("[VK] Dispose CommandBufferPool OK"); } catch (Exception ex) { FLog($"[VK] Dispose CommandBufferPool FAIL {ex.Message}"); }
+                try { Api.DeviceWaitIdle(_device); } catch {}
+                try { _window?.Dispose(); } catch {}
+                try { CommandBufferPool?.Dispose(); } catch {}
                 try { BackgroundResources?.Dispose(); } catch {}
                 try { _counters?.Dispose(); } catch {}
                 try { HelperShader?.Dispose(); } catch {}
@@ -373,13 +401,14 @@ namespace Ryujinx.Graphics.Vulkan
                 foreach (ShaderCollection shader in Shaders) { try { shader.Dispose(); } catch {} }
                 foreach (ITexture texture in Textures) { try { texture.Release(); } catch {} }
                 foreach (SamplerHolder sampler in Samplers) { try { sampler.Dispose(); } catch {} }
-                try { if (SurfaceApi!= null) SurfaceApi.DestroySurface(_instance.Instance, _surface, null); FLog("[VK] DestroySurface OK"); } catch {}
-                try { if (Api!= null && _device.Handle!= 0) { Api.DestroyDevice(_device, null); FLog("[VK] DestroyDevice OK"); } } catch {}
+                try { if (SurfaceApi!= null) SurfaceApi.DestroySurface(_instance.Instance, _surface, null); } catch {}
+                try { if (Api!= null && _device.Handle!= 0) { Api.DestroyDevice(_device, null); } } catch {}
                 try { _debugMessenger?.Dispose(); } catch {}
                 try { _instance?.Dispose(); } catch {}
-                FLog("[VK] Dispose END #554");
+                FLog("[VK] Dispose END #556");
+                FLogPresent("[VK] Dispose END #556");
             }
-            catch (Exception ex) { FLog($"[VK] Dispose TOTAL FAIL: {ex}"); }
+            catch (Exception ex) { FLog($"[VK] Dispose TOTAL FAIL: {ex}"); FLogPresent($"[VK] Dispose FAIL {ex}"); }
             finally { _initialized = false; }
         }
         public bool PrepareHostMapping(nint address, ulong size) => Capabilities.SupportsHostImportedMemory && HostMemoryAllocator.TryImport(BufferManager.HostImportedBufferMemoryRequirements, BufferManager.DefaultBufferMemoryFlags, address, size);
