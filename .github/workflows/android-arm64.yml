@@ -15,6 +15,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     env:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
@@ -42,52 +43,88 @@ jobs:
           path: |
             ${{ env.NUGET_PACKAGES }}
             ~/.dotnet/workloads
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}-${{ hashFiles('**/WorkloadManifest.json') }}
-          restore-keys: nuget-${{ runner.os }}-
+            ~/.nuget/packages
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ryubing-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ryubing-${{ runner.os }}-
 
       - name: Android workload
         run: dotnet workload install android --skip-sign-check
 
-      - name: Clean
-        run: |
-          rm -rf release
-          mkdir -p release
-          # NÃO apaga mais bin/obj do Vulkan - é isso que deixava lento
-
-      - name: Restore
-        run: dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj -r android-arm64
-
       - name: Version
         run: |
-          sed -i "s/#529/#${{ github.run_number }}/g" src/Ryujinx.Android/Properties/AndroidManifest.xml || true
-          sed -i "s/529/${{ github.run_number }}/g" src/Ryujinx.Android/MainActivity.cs || true
-          sed -i "s/S20 FE.*/S20 FE #${{ github.run_number }}/g" src/Ryujinx.Android/MainActivity.cs || true
+          sed -i "s/#529/#${{ github.run_number }}/g" \
+            src/Ryujinx.Android/Properties/AndroidManifest.xml || true
 
-      - name: Build APK FAST
+          sed -i "s/529/${{ github.run_number }}/g" \
+            src/Ryujinx.Android/MainActivity.cs || true
+
+          sed -i "s/S20 FE.*/S20 FE #${{ github.run_number }}/g" \
+            src/Ryujinx.Android/MainActivity.cs || true
+
+      - name: Restore
+        run: |
+          dotnet restore \
+            src/Ryujinx.Android/Ryujinx.Android.csproj \
+            -r android-arm64
+
+      - name: Build FAST
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASS: ${{ secrets.KEY_PASS }}
           STORE_PASS: ${{ secrets.STORE_PASS }}
+
         run: |
-          # FAST = sem AOT, pra testar Present CALLED. Final tira essa linha.
-          ARGS="src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -f net10.0-android -r android-arm64 --no-restore -p:AndroidPackageFormat=apk -p:RunAOTCompilation=false -p:AndroidEnableProfiledAot=false"
+          ARGS="src/Ryujinx.Android/Ryujinx.Android.csproj \
+            -c Release \
+            -f net10.0-android \
+            -r android-arm64 \
+            --no-restore \
+            -p:AndroidPackageFormat=apk \
+            -p:RunAOTCompilation=false \
+            -p:AndroidEnableProfiledAot=false"
 
           if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/ryubing.keystore"
-            ARGS="$ARGS -p:AndroidKeyStore=true -p:AndroidSigningKeyStore=$RUNNER_TEMP/ryubing.keystore -p:AndroidSigningKeyAlias=$KEY_ALIAS -p:AndroidSigningKeyPass=$KEY_PASS -p:AndroidSigningStorePass=$STORE_PASS"
+            echo "$KEYSTORE_BASE64" | base64 -d \
+              > "$RUNNER_TEMP/ryubing.keystore"
+
+            ARGS="$ARGS \
+              -p:AndroidKeyStore=true \
+              -p:AndroidSigningKeyStore=$RUNNER_TEMP/ryubing.keystore \
+              -p:AndroidSigningKeyAlias=$KEY_ALIAS \
+              -p:AndroidSigningKeyPass=$KEY_PASS \
+              -p:AndroidSigningStorePass=$STORE_PASS"
           fi
 
           dotnet publish $ARGS
 
       - name: Get APK
         run: |
-          APK=$(find src/Ryujinx.Android/bin/Release -type f -name "*-Signed.apk" | head -n 1)
+          APK=$(find src/Ryujinx.Android/bin/Release \
+            -type f \
+            -name "*-Signed.apk" \
+            | head -n 1)
+
           if [ -z "$APK" ]; then
-            APK=$(find src/Ryujinx.Android/bin/Release -type f -name "*.apk" -printf "%s %p\n" | sort -nr | head -n 1 | cut -d' ' -f2-)
+            APK=$(find src/Ryujinx.Android/bin/Release \
+              -type f \
+              -name "*.apk" \
+              -printf "%s %p\n" |
+              sort -nr |
+              head -n 1 |
+              cut -d' ' -f2-)
           fi
+
           test -n "$APK"
-          cp "$APK" "release/Ryubing-Android-ARM64-#${{ github.run_number }}.apk"
+
+          mkdir -p release
+
+          cp "$APK" \
+            "release/Ryubing-Android-ARM64-#${{ github.run_number }}.apk"
+
           ls -lh release/
 
       - name: Upload APK
@@ -95,4 +132,4 @@ jobs:
         with:
           name: Ryubing-APK-#${{ github.run_number }}
           path: release/*.apk
-          retention-days: 14
+          retention-days: 7
