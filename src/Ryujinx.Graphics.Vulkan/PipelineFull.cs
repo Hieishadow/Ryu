@@ -20,6 +20,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         private readonly List<BufferHolder> _backingSwaps;
 
+        // #558 LOG
+        private static void FLogPresent(string s){ try{ var p="/storage/emulated/0/Download/Ryubing/ryubing_present.txt"; System.IO.File.AppendAllText(p, System.DateTime.Now.ToString("HH:mm:ss.fff")+" "+s+"\n"); }catch{} }
+
         public PipelineFull(VulkanRenderer gd, Device device) : base(gd, device)
         {
             _activeQueries = [];
@@ -49,11 +52,8 @@ namespace Ryujinx.Graphics.Vulkan
                 return;
             }
 
-            if (componentMask != 0xf || Gd.IsQualcommProprietary)
+            if (componentMask!= 0xf || Gd.IsQualcommProprietary)
             {
-                // We can't use CmdClearAttachments if not writing all components,
-                // because on Vulkan, the pipeline state does not affect clears.
-                // On proprietary Adreno drivers, CmdClearAttachments appears to execute out of order, so it's better to not use it at all.
                 TextureView dstTexture = FramebufferParams.GetColorView(index);
                 if (dstTexture == null)
                 {
@@ -66,7 +66,6 @@ namespace Ryujinx.Graphics.Vulkan
                 clearColor[2] = color.Blue;
                 clearColor[3] = color.Alpha;
 
-                // TODO: Clear only the specified layer.
                 Gd.HelperShader.Clear(
                     Gd,
                     dstTexture,
@@ -90,18 +89,14 @@ namespace Ryujinx.Graphics.Vulkan
                 return;
             }
 
-            if ((stencilMask != 0 && stencilMask != 0xff) || Gd.IsQualcommProprietary)
+            if ((stencilMask!= 0 && stencilMask!= 0xff) || Gd.IsQualcommProprietary)
             {
-                // We can't use CmdClearAttachments if not clearing all (mask is all ones, 0xFF) or none (mask is 0) of the stencil bits,
-                // because on Vulkan, the pipeline state does not affect clears.
-                // On proprietary Adreno drivers, CmdClearAttachments appears to execute out of order, so it's better to not use it at all.
                 TextureView dstTexture = FramebufferParams.GetDepthStencilView();
                 if (dstTexture == null)
                 {
                     return;
                 }
 
-                // TODO: Clear only the specified layer.
                 Gd.HelperShader.Clear(
                     Gd,
                     dstTexture,
@@ -116,7 +111,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
-                ClearRenderTargetDepthStencil(layer, layerCount, depthValue, depthMask, stencilValue, stencilMask != 0);
+                ClearRenderTargetDepthStencil(layer, layerCount, depthValue, depthMask, stencilValue, stencilMask!= 0);
             }
         }
 
@@ -124,11 +119,9 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (Gd.Capabilities.SupportsConditionalRendering)
             {
-                // Gd.ConditionalRenderingApi.CmdEndConditionalRendering(CommandBuffer);
             }
             else
             {
-                // throw new NotSupportedException();
             }
 
             _activeConditionalRender?.ReleaseHostAccess();
@@ -137,53 +130,24 @@ namespace Ryujinx.Graphics.Vulkan
 
         public bool TryHostConditionalRendering(ICounterEvent value, ulong compare, bool isEqual)
         {
-            // Compare an event and a constant value.
-            if (value is CounterQueueEvent evt)
+            if (compare == 0 && value is CounterQueueEvent evt && evt.Type == CounterType.SamplesPassed && evt.ClearCounter)
             {
-                // Easy host conditional rendering when the check matches what GL can do:
-                //  - Event is of type samples passed.
-                //  - Result is not a combination of multiple queries.
-                //  - Comparing against 0.
-                //  - Event has not already been flushed.
-
-                if (compare == 0 && evt.Type == CounterType.SamplesPassed && evt.ClearCounter)
+                if (!value.ReserveForHostAccess())
                 {
-                    if (!value.ReserveForHostAccess())
-                    {
-                        // If the event has been flushed, then just use the values on the CPU.
-                        // The query object may already be repurposed for another draw (eg. begin + end).
-                        return false;
-                    }
-
-                    if (Gd.Capabilities.SupportsConditionalRendering)
-                    {
-                        // var buffer = evt.GetBuffer().Get(Cbs, 0, sizeof(long)).Value;
-                        // var flags = isEqual ? ConditionalRenderingFlagsEXT.InvertedBitExt : 0;
-
-                        // var conditionalRenderingBeginInfo = new ConditionalRenderingBeginInfoEXT
-                        // {
-                        //     SType = StructureType.ConditionalRenderingBeginInfoExt,
-                        //     Buffer = buffer,
-                        //     Flags = flags,
-                        // };
-
-                        // Gd.ConditionalRenderingApi.CmdBeginConditionalRendering(CommandBuffer, conditionalRenderingBeginInfo);
-                    }
-
-                    _activeConditionalRender = evt;
-                    return true;
+                    return false;
                 }
+
+                _activeConditionalRender = evt;
+                return true;
             }
 
-            // The GPU will flush the queries to CPU and evaluate the condition there instead.
-
-            FlushPendingQuery(); // The thread will be stalled manually flushing the counter, so flush commands now.
+            FlushPendingQuery();
             return false;
         }
 
         public bool TryHostConditionalRendering(ICounterEvent value, ICounterEvent compare, bool isEqual)
         {
-            FlushPendingQuery(); // The thread will be stalled manually flushing the counter, so flush commands now.
+            FlushPendingQuery();
             return false;
         }
 
@@ -197,7 +161,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         public CommandBufferScoped GetPreloadCommandBuffer()
         {
-            PreloadCbs ??= Gd.CommandBufferPool.Rent();
+            PreloadCbs??= Gd.CommandBufferPool.Rent();
 
             return PreloadCbs.Value;
         }
@@ -206,17 +170,13 @@ namespace Ryujinx.Graphics.Vulkan
         {
             bool usedByCurrentCb = disposedResource.HasCommandBufferDependency(Cbs);
 
-            if (PreloadCbs != null && !usedByCurrentCb)
+            if (PreloadCbs!= null &&!usedByCurrentCb)
             {
                 usedByCurrentCb = disposedResource.HasCommandBufferDependency(PreloadCbs.Value);
             }
 
             if (usedByCurrentCb)
             {
-                // Since we can only free memory after the command buffer that uses a given resource was executed,
-                // keeping the command buffer might cause a high amount of memory to be in use.
-                // To prevent that, we force submit command buffers if the memory usage by resources
-                // in use by the current command buffer is above a given limit, and those resources were disposed.
                 _byteWeight += byteWeight;
 
                 if (_byteWeight >= MinByteWeightForFlush)
@@ -228,14 +188,14 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void Restore()
         {
-            if (Pipeline != null)
+            if (Pipeline!= null)
             {
                 Gd.Api.CmdBindPipeline(CommandBuffer, Pbp, Pipeline.Get(Cbs).Value);
             }
 
             SignalCommandBufferChange();
 
-            if (Pipeline != null && Pbp == PipelineBindPoint.Graphics)
+            if (Pipeline!= null && Pbp == PipelineBindPoint.Graphics)
             {
                 DynamicState.ReplayIfDirty(Gd, CommandBuffer);
             }
@@ -243,45 +203,52 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void FlushCommandsImpl()
         {
-            AutoFlush.RegisterFlush(DrawCount);
-            EndRenderPass();
-
-            foreach ((QueryPool queryPool, _) in _activeQueries)
+            FLogPresent("[PIPELINE] FlushCommands START");
+            try
             {
-                Gd.Api.CmdEndQuery(CommandBuffer, queryPool, 0);
+                AutoFlush.RegisterFlush(DrawCount);
+                EndRenderPass();
+
+                foreach ((QueryPool queryPool, _) in _activeQueries)
+                {
+                    Gd.Api.CmdEndQuery(CommandBuffer, queryPool, 0);
+                }
+
+                _byteWeight = 0;
+
+                if (PreloadCbs!= null)
+                {
+                    PreloadCbs.Value.Dispose();
+                    PreloadCbs = null;
+                }
+
+                Gd.Barriers.Flush(Cbs, false, null, null);
+                CommandBuffer = (Cbs = Gd.CommandBufferPool.ReturnAndRent(Cbs)).CommandBuffer;
+                Gd.RegisterFlush();
+
+                foreach (BufferHolder buffer in _activeBufferMirrors)
+                {
+                    buffer.ClearMirrors();
+                }
+
+                _activeBufferMirrors.Clear();
+
+                foreach ((QueryPool queryPool, bool isOcclusion) in _activeQueries)
+                {
+                    bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
+
+                    Gd.Api.CmdResetQueryPool(CommandBuffer, queryPool, 0, 1);
+                    Gd.Api.CmdBeginQuery(CommandBuffer, queryPool, 0, isPrecise? QueryControlFlags.PreciseBit : 0);
+                }
+
+                Gd.ResetCounterPool();
+
+                Restore();
             }
-
-            _byteWeight = 0;
-
-            if (PreloadCbs != null)
+            finally
             {
-                PreloadCbs.Value.Dispose();
-                PreloadCbs = null;
+                FLogPresent("[PIPELINE] FlushCommands END");
             }
-
-            Gd.Barriers.Flush(Cbs, false, null, null);
-            CommandBuffer = (Cbs = Gd.CommandBufferPool.ReturnAndRent(Cbs)).CommandBuffer;
-            Gd.RegisterFlush();
-
-            // Restore per-command buffer state.
-            foreach (BufferHolder buffer in _activeBufferMirrors)
-            {
-                buffer.ClearMirrors();
-            }
-
-            _activeBufferMirrors.Clear();
-
-            foreach ((QueryPool queryPool, bool isOcclusion) in _activeQueries)
-            {
-                bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
-
-                Gd.Api.CmdResetQueryPool(CommandBuffer, queryPool, 0, 1);
-                Gd.Api.CmdBeginQuery(CommandBuffer, queryPool, 0, isPrecise ? QueryControlFlags.PreciseBit : 0);
-            }
-
-            Gd.ResetCounterPool();
-
-            Restore();
         }
 
         public void RegisterActiveMirror(BufferHolder buffer)
@@ -299,14 +266,12 @@ namespace Ryujinx.Graphics.Vulkan
 
                 if (fromSamplePool)
                 {
-                    // Try reset some additional queries in advance.
-
                     Gd.ResetFutureCounters(CommandBuffer, AutoFlush.GetRemainingQueries());
                 }
             }
 
             bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
-            Gd.Api.CmdBeginQuery(CommandBuffer, pool, 0, isPrecise ? QueryControlFlags.PreciseBit : 0);
+            Gd.Api.CmdBeginQuery(CommandBuffer, pool, 0, isPrecise? QueryControlFlags.PreciseBit : 0);
 
             _activeQueries.Add((pool, isOcclusion));
         }
