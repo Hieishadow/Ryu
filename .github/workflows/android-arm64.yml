@@ -1,57 +1,145 @@
 name: Ryujinx Android ARM64
+
 on:
   push:
     branches: [master]
   workflow_dispatch:
+
 permissions:
   contents: write
   actions: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
+
     env:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
-          dotnet-quality: 'preview'
+          dotnet-quality: preview
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
-          restore-keys: nuget-${{ runner.os }}-
-      - run: dotnet workload install android --skip-sign-check
-      - run: |
-          rm -rf src/Ryujinx.Graphics.Vulkan/bin src/Ryujinx.Graphics.Vulkan/obj src/Ryujinx.Android/bin src/Ryujinx.Android/obj
-      - run: dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj -r android-arm64
-      - name: Publish
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Install Android workload
+        run: dotnet workload install android --skip-sign-check
+
+      - name: Clean build folders
+        run: |
+          rm -rf src/Ryujinx.Graphics.Vulkan/bin
+          rm -rf src/Ryujinx.Graphics.Vulkan/obj
+          rm -rf src/Ryujinx.Android/bin
+          rm -rf src/Ryujinx.Android/obj
+          rm -rf release
+
+      - name: Restore
+        run: |
+          dotnet restore \
+            src/Ryujinx.Android/Ryujinx.Android.csproj \
+            -r android-arm64
+
+      - name: Publish Release APK
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           RYU_KEY_PASS: ${{ secrets.KEY_PASS }}
           RYU_STORE_PASS: ${{ secrets.STORE_PASS }}
+
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
-            dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -f net10.0-android -r android-arm64 --no-restore -p:AndroidPackageFormat=apk
+
+            dotnet publish \
+              src/Ryujinx.Android/Ryujinx.Android.csproj \
+              -c Release \
+              -f net10.0-android \
+              -r android-arm64 \
+              --no-restore \
+              -p:AndroidPackageFormat=apk
+
           else
-            echo "$KEYSTORE_BASE64" | base64 -d > $RUNNER_TEMP/ryubing.keystore
-            dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -f net10.0-android -r android-arm64 --no-restore -p:AndroidKeyStore=true -p:AndroidSigningKeyStore=$RUNNER_TEMP/ryubing.keystore -p:AndroidSigningKeyAlias=$KEY_ALIAS -p:AndroidSigningKeyPass=$RYU_KEY_PASS -p:AndroidSigningStorePass=$RYU_STORE_PASS -p:AndroidPackageFormat=apk
+
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/ryubing.keystore"
+
+            dotnet publish \
+              src/Ryujinx.Android/Ryujinx.Android.csproj \
+              -c Release \
+              -f net10.0-android \
+              -r android-arm64 \
+              --no-restore \
+              -p:AndroidPackageFormat=apk \
+              -p:AndroidKeyStore=true \
+              -p:AndroidSigningKeyStore="$RUNNER_TEMP/ryubing.keystore" \
+              -p:AndroidSigningKeyAlias="$KEY_ALIAS" \
+              -p:AndroidSigningKeyPass="$RYU_KEY_PASS" \
+              -p:AndroidSigningStorePass="$RYU_STORE_PASS"
+
           fi
-      - run: find src -name "*.apk" -exec ls -lh {} \;
-      - uses: actions/upload-artifact@v4.6.2
-        continue-on-error: true
+
+      - name: Select final APK
+        shell: bash
+        run: |
+          set -e
+
+          mkdir -p release
+
+          echo "=== APKs generated ==="
+          find src/Ryujinx.Android/bin/Release -type f -name "*.apk" -print
+
+          APK_COUNT=$(find src/Ryujinx.Android/bin/Release -type f -name "*.apk" | wc -l)
+
+          echo "APK count: $APK_COUNT"
+
+          if [ "$APK_COUNT" -eq 0 ]; then
+            echo "ERROR: Nenhum APK foi encontrado."
+            exit 1
+          fi
+
+          # Pega o APK final de arm64.
+          APK=$(find src/Ryujinx.Android/bin/Release \
+            -type f \
+            -name "*.apk" \
+            | grep -E 'android-arm64|publish' \
+            | head -n 1)
+
+          # Fallback caso o nome do diretório mude.
+          if [ -z "$APK" ]; then
+            APK=$(find src/Ryujinx.Android/bin/Release \
+              -type f \
+              -name "*.apk" \
+              | head -n 1)
+          fi
+
+          echo "APK selecionado:"
+          echo "$APK"
+
+          cp "$APK" release/Ryubing-Android-ARM64.apk
+
+          echo "=== Final artifact ==="
+          ls -lh release/Ryubing-Android-ARM64.apk
+
+      - name: Upload ONE APK
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: Ryubing-APK
-          path: "**/*.apk"
-          if-no-files-found: warn
+          path: release/Ryubing-Android-ARM64.apk
+          if-no-files-found: error
           retention-days: 7
