@@ -200,7 +200,6 @@ namespace Ryujinx.Graphics.Vulkan
             ulong minResourceAlignment = Math.Max(Math.Max(properties.Limits.MinStorageBufferOffsetAlignment, properties.Limits.MinUniformBufferOffsetAlignment), properties.Limits.MinTexelBufferOffsetAlignment);
             SampleCountFlags supportedSampleCounts = properties.Limits.FramebufferColorSampleCounts & properties.Limits.FramebufferDepthSampleCounts & properties.Limits.FramebufferStencilSampleCounts;
             Capabilities = new HardwareCapabilities(_physicalDevice.IsDeviceExtensionPresent("VK_EXT_index_type_uint8"), supportsCustomBorderColor, supportsBlendOperationAdvanced, propertiesBlendOperationAdvanced.AdvancedBlendCorrelatedOverlap, propertiesBlendOperationAdvanced.AdvancedBlendNonPremultipliedSrcColor, propertiesBlendOperationAdvanced.AdvancedBlendNonPremultipliedDstColor, _physicalDevice.IsDeviceExtensionPresent(KhrDrawIndirectCount.ExtensionName), _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_shader_interlock"), _physicalDevice.IsDeviceExtensionPresent("VK_NV_geometry_shader_passthrough"), features2.Features.ShaderFloat64, featuresShaderInt8.ShaderInt8, _physicalDevice.IsDeviceExtensionPresent("VK_EXT_shader_stencil_export"), features2.Features.ShaderStorageImageMultisample, _physicalDevice.IsDeviceExtensionPresent(ExtConditionalRendering.ExtensionName), _physicalDevice.IsDeviceExtensionPresent(ExtExtendedDynamicState.ExtensionName), features2.Features.MultiViewport &&!(IsMoltenVk && Vendor == Vendor.Amd), featuresRobustness2.NullDescriptor || IsMoltenVk, supportsPushDescriptors, IsMoltenVk? 16 : propertiesPushDescriptor.MaxPushDescriptors, featuresPrimitiveTopologyListRestart.PrimitiveTopologyListRestart, featuresPrimitiveTopologyListRestart.PrimitiveTopologyPatchListRestart, supportsTransformFeedback, propertiesTransformFeedback.TransformFeedbackQueries, features2.Features.OcclusionQueryPrecise, _physicalDevice.PhysicalDeviceFeatures.PipelineStatisticsQuery, _physicalDevice.PhysicalDeviceFeatures.GeometryShader, _physicalDevice.PhysicalDeviceFeatures.TessellationShader, _physicalDevice.IsDeviceExtensionPresent("VK_NV_viewport_array2"), _physicalDevice.IsDeviceExtensionPresent(ExtExternalMemoryHost.ExtensionName), supportsDepthClipControl && featuresDepthClipControl.DepthClipControl, supportsAttachmentFeedbackLoop && featuresAttachmentFeedbackLoop.AttachmentFeedbackLoopLayout, supportsDynamicAttachmentFeedbackLoop && featuresDynamicAttachmentFeedbackLoop.AttachmentFeedbackLoopDynamicState, propertiesSubgroup.SubgroupSize, supportedSampleCounts, portabilityFlags, vertexBufferAlignment, properties.Limits.SubTexelPrecisionBits, minResourceAlignment);
-            // #522 CORREÇÃO DE ORDEM - MemoryAllocator ANTES de IsSharedMemory
             MemoryAllocator = new MemoryAllocator(Api, _physicalDevice, _device);
             IsSharedMemory = MemoryAllocator.IsDeviceMemoryShared(_physicalDevice);
             Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtExternalMemoryHost hostMemoryApi);
@@ -219,7 +218,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         private void SetupContext(GraphicsDebugLevel logLevel)
         {
-            FLog("[VK] SetupContext START");
+            FLog("[VK] SetupContext START #554");
             try
             {
                 _instance = VulkanInitialization.CreateInstance(Api, logLevel, _getRequiredExtensions());
@@ -246,7 +245,7 @@ namespace Ryujinx.Graphics.Vulkan
                 _window = new Window(this, _surface, _physicalDevice.PhysicalDevice, _device);
                 FLog($"[VK] After new Window OK");
                 _initialized = true;
-                FLog("[VK] SetupContext END OK");
+                FLog("[VK] SetupContext END OK #554");
             }
             catch(Exception ex)
             {
@@ -290,10 +289,8 @@ namespace Ryujinx.Graphics.Vulkan
             try{ BufferManager?.StagingBuffer?.FreeCompleted(); }catch{}
         }
         public PinnedSpan<byte> GetBufferData(BufferHandle buffer, int offset, int size) => BufferManager.GetData(buffer, offset, size);
-
-        public unsafe Capabilities GetCapabilities()
-        {
-            FormatFeatureFlags compressedFormatFeatureFlags = FormatFeatureFlags.SampledImageBit | FormatFeatureFlags.SampledImageFilterLinearBit | FormatFeatureFlags.BlitSrcBit | FormatFeatureFlags.TransferSrcBit | FormatFeatureFlags.TransferDstBit;
+        public unsafe Capabilities GetCapabilities() { /*... same as your file... */
+            FormatFeatureFlags compressedFormatFeatureFlags = FormatFeatureFlags.SampledImageBit | FormatFeatureFlags.SampledImageFilterLinearBit | FormatFeatureFlags.BlitSrcBit | FormatFeatureFlags.TransferDstBit;
             bool supportsBc123CompressionFormat = FormatCapabilities.OptimalFormatsSupport(compressedFormatFeatureFlags, Format.Bc1RgbaSrgb, Format.Bc1RgbaUnorm, Format.Bc2Srgb, Format.Bc2Unorm, Format.Bc3Srgb, Format.Bc3Unorm);
             bool supportsBc45CompressionFormat = FormatCapabilities.OptimalFormatsSupport(compressedFormatFeatureFlags, Format.Bc4Snorm, Format.Bc4Unorm, Format.Bc5Snorm, Format.Bc5Unorm);
             bool supportsBc67CompressionFormat = FormatCapabilities.OptimalFormatsSupport(compressedFormatFeatureFlags, Format.Bc6HSfloat, Format.Bc6HUfloat, Format.Bc7Srgb, Format.Bc7Unorm);
@@ -309,66 +306,19 @@ namespace Ryujinx.Graphics.Vulkan
             SystemMemoryType memoryType = IsSharedMemory? SystemMemoryType.UnifiedMemory : Vendor == Vendor.Nvidia? SystemMemoryType.DedicatedMemorySlowStorage : SystemMemoryType.DedicatedMemory;
             return new Capabilities(TargetApi.Vulkan, GpuVendor, memoryType: memoryType, hasFrontFacingBug: IsIntelWindows, hasVectorIndexingBug: IsQualcommProprietary, needsFragmentOutputSpecialization: IsMoltenVk, reduceShaderPrecision: IsMoltenVk, supportsAstcCompression: features2.Features.TextureCompressionAstcLdr && supportsAstcFormats, supportsBc123Compression: supportsBc123CompressionFormat, supportsBc45Compression: supportsBc45CompressionFormat, supportsBc67Compression: supportsBc67CompressionFormat, supportsEtc2Compression: supportsEtc2CompressionFormat, supports3DTextureCompression: true, supportsBgraFormat: true, supportsR4G4Format: false, supportsR4G4B4A4Format: supportsR4G4B4A4Format, supportsScaledVertexFormats: FormatCapabilities.SupportsScaledVertexFormats(), supportsSnormBufferTextureFormat: true, supports5BitComponentFormat: supports5BitComponentFormat, supportsSparseBuffer: features2.Features.SparseBinding && mainQueueProperties.QueueFlags.HasFlag(QueueFlags.SparseBindingBit), supportsBlendEquationAdvanced: Capabilities.SupportsBlendEquationAdvanced, supportsFragmentShaderInterlock: Capabilities.SupportsFragmentShaderInterlock, supportsFragmentShaderOrderingIntel: false, supportsGeometryShader: Capabilities.SupportsGeometryShader, supportsGeometryShaderPassthrough: Capabilities.SupportsGeometryShaderPassthrough, supportsTransformFeedback: Capabilities.SupportsTransformFeedback, supportsImageLoadFormatted: features2.Features.ShaderStorageImageReadWithoutFormat, supportsLayerVertexTessellation: featuresVk12.ShaderOutputLayer, supportsMismatchingViewFormat: true, supportsCubemapView:!IsAmdGcn, supportsNonConstantTextureOffset: false, supportsQuads: false, supportsSeparateSampler: true, supportsShaderBallot: false, supportsShaderBarrierDivergence: Vendor!= Vendor.Intel, supportsShaderFloat64: Capabilities.SupportsShaderFloat64, supportsShaderNonUniformIndexing: featuresVk12.ShaderSampledImageArrayNonUniformIndexing && featuresVk12.ShaderStorageImageArrayNonUniformIndexing, supportsTextureGatherOffsets: features2.Features.ShaderImageGatherExtended, supportsTextureShadowLod: false, supportsVertexStoreAndAtomics: features2.Features.VertexPipelineStoresAndAtomics, supportsViewportIndexVertexTessellation: featuresVk12.ShaderOutputViewportIndex, supportsViewportMask: Capabilities.SupportsViewportArray2, supportsViewportSwizzle: false, supportsIndirectParameters: true, supportsDepthClipControl: Capabilities.SupportsDepthClipControl, uniformBufferSetIndex: PipelineBase.UniformSetIndex, storageBufferSetIndex: PipelineBase.StorageSetIndex, textureSetIndex: PipelineBase.TextureSetIndex, imageSetIndex: PipelineBase.ImageSetIndex, extraSetBaseIndex: PipelineBase.DescriptorSetLayouts, maximumExtraSets: Math.Max(0, (int)limits.MaxBoundDescriptorSets - PipelineBase.DescriptorSetLayouts), maximumUniformBuffersPerStage: Constants.MaxUniformBuffersPerStage, maximumStorageBuffersPerStage: Constants.MaxStorageBuffersPerStage, maximumTexturesPerStage: Constants.MaxTexturesPerStage, maximumImagesPerStage: Constants.MaxImagesPerStage, maximumComputeSharedMemorySize: (int)limits.MaxComputeSharedMemorySize, maximumSupportedAnisotropy: (int)limits.MaxSamplerAnisotropy, shaderSubgroupSize: (int)Capabilities.SubgroupSize, storageBufferOffsetAlignment: (int)limits.MinStorageBufferOffsetAlignment, textureBufferOffsetAlignment: (int)limits.MinTexelBufferOffsetAlignment, gatherBiasPrecision: IsIntelWindows || IsAmdWindows? (int)Capabilities.SubTexelPrecisionBits : 0, maximumGpuMemory: GetTotalGPUMemory());
         }
-
-        private ulong GetTotalGPUMemory()
-        {
-            ulong totalMemory = 0;
-            Api.GetPhysicalDeviceMemoryProperties(_physicalDevice.PhysicalDevice, out PhysicalDeviceMemoryProperties memoryProperties);
-            for (int i = 0; i < memoryProperties.MemoryHeapCount; i++) { MemoryHeap heap = memoryProperties.MemoryHeaps[i]; if ((heap.Flags & MemoryHeapFlags.DeviceLocalBit) == MemoryHeapFlags.DeviceLocalBit) totalMemory += heap.Size; }
-            return totalMemory;
-        }
+        private ulong GetTotalGPUMemory() { ulong totalMemory = 0; Api.GetPhysicalDeviceMemoryProperties(_physicalDevice.PhysicalDevice, out PhysicalDeviceMemoryProperties memoryProperties); for (int i = 0; i < memoryProperties.MemoryHeapCount; i++) { MemoryHeap heap = memoryProperties.MemoryHeaps[i]; if ((heap.Flags & MemoryHeapFlags.DeviceLocalBit) == MemoryHeapFlags.DeviceLocalBit) totalMemory += heap.Size; } return totalMemory; }
         public HardwareInfo GetHardwareInfo() => new HardwareInfo(GpuVendor, GpuRenderer, GpuDriver, GpuDriverVersion);
-        public static DeviceInfo[] GetPhysicalDevices()
-        {
-            try { return VulkanInitialization.GetSuitablePhysicalDevices(Vk.GetApi()); }
-            catch (Exception ex) { Logger.Error?.PrintMsg(LogClass.Gpu, $"Error querying Vulkan devices: {ex.Message}"); return []; }
-        }
-        public static DeviceInfo[] GetPhysicalDevices(Vk api)
-        {
-            try { return VulkanInitialization.GetSuitablePhysicalDevices(api); }
-            catch (Exception) { return []; }
-        }
+        public static DeviceInfo[] GetPhysicalDevices() { try { return VulkanInitialization.GetSuitablePhysicalDevices(Vk.GetApi()); } catch (Exception ex) { Logger.Error?.PrintMsg(LogClass.Gpu, $"Error querying Vulkan devices: {ex.Message}"); return []; } }
+        public static DeviceInfo[] GetPhysicalDevices(Vk api) { try { return VulkanInitialization.GetSuitablePhysicalDevices(api); } catch (Exception) { return []; } }
         private static string ParseStandardVulkanVersion(uint version) => $"{version >> 22}.{(version >> 12) & 0x3FF}.{version & 0xFFF}";
-        private static string ParseDriverVersion(ref PhysicalDeviceProperties properties)
-        {
-            uint driverVersionRaw = properties.DriverVersion;
-            if (properties.VendorID == 0x10DE) return $"{(driverVersionRaw >> 22) & 0x3FF}.{(driverVersionRaw >> 14) & 0xFF}.{(driverVersionRaw >> 6) & 0xFF}.{driverVersionRaw & 0x3F}";
-            if (properties.VendorID == 0x8086 && OperatingSystem.IsWindows()) return $"{driverVersionRaw >> 14}.{driverVersionRaw & 0x3FFF}";
-            return ParseStandardVulkanVersion(driverVersionRaw);
-        }
-        private static unsafe string GetDriverInfo(ref PhysicalDeviceDriverPropertiesKHR driverProperties)
-        {
-            fixed (byte* driverInfo = driverProperties.DriverInfo) { string driverInfoString = Marshal.PtrToStringAnsi((nint)driverInfo); return string.IsNullOrWhiteSpace(driverInfoString)? null : driverInfoString; }
-        }
-        private static unsafe bool TryGetIntelWindowsDriverVersionFromUuid(ref PhysicalDeviceIDProperties propertiesId, out string driverVersion)
-        {
-            driverVersion = null;
-            if (!OperatingSystem.IsWindows()) return false;
-            fixed (byte* driverUuid = propertiesId.DriverUuid)
-            {
-                string driverUuidString = Marshal.PtrToStringAnsi((nint)driverUuid, (int)Vk.UuidSize);
-                int terminatorIndex = driverUuidString.IndexOf('\0');
-                if (terminatorIndex >= 0) driverUuidString = driverUuidString[..terminatorIndex];
-                if (Patterns.IntelWindowsDriverVersion.IsMatch(driverUuidString)) { driverVersion = driverUuidString; return true; }
-            }
-            return false;
-        }
+        private static string ParseDriverVersion(ref PhysicalDeviceProperties properties) { uint driverVersionRaw = properties.DriverVersion; if (properties.VendorID == 0x10DE) return $"{(driverVersionRaw >> 22) & 0x3FF}.{(driverVersionRaw >> 14) & 0xFF}.{(driverVersionRaw >> 6) & 0xFF}.{driverVersionRaw & 0x3F}"; if (properties.VendorID == 0x8086 && OperatingSystem.IsWindows()) return $"{driverVersionRaw >> 14}.{driverVersionRaw & 0x3FFF}"; return ParseStandardVulkanVersion(driverVersionRaw); }
+        private static unsafe string GetDriverInfo(ref PhysicalDeviceDriverPropertiesKHR driverProperties) { fixed (byte* driverInfo = driverProperties.DriverInfo) { string driverInfoString = Marshal.PtrToStringAnsi((nint)driverInfo); return string.IsNullOrWhiteSpace(driverInfoString)? null : driverInfoString; } }
+        private static unsafe bool TryGetIntelWindowsDriverVersionFromUuid(ref PhysicalDeviceIDProperties propertiesId, out string driverVersion) { driverVersion = null; if (!OperatingSystem.IsWindows()) return false; fixed (byte* driverUuid = propertiesId.DriverUuid) { string driverUuidString = Marshal.PtrToStringAnsi((nint)driverUuid, (int)Vk.UuidSize); int terminatorIndex = driverUuidString.IndexOf('\0'); if (terminatorIndex >= 0) driverUuidString = driverUuidString[..terminatorIndex]; if (Patterns.IntelWindowsDriverVersion.IsMatch(driverUuidString)) { driverVersion = driverUuidString; return true; } } return false; }
         internal PrimitiveTopology TopologyRemap(PrimitiveTopology topology) => topology switch { PrimitiveTopology.Quads => PrimitiveTopology.Triangles, PrimitiveTopology.QuadStrip => PrimitiveTopology.TriangleStrip, PrimitiveTopology.TriangleFan or PrimitiveTopology.Polygon => Capabilities.PortabilitySubset.HasFlag(PortabilitySubsetFlags.NoTriangleFans)? PrimitiveTopology.Triangles : topology, _ => topology };
         internal bool TopologyUnsupported(PrimitiveTopology topology) => topology switch { PrimitiveTopology.Quads => true, PrimitiveTopology.TriangleFan or PrimitiveTopology.Polygon => Capabilities.PortabilitySubset.HasFlag(PortabilitySubsetFlags.NoTriangleFans), _ => false };
-        private void PrintGpuInformation()
-        {
-            string gpuInfoMessage = $"{GpuRenderer} ({GpuVersion}, Driver: {GpuDriver} {GpuDriverVersion})";
-            if (!GpuRenderer.StartsWithIgnoreCase(GpuVendor)) gpuInfoMessage = gpuInfoMessage.Prepend(GpuVendor);
-            Logger.Notice.Print(LogClass.Gpu, gpuInfoMessage);
-            Logger.Notice.Print(LogClass.Gpu, $"GPU Memory: {GetTotalGPUMemory() / (1024 * 1024)} MiB");
-        }
+        private void PrintGpuInformation() { string gpuInfoMessage = $"{GpuRenderer} ({GpuVersion}, Driver: {GpuDriver} {GpuDriverVersion})"; if (!GpuRenderer.StartsWithIgnoreCase(GpuVendor)) gpuInfoMessage = gpuInfoMessage.Prepend(GpuVendor); Logger.Notice.Print(LogClass.Gpu, gpuInfoMessage); Logger.Notice.Print(LogClass.Gpu, $"GPU Memory: {GetTotalGPUMemory() / (1024 * 1024)} MiB"); }
         public void Initialize(GraphicsDebugLevel logLevel) { SetupContext(logLevel); PrintGpuInformation(); }
-        internal bool NeedsVertexBufferAlignment(int attrScalarAlignment, out int alignment)
-        {
-            if (Capabilities.VertexBufferAlignment > 1) { alignment = (int)Capabilities.VertexBufferAlignment; return true; }
-            else if (Vendor!= Vendor.Nvidia) { alignment = attrScalarAlignment; return true; }
-            alignment = 1; return false;
-        }
+        internal bool NeedsVertexBufferAlignment(int attrScalarAlignment, out int alignment) { if (Capabilities.VertexBufferAlignment > 1) { alignment = (int)Capabilities.VertexBufferAlignment; return true; } else if (Vendor!= Vendor.Nvidia) { alignment = attrScalarAlignment; return true; } alignment = 1; return false; }
 
         public void PreFrame()
         {
@@ -380,10 +330,7 @@ namespace Ryujinx.Graphics.Vulkan
                 try { BufferManager?.StagingBuffer?.FreeCompleted(); FLog("[VK] PreFrame Staging OK"); } catch (Exception ex){ FLog($"[VK] PreFrame Staging FAIL: {ex}"); }
                 try { _counters?.Update(); FLog("[VK] PreFrame Counters OK"); } catch (Exception ex){ FLog($"[VK] PreFrame Counters FAIL: {ex}"); }
             }
-            catch (Exception ex)
-            {
-                FLog($"[VK] PreFrame TOTAL FAIL: {ex}");
-            }
+            catch (Exception ex) { FLog($"[VK] PreFrame TOTAL FAIL: {ex}"); }
         }
 
         public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved) => _counters.QueueReport(type, resultHandler, divisor, hostReserved);
@@ -391,41 +338,16 @@ namespace Ryujinx.Graphics.Vulkan
         public void SetBufferData(BufferHandle buffer, int offset, ReadOnlySpan<byte> data) => BufferManager.SetData(buffer, offset, data, _pipeline.CurrentCommandBuffer, _pipeline.EndRenderPassDelegate);
         public void UpdateCounters() { try{ _counters?.Update(); }catch{} }
         public void ResetCounterPool() { try{ _counters?.ResetCounterPool(); }catch{} }
-        public void ResetFutureCounters(CommandBuffer cmd, int count)
-        {
-            if (!_initialized) return;
-            try{ _counters?.ResetFutureCounters(cmd, count); }catch{}
-        }
+        public void ResetFutureCounters(CommandBuffer cmd, int count) { if (!_initialized) return; try{ _counters?.ResetFutureCounters(cmd, count); }catch{} }
         public void BackgroundContextAction(Action action, bool alwaysBackground = false)
         {
-            try
-            {
-                FLog("[VK] BackgroundContextAction START");
-                action();
-                FLog("[VK] BackgroundContextAction END");
-            }
-            catch(Exception ex)
-            {
-                FLog($"[VK] BackgroundContextAction FAIL: {ex}");
-                throw;
-            }
+            try { FLog("[VK] BackgroundContextAction START"); action(); FLog("[VK] BackgroundContextAction END"); }
+            catch(Exception ex) { FLog($"[VK] BackgroundContextAction FAIL: {ex}"); throw; }
         }
-        public void CreateSync(ulong id, bool strict)
-        {
-            if (!_initialized) return;
-            try{ SyncManager?.Create(id, strict); }catch{}
-        }
+        public void CreateSync(ulong id, bool strict) { if (!_initialized) return; try{ SyncManager?.Create(id, strict); }catch{} }
         public IProgram LoadProgramBinary(byte[] programBinary, bool isFragment, ShaderInfo info) => throw new NotImplementedException();
-        public void WaitSync(ulong id)
-        {
-            if (!_initialized) return;
-            try{ SyncManager?.Wait(id); }catch{}
-        }
-        public ulong GetCurrentSync()
-        {
-            if (!_initialized) return 0;
-            try{ if(SyncManager==null) return 0; return SyncManager.GetCurrent(); }catch{ return 0; }
-        }
+        public void WaitSync(ulong id) { if (!_initialized) return; try{ SyncManager?.Wait(id); }catch{} }
+        public ulong GetCurrentSync() { if (!_initialized) return 0; try{ if(SyncManager==null) return 0; return SyncManager.GetCurrent(); }catch{ return 0; } }
         public void SetInterruptAction(Action<Action> interruptAction) => InterruptAction = interruptAction;
         public void Screenshot() { try{ _window.ScreenCaptureRequested = true; }catch{} }
         public void OnScreenCaptured(ScreenCaptureImageInfo bitmap) => ScreenCaptured?.Invoke(this, bitmap);
@@ -434,13 +356,11 @@ namespace Ryujinx.Graphics.Vulkan
         public unsafe void Dispose()
         {
             if (!_initialized) return;
-            FLog("[VK] Dispose START #522");
+            FLog("[VK] Dispose START #554");
             try
             {
                 try { Api.DeviceWaitIdle(_device); FLog("[VK] Dispose DeviceWaitIdle OK"); } catch (Exception ex) { FLog($"[VK] Dispose DeviceWaitIdle FAIL: {ex}"); }
-
                 try { _window?.Dispose(); FLog("[VK] Window Dispose OK"); } catch (Exception ex) { FLog($"[VK] Window Dispose FAIL: {ex}"); }
-
                 try { CommandBufferPool?.Dispose(); FLog("[VK] Dispose CommandBufferPool OK"); } catch (Exception ex) { FLog($"[VK] Dispose CommandBufferPool FAIL {ex.Message}"); }
                 try { BackgroundResources?.Dispose(); } catch {}
                 try { _counters?.Dispose(); } catch {}
@@ -450,25 +370,17 @@ namespace Ryujinx.Graphics.Vulkan
                 try { PipelineLayoutCache?.Dispose(); } catch {}
                 try { Barriers?.Dispose(); } catch {}
                 try { MemoryAllocator?.Dispose(); } catch {}
-
                 foreach (ShaderCollection shader in Shaders) { try { shader.Dispose(); } catch {} }
                 foreach (ITexture texture in Textures) { try { texture.Release(); } catch {} }
                 foreach (SamplerHolder sampler in Samplers) { try { sampler.Dispose(); } catch {} }
-
                 try { if (SurfaceApi!= null) SurfaceApi.DestroySurface(_instance.Instance, _surface, null); FLog("[VK] DestroySurface OK"); } catch {}
                 try { if (Api!= null && _device.Handle!= 0) { Api.DestroyDevice(_device, null); FLog("[VK] DestroyDevice OK"); } } catch {}
                 try { _debugMessenger?.Dispose(); } catch {}
                 try { _instance?.Dispose(); } catch {}
-                FLog("[VK] Dispose END #522");
+                FLog("[VK] Dispose END #554");
             }
-            catch (Exception ex)
-            {
-                FLog($"[VK] Dispose TOTAL FAIL: {ex}");
-            }
-            finally
-            {
-                _initialized = false;
-            }
+            catch (Exception ex) { FLog($"[VK] Dispose TOTAL FAIL: {ex}"); }
+            finally { _initialized = false; }
         }
         public bool PrepareHostMapping(nint address, ulong size) => Capabilities.SupportsHostImportedMemory && HostMemoryAllocator.TryImport(BufferManager.HostImportedBufferMemoryRequirements, BufferManager.DefaultBufferMemoryFlags, address, size);
     }
