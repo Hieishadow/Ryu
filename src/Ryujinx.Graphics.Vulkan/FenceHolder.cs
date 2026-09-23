@@ -1,11 +1,14 @@
 using Silk.NET.Vulkan;
 using System;
+using System.IO;
 using System.Threading;
 
 namespace Ryujinx.Graphics.Vulkan
 {
     class FenceHolder : IDisposable
     {
+        private static void FLog(string s){ try{ var p="/storage/emulated/0/Download/Ryubing/ryubing_log.txt"; var d=Path.GetDirectoryName(p); if(d!=null){ try{ if(!Directory.Exists(d)) Directory.CreateDirectory(d); }catch{} } File.AppendAllText(p, DateTime.Now.ToString("HH:mm:ss.fff")+" [FENCE] "+s+"\n"); }catch{} }
+
         private readonly Vk _api;
         private readonly Device _device;
         private Fence _fence;
@@ -19,21 +22,12 @@ namespace Ryujinx.Graphics.Vulkan
             _api = api;
             _device = device;
             _concurrentWaitUnsupported = concurrentWaitUnsupported;
-
-            FenceCreateInfo fenceCreateInfo = new()
-            {
-                SType = StructureType.FenceCreateInfo,
-            };
-
+            FenceCreateInfo fenceCreateInfo = new() { SType = StructureType.FenceCreateInfo, };
             api.CreateFence(device, in fenceCreateInfo, null, out _fence).ThrowOnError();
-
             _referenceCount = 1;
         }
 
-        public Fence GetUnsafe()
-        {
-            return _fence;
-        }
+        public Fence GetUnsafe() => _fence;
 
         public bool TryGet(out Fence fence)
         {
@@ -41,39 +35,17 @@ namespace Ryujinx.Graphics.Vulkan
             do
             {
                 lastValue = _referenceCount;
-
-                if (lastValue == 0)
-                {
-                    fence = default;
-                    return false;
-                }
+                if (lastValue == 0) { fence = default; return false; }
             }
             while (Interlocked.CompareExchange(ref _referenceCount, lastValue + 1, lastValue) != lastValue);
-
-            if (_concurrentWaitUnsupported)
-            {
-                AcquireLock();
-            }
-
+            if (_concurrentWaitUnsupported) AcquireLock();
             fence = _fence;
             return true;
         }
 
-        public Fence Get()
-        {
-            Interlocked.Increment(ref _referenceCount);
-            return _fence;
-        }
+        public Fence Get() { Interlocked.Increment(ref _referenceCount); return _fence; }
 
-        public void PutLock()
-        {
-            Put();
-
-            if (_concurrentWaitUnsupported)
-            {
-                ReleaseLock();
-            }
-        }
+        public void PutLock() { Put(); if (_concurrentWaitUnsupported) ReleaseLock(); }
 
         public void Put()
         {
@@ -84,42 +56,51 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        private void AcquireLock()
-        {
-            while (!TryAcquireLock())
-            {
-                Thread.SpinWait(32);
-            }
-        }
-
-        private bool TryAcquireLock()
-        {
-            return Interlocked.Exchange(ref _lock, 1) == 0;
-        }
-
-        private void ReleaseLock()
-        {
-            Interlocked.Exchange(ref _lock, 0);
-        }
+        private void AcquireLock() { while (!TryAcquireLock()) { Thread.SpinWait(32); } }
+        private bool TryAcquireLock() => Interlocked.Exchange(ref _lock, 1) == 0;
+        private void ReleaseLock() => Interlocked.Exchange(ref _lock, 0);
 
         public void Wait()
         {
             if (_concurrentWaitUnsupported)
             {
                 AcquireLock();
-
-                try
-                {
-                    FenceHelper.WaitAllIndefinitely(_api, _device, [_fence]);
-                }
-                finally
-                {
-                    ReleaseLock();
-                }
+                try { WaitWithTimeout(1_000_000_000); } // #554: 1s max, não infinito
+                finally { ReleaseLock(); }
             }
             else
             {
-                FenceHelper.WaitAllIndefinitely(_api, _device, [_fence]);
+                WaitWithTimeout(1_000_000_000);
+            }
+        }
+
+        // #554: NOVO - usado pelo CommandBufferPool #553
+        public unsafe bool WaitWithTimeout(ulong timeout)
+        {
+            if (_concurrentWaitUnsupported)
+            {
+                if (!TryAcquireLock()) return false;
+                try
+                {
+                    fixed (Fence* p = &_fence)
+                    {
+                        Result r = _api.WaitForFences(_device, 1, p, true, timeout);
+                        bool ok = r == Result.Success;
+                        if (!ok) FLog($"WaitWithTimeout timeout={timeout} result={r} fence={_fence.Handle.ToString("X")}");
+                        return ok;
+                    }
+                }
+                finally { ReleaseLock(); }
+            }
+            else
+            {
+                fixed (Fence* p = &_fence)
+                {
+                    Result r = _api.WaitForFences(_device, 1, p, true, timeout);
+                    bool ok = r == Result.Success;
+                    if (!ok) FLog($"WaitWithTimeout timeout={timeout} result={r} fence={_fence.Handle.ToString("X")}");
+                    return ok;
+                }
             }
         }
 
@@ -127,19 +108,9 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (_concurrentWaitUnsupported)
             {
-                if (!TryAcquireLock())
-                {
-                    return false;
-                }
-
-                try
-                {
-                    return FenceHelper.AllSignaled(_api, _device, [_fence]);
-                }
-                finally
-                {
-                    ReleaseLock();
-                }
+                if (!TryAcquireLock()) return false;
+                try { return FenceHelper.AllSignaled(_api, _device, [_fence]); }
+                finally { ReleaseLock(); }
             }
             else
             {
@@ -149,11 +120,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void Dispose()
         {
-            if (!_disposed)
-            {
-                Put();
-                _disposed = true;
-            }
+            if (!_disposed) { Put(); _disposed = true; }
         }
     }
 }
