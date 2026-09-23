@@ -130,10 +130,17 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe override void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback)
         {
+            FLog($"[VK] Present CALLED texture={(texture==null?"NULL":texture.GetHashCode().ToString())} f={_frameIndex}");
             FLog($"[VK] Present ENTER f={_frameIndex} dirty={_swapchainIsDirty} texNull={texture==null} req={_requestedWidth}x{_requestedHeight} cur={_width}x{_height}");
             try
             {
-                if (texture == null){ FLog("[VK] Present texture NULL - pulando mas chamando callback"); try{ swapBuffersCallback?.Invoke(); }catch{} return; }
+                if (texture == null)
+                {
+                    FLog("[VK] Present texture NULL -> FORCED MAGENTA");
+                    try { ForcedPresentMagenta(); } catch(Exception ex){ FLog($"[VK] Forced in Present FAIL {ex.Message}"); }
+                    try{ swapBuffersCallback?.Invoke(); }catch{}
+                    return;
+                }
                 if(_swapchainIsDirty) RecreateSwapchain();
                 uint nextImage = 0;
                 int semaphoreIndex = _frameIndex % _imageAvailableSemaphores.Length;
@@ -152,8 +159,9 @@ namespace Ryujinx.Graphics.Vulkan
                 TextureView view = (TextureView)texture; UpdateEffect(); if (_effect!= null) view = _effect.Run(view, cbs, _width, _height);
                 int srcX0 = crop.Left == 0 && crop.Right == 0? 0 : crop.Left; int srcX1 = crop.Right == 0? view.Width : crop.Right;
                 int srcY0 = crop.Top == 0 && crop.Bottom == 0? 0 : crop.Top; int srcY1 = crop.Bottom == 0? view.Height : crop.Bottom;
-                FLog($"[VK] Blit src={view.Width}x{view.Height} [{srcX0},{srcY0}-{srcX1},{srcY1}] -> dst={_width}x{_height}");
+                FLog($"[VK] Present BEFORE Blit src={view.Width}x{view.Height} [{srcX0},{srcY0}-{srcX1},{srcY1}] -> dst={_width}x{_height} texHash={view.GetHashCode()}");
                 _gd.HelperShader.BlitColor(_gd, cbs, view, _swapchainImageViews[nextImage], new Extents2D(srcX0, srcY0, srcX1, srcY1), new Extents2D(0, 0, _width, _height), _isLinear, true);
+                FLog($"[VK] Present AFTER Blit");
                 Transition(cbs.CommandBuffer, swapchainImage, AccessFlags.TransferWriteBit, 0, ImageLayout.General, ImageLayout.PresentSrcKhr, PipelineStageFlags.TransferBit, PipelineStageFlags.BottomOfPipeBit);
                 _gd.CommandBufferPool.Return(cbs, [_imageAvailableSemaphores[semaphoreIndex]], [PipelineStageFlags.ColorAttachmentOutputBit], [_renderFinishedSemaphores[semaphoreIndex]]);
                 Semaphore semaphore = _renderFinishedSemaphores[semaphoreIndex]; SwapchainKHR swapchain = _swapchain; Result presentResult;
@@ -168,7 +176,6 @@ namespace Ryujinx.Graphics.Vulkan
             catch (Exception ex){ FLog($"[VK] Present FAIL: {ex}"); _swapchainIsDirty = true; try{ swapBuffersCallback?.Invoke(); }catch{} }
         }
 
-        // === FORCED MAGENTA #525 - mata tela preta ===
         public unsafe void ForcedPresentMagenta()
         {
             try
