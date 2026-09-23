@@ -15,9 +15,8 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel
             try{ System.IO.File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_present.txt", DateTime.Now.ToString("HH:mm:ss.fff")+" "+s+"\n"); }catch{}
         }
 
-        public NvChannel(ServiceCtx context){ _context = context; }
+        public NvChannel(ServiceCtx context){ _context = context; FLog("[CHANNEL] NvChannel REAL CRIADO"); }
 
-        // Sua fork espera int, não NvResult
         public int SubmitGpfifo(ref SubmitGpfifoArguments args)
         {
             FLog($"[GPFIFO] SubmitGpfifo Addr=0x{args.Address:X} Num={args.NumEntries} Fence={args.Fence.Id}:{args.Fence.Value}");
@@ -30,36 +29,18 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel
                     args.Fence.Increment(_context.Device.Gpu);
                     FLog($"[SYNC] FenceIncrement DEPOIS {args.Fence.Value}");
                 }
-                return 0; // sucesso na sua fork é 0
+                return 0;
             }catch(Exception ex){ FLog($"EX {ex}"); return -1; }
         }
 
-        public int AllocGpfifoEx(ref AllocGpfifoExArguments args)
-        {
-            FLog($"[GPFIFO] AllocGpfifoEx");
-            return 0;
-        }
-
-        public int MapCommandBuffer(ref MapCommandBufferArguments args)
-        {
-            return 0;
-        }
+        public int AllocGpfifoEx(ref AllocGpfifoExArguments args){ return 0; }
+        public int MapCommandBuffer(ref MapCommandBufferArguments args){ return 0; }
 
         public int QueryEvent(out int eventHandle, uint eventId)
         {
-            // sua fork não tem CreateSyncpointEvent, usa CreateEvent
-            try{
-                eventHandle = _context.Device.Gpu.Synchronization.CreateSyncpointEvent(eventId);
-            }catch{
-                // fallback nome antigo da sua fork
-                eventHandle = 1;
-            }
-            FLog($"[SYNC] QueryEvent id={eventId} h={eventHandle}");
+            eventHandle = 1;
+            FLog($"[SYNC] QueryEvent id={eventId}");
             return 0;
         }
-        
-        // Seu NvHostAsGpu chama .Channel? Cria property pra não quebrar
-        public NvChannel Channel { get { return this; } }
-        public void Destroy(){ }
     }
 }
