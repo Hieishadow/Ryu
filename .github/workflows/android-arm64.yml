@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: ryubing-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -15,12 +19,13 @@ jobs:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
 
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 0
+          fetch-depth: 1
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -32,80 +37,62 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Install Android workload
-        run: |
-          dotnet workload update
-          dotnet workload install android
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.NUGET_PACKAGES }}
+            ~/.dotnet/workloads
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}-${{ hashFiles('**/WorkloadManifest.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Android workload
+        run: dotnet workload install android --skip-sign-check
 
       - name: Clean
         run: |
-          rm -rf src/Ryujinx.Graphics.Vulkan/bin src/Ryujinx.Graphics.Vulkan/obj
-          rm -rf src/Ryujinx.Android/bin src/Ryujinx.Android/obj
           rm -rf release
+          mkdir -p release
+          # NÃO apaga mais bin/obj do Vulkan - é isso que deixava lento
 
       - name: Restore
         run: dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj -r android-arm64
 
-      - name: Patch Version Name with Run Number
+      - name: Version
         run: |
-          # Isso resolve seu bug do "Essa 544 mas tá com nome 529"
-          MANIFEST="src/Ryujinx.Android/Properties/AndroidManifest.xml"
-          if [ -f "$MANIFEST" ]; then
-            sed -i "s/#529/#${{ github.run_number }}/g" "$MANIFEST" || true
-            sed -i "s/529/${{ github.run_number }}/g" src/Ryujinx.Android/MainActivity.cs || true
-            sed -i "s/529/${{ github.run_number }}/g" src/Ryujinx.Android/GameListActivity.cs || true
-          fi
-          echo "Build #${{ github.run_number }}"
+          sed -i "s/#529/#${{ github.run_number }}/g" src/Ryujinx.Android/Properties/AndroidManifest.xml || true
+          sed -i "s/529/${{ github.run_number }}/g" src/Ryujinx.Android/MainActivity.cs || true
+          sed -i "s/S20 FE.*/S20 FE #${{ github.run_number }}/g" src/Ryujinx.Android/MainActivity.cs || true
 
-      - name: Publish Release APK
+      - name: Build APK FAST
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          RYU_KEY_PASS: ${{ secrets.KEY_PASS }}
-          RYU_STORE_PASS: ${{ secrets.STORE_PASS }}
+          KEY_PASS: ${{ secrets.KEY_PASS }}
+          STORE_PASS: ${{ secrets.STORE_PASS }}
         run: |
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -f net10.0-android -r android-arm64 --no-restore -p:AndroidPackageFormat=apk
-          else
+          # FAST = sem AOT, pra testar Present CALLED. Final tira essa linha.
+          ARGS="src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -f net10.0-android -r android-arm64 --no-restore -p:AndroidPackageFormat=apk -p:RunAOTCompilation=false -p:AndroidEnableProfiledAot=false"
+
+          if [ -n "$KEYSTORE_BASE64" ]; then
             echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/ryubing.keystore"
-            dotnet publish src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -f net10.0-android -r android-arm64 --no-restore -p:AndroidPackageFormat=apk -p:AndroidKeyStore=true -p:AndroidSigningKeyStore="$RUNNER_TEMP/ryubing.keystore" -p:AndroidSigningKeyAlias="$KEY_ALIAS" -p:AndroidSigningKeyPass="$RYU_KEY_PASS" -p:AndroidSigningStorePass="$RYU_STORE_PASS"
+            ARGS="$ARGS -p:AndroidKeyStore=true -p:AndroidSigningKeyStore=$RUNNER_TEMP/ryubing.keystore -p:AndroidSigningKeyAlias=$KEY_ALIAS -p:AndroidSigningKeyPass=$KEY_PASS -p:AndroidSigningStorePass=$STORE_PASS"
           fi
 
-      - name: Select final APK - FIX #546
-        shell: bash
+          dotnet publish $ARGS
+
+      - name: Get APK
         run: |
-          set -e
-          mkdir -p release
-          echo "=== Todos APKs ==="
-          find src/Ryujinx.Android/bin/Release -type f -name "*.apk" -exec ls -lh {} \;
-
-          # 1. Tenta pegar o Signed (150MB) que é o bom
           APK=$(find src/Ryujinx.Android/bin/Release -type f -name "*-Signed.apk" | head -n 1)
-
-          # 2. Fallback: pega o maior APK (evita pegar o unsigned de 10MB)
           if [ -z "$APK" ]; then
-            APK=$(find src/Ryujinx.Android/bin/Release -type f -name "*.apk" -exec ls -S {} + | head -n 1 | awk '{print $NF}')
-            # ls -S acima buga com espaço, então refaz direito:
-            APK=$(find src/Ryujinx.Android/bin/Release -type f -name "*.apk" -printf "%s %p\n" | sort -nr | head -n1 | cut -d' ' -f2-)
+            APK=$(find src/Ryujinx.Android/bin/Release -type f -name "*.apk" -printf "%s %p\n" | sort -nr | head -n 1 | cut -d' ' -f2-)
           fi
-
-          if [ -z "$APK" ]; then
-            echo "ERROR: Nenhum APK"
-            exit 1
-          fi
-
-          echo "APK ESCOLHIDO: $APK"
-          ls -lh "$APK"
-
+          test -n "$APK"
           cp "$APK" "release/Ryubing-Android-ARM64-#${{ github.run_number }}.apk"
-          cp "$APK" release/Ryubing-Android-ARM64.apk
-
           ls -lh release/
 
-      - name: Upload ONE APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Ryubing-APK-#${{ github.run_number }}
           path: release/*.apk
-          if-no-files-found: error
           retention-days: 14
