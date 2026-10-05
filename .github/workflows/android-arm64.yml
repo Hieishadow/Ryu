@@ -1,48 +1,71 @@
 name: Ryubing Android ARM64
+
 on:
   push:
     branches: [master]
   workflow_dispatch:
+
 permissions:
   contents: write
+
 concurrency:
   group: ryubing-${{ github.ref }}
   cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-24.04
     env:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      DOTNET_NUGET_AUDIT: false
+
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 1
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - name: Android workload
         run: dotnet workload install android --skip-sign-check
+
       - name: Clean
         run: rm -rf release && mkdir -p release
-      - name: Restore
-        run: dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj -r android-arm64
+
+      - name: Restore - FIX NU1900
+        run: dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj -r android-arm64 --ignore-failed-sources -p:NuGetAudit=false -p:RunAnalyzers=false
+
       - name: Publish
         run: |
-          ARGS="src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -f net10.0-android -r android-arm64 --no-restore -p:AndroidPackageFormat=apk -p:RunAOTCompilation=false -p:RunAnalyzers=false -p:AndroidUseAssemblyStore=false"
+          ARGS="src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -f net10.0-android -r android-arm64 --no-restore -p:AndroidPackageFormat=apk -p:RunAOTCompilation=false -p:RunAnalyzers=false -p:AndroidUseAssemblyStore=false -p:NuGetAudit=false"
           dotnet publish $ARGS
-      - name: Select ONE APK
+
+      - name: Select ONE APK - FIX 4 APKs
         run: |
+          echo "=== TODOS ==="
+          find src/Ryujinx.Android/bin/Release -name "*.apk" -exec ls -lh {} \;
           APK=$(find src/Ryujinx.Android/bin/Release -name "*-Signed.apk" | head -n 1)
-          if [ -z "$APK" ]; then APK=$(find src/Ryujinx.Android/bin/Release -name "*.apk" -printf "%s %p\n" | sort -nr | head -n1 | cut -d' ' -f2-); fi
+          if [ -z "$APK" ]; then
+            APK=$(find src/Ryujinx.Android/bin/Release -name "*.apk" -printf "%s %p\n" | sort -nr | head -n1 | cut -d' ' -f2-)
+          fi
+          echo "ESCOLHIDO: $APK"
           cp "$APK" release/Ryubing-Android-ARM64-#${{ github.run_number }}.apk
-      - uses: actions/upload-artifact@v4
+          ls -lh release/
+
+      - name: Upload ONE APK
+        uses: actions/upload-artifact@v4
         with:
           name: Ryubing-APK-#${{ github.run_number }}
           path: release/*.apk
+          if-no-files-found: error
           retention-days: 14
