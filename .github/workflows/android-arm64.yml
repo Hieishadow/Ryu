@@ -34,31 +34,28 @@ jobs:
           path: |
             ~/.nuget/packages
             ~/.dotnet/workloads
-          key: ryubing-${{ hashFiles('**/*.csproj') }}-v3
+          key: ryubing-${{ hashFiles('**/*.csproj') }}-v4
 
-      - name: Fix nuget.config - REMOVE FEED MORTO
+      - name: Fix nuget.config
         run: |
           cat > nuget.config <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <configuration>
-              <packageSources>
-                  <clear />
-                  <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
-              </packageSources>
-              <packageSourceMapping>
-                  <packageSource key="nuget.org">
-                      <package pattern="*" />
-                  </packageSource>
-              </packageSourceMapping>
+            <packageSources>
+              <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+              <add key="libhac" value="https://legacy.git.ryujinx.app/api/v4/projects/17/packages/nuget/index.json" />
+              <add key="ryujinx-deps" value="https://legacy.git.ryujinx.app/api/v4/projects/71/packages/nuget/index.json" />
+            </packageSources>
           </configuration>
           EOF
           rm -f NuGet.Config src/NuGet.Config src/nuget.config || true
           cp nuget.config NuGet.Config
+          cat nuget.config
           dotnet nuget list source
           dotnet workload install android --skip-sign-check
 
       - name: Restore
-        run: dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj -r android-arm64 --ignore-failed-sources /p:NuGetAudit=false /p:RunAnalyzersDuringBuild=false
+        run: dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj -r android-arm64 /p:NuGetAudit=false /p:RunAnalyzersDuringBuild=false
 
       - name: Publish APK
         run: |
