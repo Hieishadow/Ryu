@@ -81,7 +81,7 @@ namespace Ryujinx.HLE.Loaders.Processes.Extensions
             Nca updatePatchNca = null;
             Nca updateControlNca = null;
 
-            ulong titleIdBase = mainNca.Header.TitleId & ~0xFFFUL;
+            ulong titleIdBase = mainNca.ProgramIdBase;
 
             string titleUpdateMetadataPath = Path.Combine(AppDataManager.GamesDirPath, titleIdBase.ToString("x16"), "updates.json");
             if (File.Exists(titleUpdateMetadataPath))
