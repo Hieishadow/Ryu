@@ -12,6 +12,9 @@ using Ryujinx.HLE.HOS;
 using Ryujinx.HLE.HOS.Services.Account.Acc;
 using Ryujinx.Graphics.Vulkan;
 using Ryujinx.Audio.Backends.Dummy;
+using Ryujinx.Audio.Backends.OpenAl;
+using Ryujinx.Audio.Backends.SDL2;
+using Ryujinx.Audio;
 using Ryujinx.Audio.Integration;
 using Ryujinx.HLE.UI;
 using Silk.NET.Vulkan;
@@ -36,6 +39,7 @@ public class GameActivity : Activity
     const bool TEST_MAGENTA = false;
     [DllImport("android")] static extern IntPtr ANativeWindow_fromSurface(IntPtr env, IntPtr surface);
     [DllImport("android")] static extern void ANativeWindow_release(IntPtr window);
+    [DllImport("android")] static extern void ANativeWindow_setBuffersGeometry(IntPtr window, int w, int h, int format);
     void FileLog(string s){ try{ var p="/storage/emulated/0/Download/Ryubing/ryubing_log.txt"; Directory.CreateDirectory(Path.GetDirectoryName(p)); File.AppendAllText(p, DateTime.Now.ToString("HH:mm:ss.fff")+" [FILE] "+s+"\n"); }catch{} }
     void CrashLog(string name, string s){ try{ var p=$"/storage/emulated/0/Download/Ryubing/{name}.txt"; Directory.CreateDirectory(Path.GetDirectoryName(p)); File.WriteAllText(p, DateTime.Now.ToString()+"\n"+s+"\n"); }catch{} }
     void MyLog(string s){ try{ RunOnUiThread(()=>{ if(logView!=null){ logView.Text+="\n"+s; if(logView.Text.Length>4000) logView.Text=logView.Text.Substring(logView.Text.Length-4000);} }); FileLog(s); }catch{ FileLog(s); } }
@@ -63,6 +67,19 @@ public class GameActivity : Activity
     class CB : Java.Lang.Object, ISurfaceHolderCallback{
         readonly GameActivity a; public CB(GameActivity act){ a=act; }
         public void SurfaceCreated(ISurfaceHolder h){
+            // FIX TURNIP LOADER v10.6
+            try {
+                string driverPref = a.Intent.GetStringExtra("vulkan_driver")?? "system";
+                a.FileLog($"Driver pref={driverPref}");
+                if(driverPref == "turnip") {
+                    string tp = "/storage/emulated/0/Download/Ryubing/drivers/libvulkan_freedreno.so";
+                    if(!File.Exists(tp)) tp = "/storage/emulated/0/Download/Ryubing/drivers/libvulkan.so";
+                    if(File.Exists(tp)) { Java.Lang.JavaSystem.Load(tp); a.FileLog($"TURNIP LOADED {tp}"); }
+                    else { a.FileLog($"TURNIP NOT FOUND - using system"); }
+                }
+            } catch(Exception ex){ a.FileLog($"TURNIP FAIL {ex}"); }
+            try { ANativeWindow_setBuffersGeometry(h.Surface.Handle, 0, 0, 1); a.FileLog("ANativeWindow_setBuffersGeometry OK"); } catch(Exception ex){ a.FileLog($"setBuffersGeometry FAIL {ex}"); }
+
             var r=h.SurfaceFrame; if(r.Width()<=0) return;
             if(Holder.emuThread!=null && Holder.emuThread.IsAlive) return;
             a.MyLog($"Surface {r.Width()}x{r.Height()}");
@@ -75,6 +92,7 @@ public class GameActivity : Activity
         public void SurfaceChanged(ISurfaceHolder h,AFormat f,int w,int ht){
             a.MyLog($"SurfaceChanged {w}x{ht}");
             a.FileLog($"[VK] SurfaceChanged {w}x{ht}");
+            try{ ANativeWindow_setBuffersGeometry(h.Surface.Handle, w, ht, 1); }catch{}
             try{ var winProp=Holder.gpu?.GetType().GetProperty("Window",All); var win=winProp?.GetValue(Holder.gpu); win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{w,ht}); }catch(Exception ex){ a.FileLog($"SetSize Changed FAIL {ex.Message}"); }
         }
         public void SurfaceDestroyed(ISurfaceHolder h){
@@ -112,7 +130,14 @@ public class GameActivity : Activity
             var vfs=VirtualFileSystem.CreateInstance();
             vfs.ReloadKeySet();
             FileLog("ReloadKeySet OK #542");
-            var audio=new DummyHardwareDeviceDriver();
+            // AUDIO FIX v10.6 - OpenAL em vez de Dummy
+            IHardwareDeviceDriver audio;
+            try { audio = new OpenAlHardwareDeviceDriver(); FileLog("Audio OpenALHardwareDeviceDriver OK - SOM ATIVADO v10.6"); }
+            catch(Exception ex1) {
+                FileLog($"Audio OpenAL FAIL {ex1.Message} tentando SDL2");
+                try { audio = new SDL2HardwareDeviceDriver(); FileLog("Audio SDL2HardwareDeviceDriver OK - SOM ATIVADO"); }
+                catch(Exception ex2) { FileLog($"Audio SDL2 FAIL {ex2.Message} - usando Dummy"); audio = new DummyHardwareDeviceDriver(); }
+            }
             FileLog("ANTES VulkanRenderer.Create");
             Holder.gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)Holder.nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
             try {
@@ -161,7 +186,7 @@ public class GameActivity : Activity
         }catch(Exception eAll){ FileLog($"CRASH {eAll}"); CrashLog("crash_emu", eAll.ToString()); } finally{ FileLog("Emu END"); }
     }
     unsafe delegate Silk.NET.Vulkan.Result CDel(Instance i,AndroidSurfaceCreateInfoKHR* p,AllocationCallbacks* a,SurfaceKHR* s);
-    HleConfiguration BuildHle(VirtualFileSystem vfs, VulkanRenderer gpu, DummyHardwareDeviceDriver audio, string baseDir, string sysDir){
+    HleConfiguration BuildHle(VirtualFileSystem vfs, VulkanRenderer gpu, IHardwareDeviceDriver audio, string baseDir, string sysDir){
         var lhmType=typeof(LibHacHorizonManager); object lhm=null; foreach(var ci in lhmType.GetConstructors(All)){ try{ var pr=ci.GetParameters(); var ar=new object[pr.Length]; for(int k=0;k<pr.Length;k++){ if(pr[k].ParameterType==typeof(VirtualFileSystem)) ar[k]=vfs; else if(pr[k].ParameterType==typeof(string)) ar[k]=baseDir; else if(pr[k].ParameterType.IsValueType) ar[k]=Activator.CreateInstance(pr[k].ParameterType); } lhm=ci.Invoke(ar); if(lhm!=null) break; }catch{} }
         try{ var ms=lhmType.GetMethods(All).Where(m=>m.Name.Contains("Initialize")).ToList(); ms.FirstOrDefault(x=>x.Name=="InitializeServer" && x.GetParameters().Length==0)?.Invoke(lhm,null); ms.FirstOrDefault(x=>x.Name=="InitializeArpServer" && x.GetParameters().Length==0)?.Invoke(lhm,null); ms.FirstOrDefault(x=>x.Name=="InitializeFsServer" && x.GetParameters().Length==1)?.Invoke(lhm,new object[]{vfs}); }catch{}
         object hc=null; try{ var t=lhm.GetType(); hc=t.GetProperty("Client",All)?.GetValue(lhm)??t.GetField("_horizonClient",All)?.GetValue(lhm); }catch{}
