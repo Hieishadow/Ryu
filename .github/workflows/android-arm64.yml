@@ -34,7 +34,7 @@ jobs:
           path: |
             ~/.nuget/packages
             ~/.dotnet/workloads
-          key: ryubing-${{ hashFiles('**/*.csproj') }}-v4
+          key: ryubing-${{ hashFiles('**/*.csproj') }}-v5
 
       - name: Fix nuget.config
         run: |
@@ -46,6 +46,9 @@ jobs:
               <add key="libhac" value="https://legacy.git.ryujinx.app/api/v4/projects/17/packages/nuget/index.json" />
               <add key="ryujinx-deps" value="https://legacy.git.ryujinx.app/api/v4/projects/71/packages/nuget/index.json" />
             </packageSources>
+            <config>
+              <add key="http-request-timeout" value="300000" />
+            </config>
           </configuration>
           EOF
           rm -f NuGet.Config src/NuGet.Config src/nuget.config || true
@@ -55,7 +58,13 @@ jobs:
           dotnet workload install android --skip-sign-check
 
       - name: Restore
-        run: dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj -r android-arm64 /p:NuGetAudit=false /p:RunAnalyzersDuringBuild=false
+        run: |
+          for i in 1 2 3 4 5; do
+            echo "=== Tentativa $i/5 ==="
+            dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj -r android-arm64 --disable-parallel /p:NuGetAudit=false /p:RunAnalyzersDuringBuild=false /p:RestoreDisableParallel=true && break
+            echo "Deu timeout, esperando 45s..."
+            sleep 45
+          done
 
       - name: Publish APK
         run: |
