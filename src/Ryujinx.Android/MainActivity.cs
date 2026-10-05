@@ -31,10 +31,12 @@ public class MainActivity : Activity
     const string GamesPath = BasePath + "/games";
     const string KeysPath = BasePath + "/keys";
     const string FirmwarePath = BasePath + "/firmware";
+    const string DriversPath = BasePath + "/drivers";
     static readonly string[] IgnoredDirs = { ".thumbnails", "System Volume Information", ".trashed", "LOST.DIR", "Android" };
 
     LinearLayout layout;
     string selectedRom = "";
+    string selectedDriver = "system"; // NOVO v10.6
     Button btnJogar;
     bool permissionRequested = false;
 
@@ -53,12 +55,38 @@ public class MainActivity : Activity
         layout.SetGravity(GravityFlags.Center);
         layout.SetBackgroundColor(global::Android.Graphics.Color.Black);
         layout.SetPadding(40, 20, 40, 20);
-        var title = new TextView(this) { Text = "Ryubing - S20 FE Edition #529" };
+        var title = new TextView(this) { Text = "Ryubing - S20 FE Edition v10.6 TURNIP+SOM" };
         title.SetTextColor(global::Android.Graphics.Color.White);
         title.TextSize = 20; title.Gravity = GravityFlags.Center;
         layout.AddView(title);
         var info = new TextView(this){ Gravity = GravityFlags.Center, TextSize = 11f };
         layout.AddView(info);
+
+        // NOVO: Linha driver
+        var driverRow = new LinearLayout(this){ Orientation = Orientation.Horizontal };
+        driverRow.SetGravity(GravityFlags.Center);
+        var lblDriver = new TextView(this){ Text = " Driver: " };
+        lblDriver.SetTextColor(global::Android.Graphics.Color.White);
+        var btnSystem = new Button(this){ Text = "SYSTEM [ATUAL]" };
+        var btnTurnip = new Button(this){ Text = "TURNIP" };
+        btnSystem.Click+= (s,e)=>{
+            selectedDriver="system";
+            btnSystem.Text="SYSTEM [ATUAL]";
+            btnTurnip.Text="TURNIP";
+            Toast.MakeText(this,"Driver SYSTEM",ToastLength.Short).Show();
+        };
+        btnTurnip.Click+= (s,e)=>{
+            selectedDriver="turnip";
+            btnSystem.Text="SYSTEM";
+            btnTurnip.Text="TURNIP [ATUAL]";
+            var check = File.Exists(DriversPath+"/libvulkan_freedreno.so") || File.Exists(DriversPath+"/libvulkan.so");
+            Toast.MakeText(this, check ? "Turnip encontrado!" : "Coloque .so em /Download/Ryubing/drivers/", ToastLength.Long).Show();
+        };
+        driverRow.AddView(lblDriver);
+        driverRow.AddView(btnSystem);
+        driverRow.AddView(btnTurnip);
+        layout.AddView(driverRow);
+
         var topRow = new LinearLayout(this){ Orientation = Orientation.Horizontal };
         topRow.SetGravity(GravityFlags.Center);
         var btnPerm = new Button(this) { Text = "1 - Permissao" };
@@ -90,6 +118,7 @@ public class MainActivity : Activity
             }
             var intentGame = new Intent(this, typeof(global::Ryujinx.Android.GameActivity));
             intentGame.PutExtra("rom_path", selectedRom);
+            intentGame.PutExtra("vulkan_driver", selectedDriver);
             StartActivity(intentGame);
         };
         topRow.AddView(btnJogar);
@@ -127,7 +156,6 @@ public class MainActivity : Activity
                     using(var ms = new MemoryStream()){
                         input.CopyTo(ms);
                         var bytes = ms.ToArray();
-                        // FIX: SÓ 1 LUGAR - Ryujinx/keys
                         File.WriteAllBytes(Path.Combine(keysDir, targetName), bytes);
                         File.WriteAllBytes(Path.Combine(KeysPath, targetName), bytes);
                         Toast.MakeText(this, $"{targetName} importada: {bytes.Length}b OK", ToastLength.Long).Show();
@@ -162,6 +190,7 @@ public class MainActivity : Activity
             Directory.CreateDirectory(GamesPath);
             Directory.CreateDirectory(KeysPath);
             Directory.CreateDirectory(FirmwarePath);
+            Directory.CreateDirectory(DriversPath);
             if (FilesDir == null) return;
             var baseDir = Path.Combine(FilesDir.AbsolutePath, "Ryujinx");
             var keysDir = Path.Combine(baseDir, "keys");
@@ -173,7 +202,6 @@ public class MainActivity : Activity
             Directory.CreateDirectory(sysRegistered);
             Directory.CreateDirectory(bisRegistered);
 
-            // 1. KEYS - SÓ 1 LUGAR
             foreach (var k in new[] { "prod.keys", "title.keys" }){
                 var src = Path.Combine(KeysPath, k);
                 if (!File.Exists(src)) continue;
@@ -182,7 +210,6 @@ public class MainActivity : Activity
                 }catch{}
             }
 
-            // 2. FIRMWARE - AGORA COPIA DE VERDADE
             try {
                 if (Directory.Exists(FirmwarePath)) {
                     var ncas = Directory.GetFiles(FirmwarePath, "*.nca", SearchOption.AllDirectories);
@@ -198,7 +225,6 @@ public class MainActivity : Activity
                 }
             } catch {}
 
-            // LIMPA OS DUPLICADOS
             try {
                 var dupFolder = Path.Combine(baseDir, "system", "keys");
                 if(Directory.Exists(dupFolder)) Directory.Delete(dupFolder, true);
@@ -227,7 +253,7 @@ public class MainActivity : Activity
             info.Text = "keys NAO encontradas - usa Importar Keys";
             info.SetTextColor(global::Android.Graphics.Color.Red);
         }else{
-            info.Text = $"keys OK {prodInt.Length/1024}KB | Firm {firmIntCount} NCAs | Pronto pra jogar";
+            info.Text = $"keys OK {prodInt.Length/1024}KB | Firm {firmIntCount} NCAs | Driver: {selectedDriver} | Pronto";
             info.SetTextColor(global::Android.Graphics.Color.Green);
         }
     }
@@ -246,7 +272,7 @@ public class MainActivity : Activity
         if (!HasAllFilesPermission()){
             Toast.MakeText(this, "Concede a permissao primeiro", ToastLength.Long).Show(); return;
         }
-        while (layout.ChildCount > 3) layout.RemoveViewAt(layout.ChildCount - 1);
+        while (layout.ChildCount > 4) layout.RemoveViewAt(layout.ChildCount - 1);
         selectedRom = "";
         btnJogar.Enabled = false; btnJogar.Text = "JOGAR";
         var container = new LinearLayout(this){ Orientation = Orientation.Vertical };
@@ -266,7 +292,7 @@ public class MainActivity : Activity
                 row.AddView(name);
                 var localPath = romPath;
                 var btn = new Button(this) { Text = "Selecionar" };
-                btn.Click += (s, e) =>{ selectedRom = localPath; btnJogar.Enabled = true; btnJogar.Text = "JOGAR " + Path.GetFileName(localPath); };
+                btn.Click += (s, e) =>{ selectedRom = localPath; btnJogar.Enabled = true; btnJogar.Text = "JOGAR " + Path.GetFileName(localPath) + $" [{selectedDriver}]"; };
                 row.AddView(btn);
                 container.AddView(row);
             }
