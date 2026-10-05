@@ -39,10 +39,24 @@ jobs:
       - name: Android workload
         run: dotnet workload install android --skip-sign-check
 
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-
+
+      - name: Remove dead feed - FIX 14m
+        run: |
+          sed -i '/ryujinx.app/d' NuGet.Config || true
+          sed -i '/ryujinx.app/d' src/NuGet.Config || true
+          sed -i '/ryujinx.app/d' NuGet.config || true
+          dotnet nuget list source || true
+
       - name: Clean
         run: rm -rf release && mkdir -p release
 
-      - name: Restore - FIX NU1900
+      - name: Restore - TURBO
         run: dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj -r android-arm64 --ignore-failed-sources -p:NuGetAudit=false -p:RunAnalyzers=false
 
       - name: Publish
@@ -50,20 +64,15 @@ jobs:
           ARGS="src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -f net10.0-android -r android-arm64 --no-restore -p:AndroidPackageFormat=apk -p:RunAOTCompilation=false -p:RunAnalyzers=false -p:AndroidUseAssemblyStore=false -p:NuGetAudit=false"
           dotnet publish $ARGS
 
-      - name: Select ONE APK - FIX 4 APKs
+      - name: Select ONE APK
         run: |
-          echo "=== TODOS ==="
           find src/Ryujinx.Android/bin/Release -name "*.apk" -exec ls -lh {} \;
-          APK=$(find src/Ryujinx.Android/bin/Release -name "*-Signed.apk" | head -n 1)
-          if [ -z "$APK" ]; then
-            APK=$(find src/Ryujinx.Android/bin/Release -name "*.apk" -printf "%s %p\n" | sort -nr | head -n1 | cut -d' ' -f2-)
-          fi
-          echo "ESCOLHIDO: $APK"
+          APK=$(find src/Ryujinx.Android/bin/Release -name "*-Signed.apk" | head -n1)
+          if [ -z "$APK" ]; then APK=$(find src/Ryujinx.Android/bin/Release -name "*.apk" -printf "%s %p\n" | sort -nr | head -n1 | cut -d' ' -f2-); fi
           cp "$APK" release/Ryubing-Android-ARM64-#${{ github.run_number }}.apk
           ls -lh release/
 
-      - name: Upload ONE APK
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: Ryubing-APK-#${{ github.run_number }}
           path: release/*.apk
