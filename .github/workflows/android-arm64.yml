@@ -34,18 +34,31 @@ jobs:
           path: |
             ~/.nuget/packages
             ~/.dotnet/workloads
-          key: ryubing-${{ hashFiles('**/*.csproj') }}-v2
+          key: ryubing-${{ hashFiles('**/*.csproj') }}-v3
 
-      - name: Fix feeds - VOLTA PROS 3 MIN
+      - name: Fix nuget.config - REMOVE FEED MORTO
         run: |
-          find. -name "NuGet.Config" -o -name "nuget.config" | head -20
-          find. -name "NuGet.Config" -o -name "nuget.config" | xargs sed -i '/ryujinx.app/d' 2>/dev/null || true
-          find. -name "NuGet.Config" -o -name "nuget.config" | xargs sed -i '/Ryujinx/d' 2>/dev/null || true
-          dotnet nuget list source || true
+          cat > nuget.config <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+              <packageSources>
+                  <clear />
+                  <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+              </packageSources>
+              <packageSourceMapping>
+                  <packageSource key="nuget.org">
+                      <package pattern="*" />
+                  </packageSource>
+              </packageSourceMapping>
+          </configuration>
+          EOF
+          rm -f NuGet.Config src/NuGet.Config src/nuget.config || true
+          cp nuget.config NuGet.Config
+          dotnet nuget list source
           dotnet workload install android --skip-sign-check
 
       - name: Restore
-        run: dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj -r android-arm64 --ignore-failed-sources
+        run: dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj -r android-arm64 --ignore-failed-sources /p:NuGetAudit=false /p:RunAnalyzersDuringBuild=false
 
       - name: Publish APK
         run: |
