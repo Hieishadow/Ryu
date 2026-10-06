@@ -51,7 +51,7 @@ jobs:
           path: |
             ~/.nuget/packages
             ~/.dotnet/workloads
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}-v8
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}-v9
           restore-keys: |
             nuget-${{ runner.os }}-
 
@@ -75,11 +75,8 @@ jobs:
       - name: Clean
         run: rm -rf release && mkdir -p release
 
-      - name: Restore
-        run: |
-          SLN=$(find. -maxdepth 3 -name "*.sln" | head -n1)
-          echo "SLN: $SLN"
-          dotnet restore "$SLN" --ignore-failed-sources /p:NuGetAudit=false /p:RunAnalyzersDuringBuild=false
+      - name: Restore Android
+        run: dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj --ignore-failed-sources /p:NuGetAudit=false /p:RunAnalyzersDuringBuild=false
 
       - name: Publish ARM64 APK
         env:
