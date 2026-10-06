@@ -5,7 +5,6 @@ using Ryujinx.HLE.HOS.Services.Settings;
 using Ryujinx.HLE.HOS.Services.SurfaceFlinger.Types;
 using Ryujinx.HLE.HOS.Services.Time.Clock;
 using System;
-using System.IO;
 using System.Threading;
 
 namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
@@ -154,15 +153,12 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 case NativeWindowScalingMode.ScaleCrop:
                 case NativeWindowScalingMode.Unknown:
                 case NativeWindowScalingMode.NoScaleCrop: break;
-                default: Logger.Warning?.Print(LogClass.SurfaceFlinger, $"[VI] Present REQUEST BAD scalingMode={input.ScalingMode}"); return Status.BadValue;
+                default: return Status.BadValue;
             }
 
             BufferItem item = new();
             IConsumerListener frameAvailableListener = null;
             IConsumerListener frameReplaceListener = null;
-
-            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [FILE] [VI] Present REQUEST slot={slot} ts={input.Timestamp} auto={input.IsAutoTimestamp} async={input.Async} queueBefore={Core.Queue.Count}\n"); } catch {}
-            Console.WriteLine($"[FILE] [VI] Present REQUEST slot={slot} ts={input.Timestamp} auto={input.IsAutoTimestamp} async={input.Async} queueBefore={Core.Queue.Count}");
 
             lock (Core.Lock)
             {
@@ -193,7 +189,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 item.FrameNumber = Core.FrameCounter;
                 item.Slot = slot;
                 item.Fence = input.Fence;
-                item.IsDroppable = false;
+                item.IsDroppable = false; // FIX CELESTE
 
                 item.GraphicBuffer.Set(Core.Slots[slot].GraphicBuffer);
                 item.GraphicBuffer.Object.IncrementNvMapHandleRefCount(Core.Owner);
@@ -207,8 +203,6 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 {
                     Core.Queue.Add(item);
                     frameAvailableListener = Core.ConsumerListener;
-                    try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [FILE] [VI] Present ENQUEUED OK slot={slot} frame={item.FrameNumber} queueAfter={Core.Queue.Count}\n"); } catch {}
-                    Console.WriteLine($"[FILE] [VI] Present ENQUEUED OK slot={slot} frame={item.FrameNumber} queueAfter={Core.Queue.Count}");
                 }
                 else
                 {
@@ -228,8 +222,6 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                     {
                         Core.Queue.Add(item);
                         frameAvailableListener = Core.ConsumerListener;
-                        try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [FILE] [VI] Present ENQUEUED OK slot={slot} frame={item.FrameNumber} queueAfter={Core.Queue.Count} (no drop)\n"); } catch {}
-                        Console.WriteLine($"[FILE] [VI] Present ENQUEUED OK slot={slot} frame={item.FrameNumber} queueAfter={Core.Queue.Count} (no drop)");
                     }
                 }
 
@@ -245,16 +237,6 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             lock (_callbackLock)
             {
                 while (_callbackTicket!= _currentCallbackTicket) Monitor.Wait(_callbackLock);
-                if (frameAvailableListener!= null)
-                {
-                    try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [FILE] [VI] -> OnFrameAvailable slot={item.Slot} frame={item.FrameNumber}\n"); } catch {}
-                    Console.WriteLine($"[FILE] [VI] -> OnFrameAvailable slot={item.Slot} frame={item.FrameNumber}");
-                }
-                if (frameReplaceListener!= null)
-                {
-                    try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [FILE] [VI] -> OnFrameReplaced slot={item.Slot} frame={item.FrameNumber}\n"); } catch {}
-                    Console.WriteLine($"[FILE] [VI] -> OnFrameReplaced slot={item.Slot} frame={item.FrameNumber}");
-                }
                 frameAvailableListener?.OnFrameAvailable(ref item);
                 frameReplaceListener?.OnFrameReplaced(ref item);
                 _currentCallbackTicket++;
