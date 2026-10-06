@@ -151,7 +151,7 @@ public class GameActivity : Activity
                     var ci = new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)Holder.nativeWindow };
                     FileLog("[FILE] GetSurface STEP 2 ci OK");
                     FileLog("[FILE] GetSurface STEP 3 CALL vk.CreateAndroidSurfaceKHR");
-                    var res = vk.CreateAndroidSurfaceKHR(inst, &ci, null, out var surf);
+                    var res = vk.CreateAndroidSurface(inst, &ci, null, out var surf);
                     FileLog($"[FILE] GetSurface STEP 4 RESULT={res} surf={surf.Handle.ToInt64():X}");
                     if(res!=VkResult.Success) throw new Exception($"vkCreate failed {res}");
                     FileLog("[FILE] GetSurface STEP 5 OK RETURN");
