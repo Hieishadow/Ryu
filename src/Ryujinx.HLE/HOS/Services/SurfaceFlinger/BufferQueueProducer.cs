@@ -5,7 +5,6 @@ using Ryujinx.HLE.HOS.Services.Settings;
 using Ryujinx.HLE.HOS.Services.SurfaceFlinger.Types;
 using Ryujinx.HLE.HOS.Services.Time.Clock;
 using System;
-using System.IO;
 using System.Threading;
 
 namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
@@ -159,9 +158,6 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
             BufferItem item = new();
             IConsumerListener frameAvailableListener = null;
-            IConsumerListener frameReplaceListener = null;
-
-            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [VI] Present REQUEST slot={slot} ts={input.Timestamp} auto={input.IsAutoTimestamp} queueBefore={Core.Queue.Count} droppable={input.IsDroppable}\n"); } catch {}
 
             lock (Core.Lock)
             {
@@ -192,7 +188,6 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 item.FrameNumber = Core.FrameCounter;
                 item.Slot = slot;
                 item.Fence = input.Fence;
-                item.IsDroppable = false; // FIX 1
 
                 item.GraphicBuffer.Set(Core.Slots[slot].GraphicBuffer);
                 item.GraphicBuffer.Object.IncrementNvMapHandleRefCount(Core.Owner);
@@ -202,34 +197,9 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
                 _stickyTransform = input.StickyTransform;
 
-                if (Core.Queue.Count == 0)
-                {
-                    Core.Queue.Add(item);
-                    frameAvailableListener = Core.ConsumerListener;
-                    try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [VI] Present ENQUEUED OK slot={slot} frame={item.FrameNumber} queueAfter={Core.Queue.Count}\n"); } catch {}
-                }
-                else
-                {
-                    BufferItem frontItem = Core.Queue[0];
-                    if (frontItem.IsDroppable)
-                    {
-                        if (Core.StillTracking(ref frontItem))
-                        {
-                            Core.Slots[frontItem.Slot].BufferState = BufferState.Free;
-                            Core.Slots[frontItem.Slot].FrameNumber = 0;
-                        }
-                        Core.Queue.RemoveAt(0);
-                        Core.Queue.Insert(0, item);
-                        frameReplaceListener = Core.ConsumerListener;
-                        try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [VI] Present ENQUEUED REPLACE slot={slot} frame={item.FrameNumber} queueAfter={Core.Queue.Count}\n"); } catch {}
-                    }
-                    else
-                    {
-                        Core.Queue.Add(item);
-                        frameAvailableListener = Core.ConsumerListener;
-                        try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [VI] Present ENQUEUED OK slot={slot} frame={item.FrameNumber} queueAfter={Core.Queue.Count} (no drop)\n"); } catch {}
-                    }
-                }
+                // FIX CELESTE v17 - nunca descarta frame, sempre enfileira
+                Core.Queue.Add(item);
+                frameAvailableListener = Core.ConsumerListener;
 
                 Core.BufferHasBeenQueued = true;
                 Core.SignalDequeueEvent();
@@ -243,16 +213,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             lock (_callbackLock)
             {
                 while (_callbackTicket!= _currentCallbackTicket) Monitor.Wait(_callbackLock);
-                if (frameAvailableListener!= null)
-                {
-                    try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [VI] -> OnFrameAvailable slot={item.Slot} frame={item.FrameNumber}\n"); } catch {}
-                }
-                if (frameReplaceListener!= null)
-                {
-                    try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [VI] -> OnFrameReplaced slot={item.Slot} frame={item.FrameNumber}\n"); } catch {}
-                }
                 frameAvailableListener?.OnFrameAvailable(ref item);
-                frameReplaceListener?.OnFrameReplaced(ref item);
                 _currentCallbackTicket++;
                 Monitor.PulseAll(_callbackLock);
             }
