@@ -1,8 +1,8 @@
 using Ryujinx.Graphics.GAL;
+using Ryujinx.Graphics.Gpu;
 using Ryujinx.Graphics.Gpu.Image;
 using Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap;
 using System;
-using System.IO;
 
 namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 {
