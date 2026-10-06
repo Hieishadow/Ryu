@@ -5,6 +5,7 @@ using Ryujinx.HLE.HOS.Services.Settings;
 using Ryujinx.HLE.HOS.Services.SurfaceFlinger.Types;
 using Ryujinx.HLE.HOS.Services.Time.Clock;
 using System;
+using System.IO;
 using System.Threading;
 
 namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
@@ -153,22 +154,23 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 case NativeWindowScalingMode.ScaleCrop:
                 case NativeWindowScalingMode.Unknown:
                 case NativeWindowScalingMode.NoScaleCrop: break;
-                default: Console.WriteLine($"[FILE] [VI] Present REQUEST BAD scalingMode={input.ScalingMode}"); return Status.BadValue;
+                default: Logger.Warning?.Print(LogClass.SurfaceFlinger, $"[VI] Present REQUEST BAD scalingMode={input.ScalingMode}"); return Status.BadValue;
             }
 
             BufferItem item = new();
             IConsumerListener frameAvailableListener = null;
             IConsumerListener frameReplaceListener = null;
 
+            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [FILE] [VI] Present REQUEST slot={slot} ts={input.Timestamp} auto={input.IsAutoTimestamp} async={input.Async} queueBefore={Core.Queue.Count}\n"); } catch {}
             Console.WriteLine($"[FILE] [VI] Present REQUEST slot={slot} ts={input.Timestamp} auto={input.IsAutoTimestamp} async={input.Async} queueBefore={Core.Queue.Count}");
 
             lock (Core.Lock)
             {
-                if (Core.IsAbandoned) { Console.WriteLine($"[FILE] [VI] Present FAILED Abandoned slot={slot}"); return Status.NoInit; }
+                if (Core.IsAbandoned) return Status.NoInit;
                 int maxBufferCount = Core.GetMaxBufferCountLocked(input.Async!= 0);
                 if (input.Async!= 0 && Core.OverrideMaxBufferCount!= 0 && Core.OverrideMaxBufferCount < maxBufferCount) return Status.BadValue;
-                if (slot < 0 || slot >= Core.Slots.Length ||!Core.IsOwnedByProducerLocked(slot)) { Console.WriteLine($"[FILE] [VI] Present FAILED not owned slot={slot}"); return Status.BadValue; }
-                if (!Core.Slots[slot].RequestBufferCalled) { Console.WriteLine($"[FILE] [VI] Present FAILED no RequestBuffer slot={slot}"); return Status.BadValue; }
+                if (slot < 0 || slot >= Core.Slots.Length ||!Core.IsOwnedByProducerLocked(slot)) return Status.BadValue;
+                if (!Core.Slots[slot].RequestBufferCalled) return Status.BadValue;
 
                 input.Crop.Intersect(Core.Slots[slot].GraphicBuffer.Object.ToRect(), out Rect croppedRect);
                 if (croppedRect!= input.Crop) return Status.BadValue;
@@ -205,6 +207,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 {
                     Core.Queue.Add(item);
                     frameAvailableListener = Core.ConsumerListener;
+                    try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [FILE] [VI] Present ENQUEUED OK slot={slot} frame={item.FrameNumber} queueAfter={Core.Queue.Count}\n"); } catch {}
                     Console.WriteLine($"[FILE] [VI] Present ENQUEUED OK slot={slot} frame={item.FrameNumber} queueAfter={Core.Queue.Count}");
                 }
                 else
@@ -220,12 +223,12 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                         Core.Queue.RemoveAt(0);
                         Core.Queue.Insert(0, item);
                         frameReplaceListener = Core.ConsumerListener;
-                        Console.WriteLine($"[FILE] [VI] Present REPLACED slot={slot} frame={item.FrameNumber} oldFrame={frontItem.FrameNumber} queue={Core.Queue.Count}");
                     }
                     else
                     {
                         Core.Queue.Add(item);
                         frameAvailableListener = Core.ConsumerListener;
+                        try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [FILE] [VI] Present ENQUEUED OK slot={slot} frame={item.FrameNumber} queueAfter={Core.Queue.Count} (no drop)\n"); } catch {}
                         Console.WriteLine($"[FILE] [VI] Present ENQUEUED OK slot={slot} frame={item.FrameNumber} queueAfter={Core.Queue.Count} (no drop)");
                     }
                 }
@@ -242,8 +245,16 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             lock (_callbackLock)
             {
                 while (_callbackTicket!= _currentCallbackTicket) Monitor.Wait(_callbackLock);
-                if (frameAvailableListener!= null) Console.WriteLine($"[FILE] [VI] -> OnFrameAvailable slot={item.Slot} frame={item.FrameNumber}");
-                if (frameReplaceListener!= null) Console.WriteLine($"[FILE] [VI] -> OnFrameReplaced slot={item.Slot} frame={item.FrameNumber}");
+                if (frameAvailableListener!= null)
+                {
+                    try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [FILE] [VI] -> OnFrameAvailable slot={item.Slot} frame={item.FrameNumber}\n"); } catch {}
+                    Console.WriteLine($"[FILE] [VI] -> OnFrameAvailable slot={item.Slot} frame={item.FrameNumber}");
+                }
+                if (frameReplaceListener!= null)
+                {
+                    try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [FILE] [VI] -> OnFrameReplaced slot={item.Slot} frame={item.FrameNumber}\n"); } catch {}
+                    Console.WriteLine($"[FILE] [VI] -> OnFrameReplaced slot={item.Slot} frame={item.FrameNumber}");
+                }
                 frameAvailableListener?.OnFrameAvailable(ref item);
                 frameReplaceListener?.OnFrameReplaced(ref item);
                 _currentCallbackTicket++;
