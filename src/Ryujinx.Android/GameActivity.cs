@@ -32,7 +32,6 @@ namespace Ryujinx.Android
 [Activity(Name="com.ryubing.android.GameActivity", Theme="@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation=ScreenOrientation.Landscape, ConfigurationChanges=ConfigChanges.Orientation|ConfigChanges.ScreenSize|ConfigChanges.ScreenLayout|ConfigChanges.KeyboardHidden, Exported=false)]
 public class GameActivity : Activity
 {
-    // FIX CS8920 - driver concreto, sem DispatchProxy
     class NullAudioSession : IHardwareDeviceSession {
         public bool RegisterBuffer(AudioBuffer b) => true;
         public void UnregisterBuffer(AudioBuffer b) {}
@@ -48,6 +47,7 @@ public class GameActivity : Activity
     }
     class NullAudioDriver : IHardwareDeviceDriver {
         public static bool IsSupported => true;
+        public IHardwareDeviceSession OpenDeviceSession(IHardwareDeviceDriver.Direction d, IVirtualMemoryManager m, SampleFormat f, uint r, uint c) => new NullAudioSession();
         public IHardwareDeviceSession OpenDeviceSession(IHardwareDeviceDriver.Direction d, IVirtualMemoryManager m, SampleFormat f, uint r, uint c, float v=1f) => new NullAudioSession();
         public ManualResetEvent GetUpdateRequiredEvent() => new ManualResetEvent(false);
         public ManualResetEvent GetPauseEvent() => new ManualResetEvent(true);
@@ -57,7 +57,6 @@ public class GameActivity : Activity
         public bool SupportsChannelCount(uint c) => true;
         public void Dispose() {}
     }
-
     const BindingFlags All = BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
     static class Holder { public static IntPtr nativeWindow=IntPtr.Zero; public static Thread emuThread; public static volatile bool running=false; public static Switch device; public static VulkanRenderer gpu; }
     string romPath=""; SurfaceView surfaceView; TextView logView;
@@ -148,7 +147,7 @@ public class GameActivity : Activity
             vfs.ReloadKeySet();
             FileLog("ReloadKeySet OK #542");
             IHardwareDeviceDriver audio = new NullAudioDriver();
-            FileLog("Audio NullAudioDriver OK - fix CS8920");
+            FileLog("Audio NullAudioDriver OK v10.8 dual overload");
             FileLog("ANTES VulkanRenderer.Create");
             Holder.gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)Holder.nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
             try {
