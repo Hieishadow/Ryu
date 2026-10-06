@@ -25,6 +25,23 @@ jobs:
       - name: Fix submodules
         run: git submodule update --init --recursive --force
 
+      - name: Patch Nvdec + Audio backends
+        run: |
+          echo "=== Patch Nvdec ==="
+          sed -i '/Ryujinx.Graphics.Nvdec/d' src/Ryujinx.HLE/Ryujinx.HLE.csproj || true
+          sed -i '/Ryujinx.Graphics.Nvdec/d' src/Ryujinx.Graphics.Gpu/Ryujinx.Graphics.Gpu.csproj || true
+          sed -i '/Ryujinx.Graphics.Nvdec/d' src/Ryujinx.Android/Ryujinx.Android.csproj || true
+
+          echo "=== Patch Audio ==="
+          sed -i '/Audio.Backends.Dummy/d' src/Ryujinx.Android/Ryujinx.Android.csproj || true
+          sed -i '/Audio.Backends.OpenAl/d' src/Ryujinx.Android/Ryujinx.Android.csproj || true
+          sed -i '/Audio.Backends.SDL2/d' src/Ryujinx.Android/Ryujinx.Android.csproj || true
+
+          echo "=== Refs after patch ==="
+          grep -n "ProjectReference" src/Ryujinx.Android/Ryujinx.Android.csproj || true
+          grep -n "Nvdec" src/Ryujinx.HLE/Ryujinx.HLE.csproj || echo "Nvdec removido de HLE"
+          grep -n "Nvdec" src/Ryujinx.Graphics.Gpu/Ryujinx.Graphics.Gpu.csproj || echo "Nvdec removido de Gpu"
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
@@ -72,33 +89,18 @@ jobs:
       - name: Select ONE APK
         run: |
           echo "=== APKs GERADAS ==="
-          find src/Ryujinx.Android/bin/Release \
-            -type f \
-            -name "*.apk" \
-            -exec ls -lh {} \;
-
-          APK=$(find src/Ryujinx.Android/bin/Release \
-            -type f \
-            -name "*-Signed.apk" \
-            -print -quit)
-
+          find src/Ryujinx.Android/bin/Release -type f -name "*.apk" -exec ls -lh {} \;
+          APK=$(find src/Ryujinx.Android/bin/Release -type f -name "*-Signed.apk" -print -quit)
           if [ -z "$APK" ]; then
-            APK=$(find src/Ryujinx.Android/bin/Release \
-              -type f \
-              -name "*.apk" \
-              -print -quit)
+            APK=$(find src/Ryujinx.Android/bin/Release -type f -name "*.apk" -print -quit)
           fi
-
           if [ -z "$APK" ]; then
             echo "ERRO: nenhuma APK encontrada."
             exit 1
           fi
-
           echo "APK escolhida: $APK"
-
           mkdir -p release
           cp "$APK" "release/Ryubing-Android-ARM64-#${{ github.run_number }}.apk"
-
           ls -lh release/
 
       - name: Upload ONE APK
