@@ -46,14 +46,17 @@ namespace Ryujinx.Graphics.Gpu
             Format format, byte bytesPerPixel, ImageCrop crop,
             Action<GpuContext, object> acquireCallback, Action<object> releaseCallback, object userObj)
         {
+            Console.WriteLine($"[FILE] [GPU.WINDOW] Enqueue CALL pid={pid} addr=0x{address:X} {width}x{height} fmt={format}");
             try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [GPU.WINDOW] Enqueue CALL pid={pid} addr=0x{address:X} {width}x{height} fmt={format}\n"); } catch {}
 
             if (!_context.PhysicalMemoryRegistry.TryGetValue(pid, out PhysicalMemory physicalMemory))
             {
+                Console.WriteLine($"[FILE] [GPU.WINDOW] Enqueue FAIL Registry pid={pid}");
                 try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [GPU.WINDOW] Enqueue FAIL Registry pid={pid}\n"); } catch {}
                 return false;
             }
 
+            Console.WriteLine($"[FILE] [GPU.WINDOW] Enqueue OK pid={pid}");
             try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [GPU.WINDOW] Enqueue OK pid={pid}\n"); } catch {}
 
             FormatInfo formatInfo = new(format, 1, 1, bytesPerPixel, 4);
@@ -63,16 +66,23 @@ namespace Ryujinx.Graphics.Gpu
 
             _frameQueue.Enqueue(new PresentationTexture(physicalMemory.TextureCache, info, range, crop, acquireCallback, releaseCallback, userObj));
             
+            Console.WriteLine($"[FILE] [GPU.WINDOW] FRAME ENQUEUED queue={_frameQueue.Count}");
             try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [GPU.WINDOW] FRAME ENQUEUED queue={_frameQueue.Count}\n"); } catch {}
             return true;
         }
 
         public void Present(Action swapBuffersCallback)
         {
+            Console.WriteLine($"[FILE] [GPU.WINDOW] Present ENTER queue={_frameQueue.Count} framesAvailable={_framesAvailable}");
+            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [GPU.WINDOW] Present ENTER queue={_frameQueue.Count} framesAvailable={_framesAvailable}\n"); } catch {}
+
             _context.AdvanceSequence();
 
             if (_frameQueue.TryDequeue(out PresentationTexture pt))
             {
+                Console.WriteLine($"[FILE] [GPU.WINDOW] Present DEQUEUE OK -> Renderer Present CALL");
+                try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [GPU.WINDOW] Present DEQUEUE OK -> Renderer Present CALL\n"); } catch {}
+
                 pt.AcquireCallback(_context, pt.UserObj);
                 Image.Texture texture = pt.Cache.FindOrCreateTexture(null, TextureSearchFlags.WithUpscale, pt.Info, 0, range: pt.Range);
                 pt.Cache.Tick();
@@ -95,6 +105,11 @@ namespace Ryujinx.Graphics.Gpu
 
                 _context.Renderer.Window.Present(texture.HostTexture, crop, swapBuffersCallback);
                 pt.ReleaseCallback(pt.UserObj);
+            }
+            else
+            {
+                Console.WriteLine($"[FILE] [GPU.WINDOW] Present SKIP queue empty!");
+                try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [GPU.WINDOW] Present SKIP queue empty!\n"); } catch {}
             }
         }
 
