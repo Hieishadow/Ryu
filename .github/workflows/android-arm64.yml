@@ -15,7 +15,6 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     env:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
@@ -34,7 +33,7 @@ jobs:
       - name: Fix submodules
         run: git submodule update --init --recursive --force
 
-      - name: Setup .NET 10
+      - name: Setup.NET 10
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
@@ -52,7 +51,7 @@ jobs:
           path: |
             ~/.nuget/packages
             ~/.dotnet/workloads
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}-v7
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}-v8
           restore-keys: |
             nuget-${{ runner.os }}-
 
@@ -69,32 +68,18 @@ jobs:
             </packageSources>
           </configuration>
           EOF
-
           rm -f NuGet.Config src/NuGet.Config src/nuget.config || true
           cp nuget.config NuGet.Config
-
           dotnet workload install android --skip-sign-check
 
       - name: Clean
-        run: |
-          rm -rf release
-          mkdir -p release
+        run: rm -rf release && mkdir -p release
 
       - name: Restore
         run: |
-          SLN=$(find . -maxdepth 3 -name "*.sln" | head -n1)
-
-          if [ -z "$SLN" ]; then
-            echo "ERRO: nenhuma solution .sln encontrada."
-            exit 1
-          fi
-
-          echo "SLN encontrado: $SLN"
-
-          dotnet restore "$SLN" \
-            --ignore-failed-sources \
-            /p:NuGetAudit=false \
-            /p:RunAnalyzersDuringBuild=false
+          SLN=$(find. -maxdepth 3 -name "*.sln" | head -n1)
+          echo "SLN: $SLN"
+          dotnet restore "$SLN" --ignore-failed-sources /p:NuGetAudit=false /p:RunAnalyzersDuringBuild=false
 
       - name: Publish ARM64 APK
         env:
@@ -102,82 +87,27 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           RYU_KEY_PASS: ${{ secrets.KEY_PASS }}
           RYU_STORE_PASS: ${{ secrets.STORE_PASS }}
-
         run: |
-          ARGS="src/Ryujinx.Android/Ryujinx.Android.csproj \
-            -c Release \
-            -f net10.0-android \
-            -r android-arm64 \
-            --no-restore \
-            -p:AndroidPackageFormat=apk \
-            -p:RunAOTCompilation=false \
-            -p:AndroidUseAssemblyStore=false \
-            -p:NuGetAudit=false \
-            -p:RunAnalyzersDuringBuild=false"
-
+          ARGS="src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -f net10.0-android -r android-arm64 --no-restore -p:AndroidPackageFormat=apk -p:RunAOTCompilation=false -p:AndroidUseAssemblyStore=false -p:NuGetAudit=false -p:RunAnalyzersDuringBuild=false"
           if [ -z "$KEYSTORE_BASE64" ]; then
-
-            echo "Publicando APK sem assinatura personalizada..."
             dotnet publish $ARGS --ignore-failed-sources
-
           else
-
-            echo "Publicando APK assinada..."
-
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/ryubing.keystore"
-
-            dotnet publish $ARGS \
-              -p:AndroidKeyStore=true \
-              -p:AndroidSigningKeyStore="$RUNNER_TEMP/ryubing.keystore" \
-              -p:AndroidSigningKeyAlias="$KEY_ALIAS" \
-              -p:AndroidSigningKeyPass="$RYU_KEY_PASS" \
-              -p:AndroidSigningStorePass="$RYU_STORE_PASS" \
-              --ignore-failed-sources
-
+            echo "$KEYSTORE_BASE64" | base64 -d > $RUNNER_TEMP/ryubing.keystore
+            dotnet publish $ARGS -p:AndroidKeyStore=true -p:AndroidSigningKeyStore=$RUNNER_TEMP/ryubing.keystore -p:AndroidSigningKeyAlias=$KEY_ALIAS -p:AndroidSigningKeyPass=$RYU_KEY_PASS -p:AndroidSigningStorePass=$RYU_STORE_PASS --ignore-failed-sources
           fi
 
       - name: Select ONE APK
         run: |
-          echo "=== APKs GERADAS ==="
-
-          find src/Ryujinx.Android/bin/Release \
-            -type f \
-            -name "*.apk" \
-            -exec ls -lh {} \;
-
-          APK=$(find src/Ryujinx.Android/bin/Release \
-            -type f \
-            -name "*-Signed.apk" \
-            -print -quit)
-
-          if [ -z "$APK" ]; then
-            APK=$(find src/Ryujinx.Android/bin/Release \
-              -type f \
-              -name "*.apk" \
-              -printf "%s %p\n" |
-              sort -nr |
-              head -n1 |
-              cut -d' ' -f2-)
-          fi
-
-          if [ -z "$APK" ]; then
-            echo "ERRO: nenhuma APK foi encontrada."
-            exit 1
-          fi
-
-          echo "APK ESCOLHIDA:"
-          echo "$APK"
-
-          cp "$APK" \
-            "release/Ryubing-Android-ARM64-#${{ github.run_number }}.apk"
-
-          echo "=== RELEASE ==="
+          find src/Ryujinx.Android/bin/Release -name "*.apk" -exec ls -lh {} \;
+          APK=$(find src/Ryujinx.Android/bin/Release -name "*-Signed.apk" | head -n1)
+          if [ -z "$APK" ]; then APK=$(find src/Ryujinx.Android/bin/Release -name "*.apk" -printf "%s %p\n" | sort -nr | head -n1 | cut -d' ' -f2-); fi
+          cp "$APK" "release/Ryubing-Android-ARM64-#${{ github.run_number }}.apk"
           ls -lh release/
 
       - name: Upload ONE APK
         uses: actions/upload-artifact@v4
         with:
           name: Ryubing-APK-#${{ github.run_number }}
-          path: release/Ryubing-Android-ARM64-*.apk
+          path: release/*.apk
           if-no-files-found: error
           retention-days: 14
