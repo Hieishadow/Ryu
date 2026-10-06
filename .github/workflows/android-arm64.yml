@@ -47,7 +47,7 @@ jobs:
           path: |
             ~/.nuget/packages
             ~/.dotnet/workloads
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}-v6
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}-v7
           restore-keys: nuget-${{ runner.os }}-
 
       - name: Android workload + Fix nuget
@@ -71,7 +71,10 @@ jobs:
         run: rm -rf release && mkdir -p release
 
       - name: Restore ALL
-        run: dotnet restore --ignore-failed-sources /p:NuGetAudit=false /p:RunAnalyzersDuringBuild=false
+        run: |
+          SLN=$(find. -maxdepth 3 -name "*.sln" | head -n1)
+          echo "SLN encontrado: $SLN"
+          dotnet restore "$SLN" --ignore-failed-sources /p:NuGetAudit=false /p:RunAnalyzersDuringBuild=false
 
       - name: Publish
         env:
