@@ -12,8 +12,10 @@ using Ryujinx.HLE.HOS;
 using Ryujinx.HLE.HOS.Services.Account.Acc;
 using Ryujinx.Graphics.Vulkan;
 using Ryujinx.Audio;
+using Ryujinx.Audio.Common;
 using Ryujinx.Audio.Integration;
 using Ryujinx.HLE.UI;
+using Ryujinx.Memory;
 using Silk.NET.Vulkan;
 using System;
 using System.Collections.Concurrent;
@@ -30,10 +32,35 @@ namespace Ryujinx.Android
 [Activity(Name="com.ryubing.android.GameActivity", Theme="@android:style/Theme.Black.NoTitleBar.Fullscreen", ScreenOrientation=ScreenOrientation.Landscape, ConfigurationChanges=ConfigChanges.Orientation|ConfigChanges.ScreenSize|ConfigChanges.ScreenLayout|ConfigChanges.KeyboardHidden, Exported=false)]
 public class GameActivity : Activity
 {
+    // FIX CS8920 - driver concreto, sem DispatchProxy
+    class NullAudioSession : IHardwareDeviceSession {
+        public bool RegisterBuffer(AudioBuffer b) => true;
+        public void UnregisterBuffer(AudioBuffer b) {}
+        public void QueueBuffer(AudioBuffer b) {}
+        public bool WasBufferFullyConsumed(AudioBuffer b) => true;
+        public void SetVolume(float v) {}
+        public float GetVolume() => 1f;
+        public ulong GetPlayedSampleCount() => 0;
+        public void Start() {}
+        public void Stop() {}
+        public void PrepareToClose() {}
+        public void Dispose() {}
+    }
+    class NullAudioDriver : IHardwareDeviceDriver {
+        public static bool IsSupported => true;
+        public IHardwareDeviceSession OpenDeviceSession(IHardwareDeviceDriver.Direction d, IVirtualMemoryManager m, SampleFormat f, uint r, uint c, float v=1f) => new NullAudioSession();
+        public ManualResetEvent GetUpdateRequiredEvent() => new ManualResetEvent(false);
+        public ManualResetEvent GetPauseEvent() => new ManualResetEvent(true);
+        public bool SupportsDirection(IHardwareDeviceDriver.Direction d) => true;
+        public bool SupportsSampleRate(uint r) => true;
+        public bool SupportsSampleFormat(SampleFormat f) => true;
+        public bool SupportsChannelCount(uint c) => true;
+        public void Dispose() {}
+    }
+
     const BindingFlags All = BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
     static class Holder { public static IntPtr nativeWindow=IntPtr.Zero; public static Thread emuThread; public static volatile bool running=false; public static Switch device; public static VulkanRenderer gpu; }
     string romPath=""; SurfaceView surfaceView; TextView logView;
-    const bool TEST_MAGENTA = false;
     [DllImport("android")] static extern IntPtr ANativeWindow_fromSurface(IntPtr env, IntPtr surface);
     [DllImport("android")] static extern void ANativeWindow_release(IntPtr window);
     [DllImport("android")] static extern void ANativeWindow_setBuffersGeometry(IntPtr window, int w, int h, int format);
@@ -71,15 +98,13 @@ public class GameActivity : Activity
                     string tp = "/storage/emulated/0/Download/Ryubing/drivers/libvulkan_freedreno.so";
                     if(!File.Exists(tp)) tp = "/storage/emulated/0/Download/Ryubing/drivers/libvulkan.so";
                     if(File.Exists(tp)) { Java.Lang.JavaSystem.Load(tp); a.FileLog($"TURNIP LOADED {tp}"); }
-                    else { a.FileLog($"TURNIP NOT FOUND - using system"); }
                 }
             } catch(Exception ex){ a.FileLog($"TURNIP FAIL {ex}"); }
-            try { ANativeWindow_setBuffersGeometry(h.Surface.Handle, 0, 0, 1); a.FileLog("ANativeWindow_setBuffersGeometry OK"); } catch(Exception ex){ a.FileLog($"setBuffersGeometry FAIL {ex}"); }
+            try { ANativeWindow_setBuffersGeometry(h.Surface.Handle, 0, 0, 1); } catch{}
             var r=h.SurfaceFrame; if(r.Width()<=0) return;
             if(Holder.emuThread!=null && Holder.emuThread.IsAlive) return;
             a.MyLog($"Surface {r.Width()}x{r.Height()}");
-            try{ Holder.nativeWindow=ANativeWindow_fromSurface(global::Android.Runtime.JNIEnv.Handle,h.Surface.Handle); }
-            catch(Exception e3){ a.MyLog("ANW fail "+e3.Message); a.CrashLog("crash_anw", e3.ToString()); return; }
+            try{ Holder.nativeWindow=ANativeWindow_fromSurface(global::Android.Runtime.JNIEnv.Handle,h.Surface.Handle); }catch(Exception e3){ a.MyLog("ANW fail "+e3.Message); a.CrashLog("crash_anw", e3.ToString()); return; }
             Holder.running=true;
             Holder.emuThread=new Thread(a.Emu){ IsBackground=true };
             Holder.emuThread.Start();
@@ -102,19 +127,6 @@ public class GameActivity : Activity
     }
     class DummyUIProxy : DispatchProxy { protected override object Invoke(MethodInfo m, object[] a){ var rt=m.ReturnType; if(rt==typeof(void)) return null; if(rt==typeof(bool)) return true; if(rt.IsValueType) return Activator.CreateInstance(rt); if(a!=null) for(int i=0;i<a.Length;i++) if(m.GetParameters()[i].IsOut) a[i]=null; return null; } }
     static IHostUIHandler CreateDummyUI() => DispatchProxy.Create<IHostUIHandler, DummyUIProxy>();
-
-    // FIX AUDIO v10.7 - Proxy interno, sem depender de Dummy/OpenAl/SDL2
-    class DummyAudioProxy : DispatchProxy {
-        protected override object Invoke(MethodInfo m, object[] a){
-            var rt=m.ReturnType;
-            if(rt==typeof(void)) return null;
-            if(rt==typeof(bool)) return false;
-            if(rt.IsValueType) return Activator.CreateInstance(rt);
-            if(a!=null) for(int i=0;i<a.Length;i++) if(m.GetParameters()[i].IsOut) a[i]=null;
-            return null;
-        }
-    }
-
     void Emu(){
         int tid=SysEnv.CurrentManagedThreadId; MyLog($"Emu START id={tid}");
         try{
@@ -129,18 +141,14 @@ public class GameActivity : Activity
                 var srcProd="/storage/emulated/0/Download/Ryubing/keys/prod.keys";
                 var dstProd=Path.Combine(baseDir,"keys/prod.keys");
                 if(File.Exists(srcProd)){ File.Copy(srcProd,dstProd,true); FileLog($"COPIADO prod.keys {new FileInfo(dstProd).Length} bytes"); }
-                var srcTitle="/storage/emulated/0/Download/Ryubing/keys/title.keys";
-                var dstTitle=Path.Combine(baseDir,"keys/title.keys");
-                if(File.Exists(srcTitle)){ File.Copy(srcTitle,dstTitle,true); FileLog($"COPIADO title.keys"); }
             }catch(Exception ex){ FileLog($"COPY FAIL {ex}"); }
             try{ VirtualFileSystem.ResetForAndroid(); }catch{}
             try{ typeof(VirtualFileSystem).GetField("_instance",All)?.SetValue(null,null); }catch{}
             var vfs=VirtualFileSystem.CreateInstance();
             vfs.ReloadKeySet();
             FileLog("ReloadKeySet OK #542");
-            // AUDIO FIX v10.7 - sem dependencia de backend externo
-            IHardwareDeviceDriver audio = (IHardwareDeviceDriver)DispatchProxy.Create<IHardwareDeviceDriver, DummyAudioProxy>();
-            FileLog("Audio Proxy Dummy interno OK v10.7");
+            IHardwareDeviceDriver audio = new NullAudioDriver();
+            FileLog("Audio NullAudioDriver OK - fix CS8920");
             FileLog("ANTES VulkanRenderer.Create");
             Holder.gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)Holder.nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
             try {
