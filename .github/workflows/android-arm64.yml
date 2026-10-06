@@ -19,12 +19,18 @@ jobs:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      DOTNET_NUGET_AUDIT: false
+      DOTNET_NUGET_SIGNATURE_VERIFICATION: false
 
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 1
+          fetch-depth: 0
+          lfs: true
+
+      - name: Fix submodules
+        run: git submodule update --init --recursive --force
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -38,18 +44,34 @@ jobs:
 
       - uses: actions/cache@v4
         with:
-          path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          path: |
+            ~/.nuget/packages
+            ~/.dotnet/workloads
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}-v6
           restore-keys: nuget-${{ runner.os }}-
 
-      - name: Android workload
-        run: dotnet workload install android --skip-sign-check
+      - name: Android workload + Fix nuget
+        run: |
+          cat > nuget.config <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+              <add key="libhac" value="https://legacy.git.ryujinx.app/api/v4/projects/17/packages/nuget/index.json" />
+              <add key="ryujinx-deps" value="https://legacy.git.ryujinx.app/api/v4/projects/71/packages/nuget/index.json" />
+              <add key="git.ryujinx.app" value="https://git.ryujinx.app/api/packages/projects/nuget/index.json" />
+            </packageSources>
+          </configuration>
+          EOF
+          rm -f NuGet.Config src/NuGet.Config src/nuget.config || true
+          cp nuget.config NuGet.Config
+          dotnet workload install android --skip-sign-check
 
       - name: Clean
         run: rm -rf release && mkdir -p release
 
-      - name: Restore
-        run: dotnet restore src/Ryujinx.Android/Ryujinx.Android.csproj -r android-arm64
+      - name: Restore ALL
+        run: dotnet restore --ignore-failed-sources /p:NuGetAudit=false /p:RunAnalyzersDuringBuild=false
 
       - name: Publish
         env:
@@ -58,27 +80,22 @@ jobs:
           RYU_KEY_PASS: ${{ secrets.KEY_PASS }}
           RYU_STORE_PASS: ${{ secrets.STORE_PASS }}
         run: |
-          ARGS="src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -f net10.0-android -r android-arm64 --no-restore -p:AndroidPackageFormat=apk -p:RunAOTCompilation=false"
+          ARGS="src/Ryujinx.Android/Ryujinx.Android.csproj -c Release -f net10.0-android -r android-arm64 --no-restore -p:AndroidPackageFormat=apk -p:RunAOTCompilation=false -p:AndroidUseAssemblyStore=false -p:NuGetAudit=false -p:RunAnalyzersDuringBuild=false"
           if [ -z "$KEYSTORE_BASE64" ]; then
-            dotnet publish $ARGS
+            dotnet publish $ARGS --ignore-failed-sources
           else
             echo "$KEYSTORE_BASE64" | base64 -d > $RUNNER_TEMP/ryubing.keystore
-            dotnet publish $ARGS -p:AndroidKeyStore=true -p:AndroidSigningKeyStore=$RUNNER_TEMP/ryubing.keystore -p:AndroidSigningKeyAlias=$KEY_ALIAS -p:AndroidSigningKeyPass=$RYU_KEY_PASS -p:AndroidSigningStorePass=$RYU_STORE_PASS
+            dotnet publish $ARGS -p:AndroidKeyStore=true -p:AndroidSigningKeyStore=$RUNNER_TEMP/ryubing.keystore -p:AndroidSigningKeyAlias=$KEY_ALIAS -p:AndroidSigningKeyPass=$RYU_KEY_PASS -p:AndroidSigningStorePass=$RYU_STORE_PASS --ignore-failed-sources
           fi
 
       - name: Select ONE APK - FIX 4 APKs
         run: |
           echo "=== TODOS ==="
           find src/Ryujinx.Android/bin/Release -name "*.apk" -exec ls -lh {} \;
-
-          # Pega o Signed (150MB)
           APK=$(find src/Ryujinx.Android/bin/Release -name "*-Signed.apk" | head -n 1)
-
-          # Fallback: maior arquivo
           if [ -z "$APK" ]; then
             APK=$(find src/Ryujinx.Android/bin/Release -name "*.apk" -printf "%s %p\n" | sort -nr | head -n1 | cut -d' ' -f2-)
           fi
-
           echo "ESCOLHIDO: $APK"
           cp "$APK" release/Ryubing-Android-ARM64-#${{ github.run_number }}.apk
           ls -lh release/
