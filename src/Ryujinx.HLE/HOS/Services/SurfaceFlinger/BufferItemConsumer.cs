@@ -1,4 +1,5 @@
 using Ryujinx.Graphics.Gpu;
+using Ryujinx.Common.Logging;
 using System;
 
 namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
@@ -20,6 +21,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
             if (status != Status.Success)
             {
+                Logger.Error?.Print(LogClass.Gpu, $"[VI] SetConsumerUsageBits FAILED status={status}");
                 throw new InvalidOperationException();
             }
 
@@ -29,9 +31,12 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
                 if (status != Status.Success)
                 {
+                    Logger.Error?.Print(LogClass.Gpu, $"[VI] SetMaxAcquiredBufferCount FAILED status={status}");
                     throw new InvalidOperationException();
                 }
             }
+            
+            Logger.Info?.Print(LogClass.Gpu, $"[VI] BufferItemConsumer created bufferCount={bufferCount} usage={consumerUsage}");
         }
 
         public Status AcquireBuffer(out BufferItem bufferItem, ulong expectedPresent, bool waitForFence = false)
@@ -42,13 +47,16 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
                 if (status != Status.Success)
                 {
+                    // ESSE LOG VAI MOSTRAR POR QUE CELESTE CONGELA
+                    Logger.Info?.Print(LogClass.Gpu, $"[VI] AcquireBuffer FAILED status={status} expectedPresent={expectedPresent} - QUEUE EMPTY!");
                     bufferItem = null;
-
                     return status;
                 }
 
                 // Make sure to clone the object to not temper the real instance.
                 bufferItem = (BufferItem)tmp.Clone();
+
+                Logger.Info?.Print(LogClass.Gpu, $"[VI] AcquireBuffer OK slot={bufferItem.Slot} frame={bufferItem.FrameNumber} expectedPresent={expectedPresent} isAuto={bufferItem.IsAutoTimestamp}");
 
                 if (waitForFence)
                 {
@@ -65,11 +73,18 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         {
             lock (Lock)
             {
+                Logger.Info?.Print(LogClass.Gpu, $"[VI] ReleaseBuffer slot={bufferItem.Slot} frame={bufferItem.FrameNumber}");
+                
                 Status result = AddReleaseFenceLocked(bufferItem.Slot, ref bufferItem.GraphicBuffer, ref fence);
 
                 if (result == Status.Success)
                 {
                     result = ReleaseBufferLocked(bufferItem.Slot, ref bufferItem.GraphicBuffer);
+                }
+
+                if (result != Status.Success)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, $"[VI] ReleaseBuffer FAILED status={result} slot={bufferItem.Slot}");
                 }
 
                 return result;
@@ -80,6 +95,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         {
             lock (Lock)
             {
+                Logger.Info?.Print(LogClass.Gpu, $"[VI] SetDefaultBufferSize {width}x{height}");
                 return Consumer.SetDefaultBufferSize(width, height);
             }
         }
@@ -88,6 +104,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         {
             lock (Lock)
             {
+                Logger.Info?.Print(LogClass.Gpu, $"[VI] SetDefaultBufferFormat {defaultFormat}");
                 return Consumer.SetDefaultBufferFormat(defaultFormat);
             }
         }
