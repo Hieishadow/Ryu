@@ -47,6 +47,7 @@ public class GameActivity : Activity
     }
     class NullAudioDriver : IHardwareDeviceDriver {
         public static bool IsSupported => true;
+        public float Volume { get; set; } = 1f;
         public IHardwareDeviceSession OpenDeviceSession(IHardwareDeviceDriver.Direction d, IVirtualMemoryManager m, SampleFormat f, uint r, uint c) => new NullAudioSession();
         public IHardwareDeviceSession OpenDeviceSession(IHardwareDeviceDriver.Direction d, IVirtualMemoryManager m, SampleFormat f, uint r, uint c, float v=1f) => new NullAudioSession();
         public ManualResetEvent GetUpdateRequiredEvent() => new ManualResetEvent(false);
@@ -147,7 +148,7 @@ public class GameActivity : Activity
             vfs.ReloadKeySet();
             FileLog("ReloadKeySet OK #542");
             IHardwareDeviceDriver audio = new NullAudioDriver();
-            FileLog("Audio NullAudioDriver OK v10.8 dual overload");
+            FileLog("Audio NullAudioDriver v10.9 Volume fix");
             FileLog("ANTES VulkanRenderer.Create");
             Holder.gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)Holder.nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
             try {
