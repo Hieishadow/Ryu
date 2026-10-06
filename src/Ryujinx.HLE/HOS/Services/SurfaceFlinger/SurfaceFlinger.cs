@@ -8,6 +8,7 @@ using Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Threading;
 
@@ -16,28 +17,20 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
     class SurfaceFlinger : IConsumerListener, IDisposable
     {
         private readonly Switch _device;
-
         private readonly Dictionary<long, Layer> _layers;
-
         private bool _isRunning;
-
         private readonly Thread _composerThread;
-
         private readonly AutoResetEvent _event = new(false);
         private readonly AutoResetEvent _nextFrameEvent = new(true);
         private long _ticks;
         private long _ticksPerFrame;
         private readonly long _spinTicks;
         private readonly long _1msTicks;
-
         private VSyncMode _vSyncMode;
         private long _targetVSyncInterval;
-
         private int _swapInterval;
         private int _swapIntervalDelay;
-
         private readonly Lock _lock = new();
-
         public long RenderLayerId { get; private set; }
 
         private class Layer
@@ -61,27 +54,21 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             _device = device;
             _layers = new Dictionary<long, Layer>();
             RenderLayerId = 0;
-
             _composerThread = new Thread(HandleComposition)
             {
                 Name = "SurfaceFlinger.Composer",
                 Priority = ThreadPriority.AboveNormal
             };
-
             _ticks = 0;
             _spinTicks = Stopwatch.Frequency / 500;
             _1msTicks = Stopwatch.Frequency / 1000;
-
             UpdateSwapInterval(1);
-
             _composerThread.Start();
         }
 
         private void UpdateSwapInterval(int swapInterval)
         {
             _swapInterval = swapInterval;
-
-            // If the swap interval is 0, Game VSync is disabled.
             if (_swapInterval == 0)
             {
                 _nextFrameEvent.Set();
@@ -97,20 +84,14 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         public IGraphicBufferProducer CreateLayer(out long layerId, ulong pid, LayerState initialState = LayerState.ManagedClosed)
         {
             layerId = 1;
-
             lock (_lock)
             {
                 foreach (KeyValuePair<long, Layer> pair in _layers)
                 {
-                    if (pair.Key >= layerId)
-                    {
-                        layerId = pair.Key + 1;
-                    }
+                    if (pair.Key >= layerId) layerId = pair.Key + 1;
                 }
             }
-
             CreateLayerFromId(pid, layerId, initialState);
-
             return GetProducerByLayerId(layerId);
         }
 
@@ -119,14 +100,12 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             lock (_lock)
             {
                 Logger.Info?.Print(LogClass.SurfaceFlinger, $"Creating layer {layerId}");
-
                 BufferQueueCore core = BufferQueue.CreateBufferQueue(_device, pid, out BufferQueueProducer producer, out BufferQueueConsumer consumer);
-
                 core.BufferQueued += () =>
                 {
+                    try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [VI] BufferQueued layer={layerId} pid={pid}\n"); } catch {}
                     _nextFrameEvent.Set();
                 };
-
                 _layers.Add(layerId, new Layer
                 {
                     ProducerBinderId = HOSBinderDriverServer.RegisterBinderObject(producer),
@@ -142,17 +121,13 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         public Vi.ResultCode OpenLayer(ulong pid, long layerId, out IBinder producer)
         {
             Layer layer = GetLayerByIdLocked(layerId);
-
-            if (layer == null || layer.State != LayerState.ManagedClosed)
+            if (layer == null || layer.State!= LayerState.ManagedClosed)
             {
                 producer = null;
-
                 return Vi.ResultCode.InvalidArguments;
             }
-
             layer.State = LayerState.ManagedOpened;
             producer = layer.Producer;
-
             return Vi.ResultCode.Success;
         }
 
@@ -161,16 +136,12 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             lock (_lock)
             {
                 Layer layer = GetLayerByIdLocked(layerId);
-
                 if (layer == null)
                 {
                     Logger.Error?.Print(LogClass.SurfaceFlinger, $"Failed to close layer {layerId}");
-
                     return Vi.ResultCode.InvalidValue;
                 }
-
                 CloseLayer(layerId, layer);
-
                 return Vi.ResultCode.Success;
             }
         }
@@ -180,28 +151,10 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             lock (_lock)
             {
                 Layer layer = GetLayerByIdLocked(layerId);
-
-                if (layer == null)
-                {
-                    Logger.Error?.Print(LogClass.SurfaceFlinger, $"Failed to destroy managed layer {layerId} (not found)");
-
-                    return Vi.ResultCode.InvalidValue;
-                }
-
-                if (layer.State is not LayerState.ManagedClosed and not LayerState.ManagedOpened)
-                {
-                    Logger.Error?.Print(LogClass.SurfaceFlinger, $"Failed to destroy managed layer {layerId} (permission denied)");
-
-                    return Vi.ResultCode.PermissionDenied;
-                }
-
+                if (layer == null) return Vi.ResultCode.InvalidValue;
+                if (layer.State is not LayerState.ManagedClosed and not LayerState.ManagedOpened) return Vi.ResultCode.PermissionDenied;
                 HOSBinderDriverServer.UnregisterBinderObject(layer.ProducerBinderId);
-
-                if (_layers.Remove(layerId) && layer.State == LayerState.ManagedOpened)
-                {
-                    CloseLayer(layerId, layer);
-                }
-
+                if (_layers.Remove(layerId) && layer.State == LayerState.ManagedOpened) CloseLayer(layerId, layer);
                 return Vi.ResultCode.Success;
             }
         }
@@ -211,72 +164,29 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             lock (_lock)
             {
                 Layer layer = GetLayerByIdLocked(layerId);
-
-                if (layer == null)
-                {
-                    Logger.Error?.Print(LogClass.SurfaceFlinger, $"Failed to destroy stray layer {layerId} (not found)");
-
-                    return Vi.ResultCode.InvalidValue;
-                }
-
-                if (layer.State != LayerState.Stray)
-                {
-                    Logger.Error?.Print(LogClass.SurfaceFlinger, $"Failed to destroy stray layer {layerId} (permission denied)");
-
-                    return Vi.ResultCode.PermissionDenied;
-                }
-
+                if (layer == null) return Vi.ResultCode.InvalidValue;
+                if (layer.State!= LayerState.Stray) return Vi.ResultCode.PermissionDenied;
                 HOSBinderDriverServer.UnregisterBinderObject(layer.ProducerBinderId);
-
-                if (_layers.Remove(layerId))
-                {
-                    CloseLayer(layerId, layer);
-                }
-
+                if (_layers.Remove(layerId)) CloseLayer(layerId, layer);
                 return Vi.ResultCode.Success;
             }
         }
 
         private void CloseLayer(long layerId, Layer layer)
         {
-            // If the layer was removed and the current in use, we need to change the current layer in use.
             if (RenderLayerId == layerId)
             {
-                // If no layer is availaible, reset to default value.
-                if (_layers.Count == 0)
-                {
-                    SetRenderLayer(0);
-                }
-                else
-                {
-                    SetRenderLayer(_layers.Last().Key);
-                }
+                if (_layers.Count == 0) SetRenderLayer(0);
+                else SetRenderLayer(_layers.Last().Key);
             }
-
-            if (layer.State == LayerState.ManagedOpened)
-            {
-                layer.State = LayerState.ManagedClosed;
-            }
+            if (layer.State == LayerState.ManagedOpened) layer.State = LayerState.ManagedClosed;
         }
 
-        public void SetRenderLayer(long layerId)
-        {
-            lock (_lock)
-            {
-                RenderLayerId = layerId;
-            }
-        }
+        public void SetRenderLayer(long layerId) { lock (_lock) { RenderLayerId = layerId; } }
 
         private Layer GetLayerByIdLocked(long layerId)
         {
-            foreach (KeyValuePair<long, Layer> pair in _layers)
-            {
-                if (pair.Key == layerId)
-                {
-                    return pair.Value;
-                }
-            }
-
+            foreach (KeyValuePair<long, Layer> pair in _layers) if (pair.Key == layerId) return pair.Value;
             return null;
         }
 
@@ -285,32 +195,22 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             lock (_lock)
             {
                 Layer layer = GetLayerByIdLocked(layerId);
-
-                if (layer != null)
-                {
-                    return layer.Producer;
-                }
+                if (layer!= null) return layer.Producer;
             }
-
             return null;
         }
 
         private void HandleComposition()
         {
             _isRunning = true;
-
             long lastTicks = PerformanceCounter.ElapsedTicks;
-
             while (_isRunning)
             {
                 long ticks = PerformanceCounter.ElapsedTicks;
-
                 if (_swapInterval == 0)
                 {
                     Compose();
-
                     _device.System?.SignalVsync();
-
                     _nextFrameEvent.WaitOne(17);
                     lastTicks = ticks;
                 }
@@ -318,39 +218,19 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 {
                     _ticks += ticks - lastTicks;
                     lastTicks = ticks;
-
                     if (_ticks >= _ticksPerFrame)
                     {
-                        if (_swapIntervalDelay-- == 0)
-                        {
-                            Compose();
-
-                            // When a frame is presented, delay the next one by its swap interval value.
-                            _swapIntervalDelay = Math.Max(0, _swapInterval - 1);
-                        }
-
+                        if (_swapIntervalDelay-- == 0) Compose();
                         _device.System?.SignalVsync();
-
-                        // Apply a maximum bound of 3 frames to the tick remainder, in case some event causes Ryujinx to pause for a long time or messes with the timer.
                         _ticks = Math.Min(_ticks - _ticksPerFrame, _ticksPerFrame * 3);
                     }
-
-                    // Sleep if possible. If the time til the next frame is too low, spin wait instead.
                     long diff = _ticksPerFrame - (_ticks + PerformanceCounter.ElapsedTicks - ticks);
                     if (diff > 0)
                     {
                         PreciseSleepHelper.SleepUntilTimePoint(_event, PerformanceCounter.ElapsedTicks + diff);
-
                         diff = _ticksPerFrame - (_ticks + PerformanceCounter.ElapsedTicks - ticks);
-
-                        if (diff < _spinTicks)
-                        {
-                            PreciseSleepHelper.SpinWaitUntilTimePoint(PerformanceCounter.ElapsedTicks + diff);
-                        }
-                        else
-                        {
-                            _event.WaitOne((int)(diff / _1msTicks));
-                        }
+                        if (diff < _spinTicks) PreciseSleepHelper.SpinWaitUntilTimePoint(PerformanceCounter.ElapsedTicks + diff);
+                        else _event.WaitOne((int)(diff / _1msTicks));
                     }
                 }
             }
@@ -358,38 +238,37 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
         public void Compose()
         {
+            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [VI] Compose RenderLayerId={RenderLayerId} count={_layers.Count}\n"); } catch {}
             lock (_lock)
             {
-                // TODO: support multilayers (& multidisplay ?)
                 if (RenderLayerId == 0)
                 {
+                    try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"[VI] Compose SKIP RenderLayerId=0\n"); } catch {}
                     return;
                 }
-
                 Layer layer = GetLayerByIdLocked(RenderLayerId);
-
+                if (layer == null)
+                {
+                    try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"[VI] Compose layer NULL id={RenderLayerId}\n"); } catch {}
+                    return;
+                }
                 Status acquireStatus = layer.Consumer.AcquireBuffer(out BufferItem item, 0);
-
+                try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [VI] Acquire={acquireStatus} slot={(acquireStatus==Status.Success?item.Slot:-1)}\n"); } catch {}
                 if (acquireStatus == Status.Success)
                 {
                     if (_device.VSyncMode == VSyncMode.Unbounded)
                     {
-                        if (_swapInterval != 0)
-                        {
-                            UpdateSwapInterval(0);
-                            _vSyncMode = _device.VSyncMode;
-                        }
+                        if (_swapInterval!= 0) { UpdateSwapInterval(0); _vSyncMode = _device.VSyncMode; }
                     }
-                    else if (_device.VSyncMode != _vSyncMode)
+                    else if (_device.VSyncMode!= _vSyncMode)
                     {
-                        UpdateSwapInterval(_device.VSyncMode == VSyncMode.Unbounded ? 0 : item.SwapInterval);
+                        UpdateSwapInterval(_device.VSyncMode == VSyncMode.Unbounded? 0 : item.SwapInterval);
                         _vSyncMode = _device.VSyncMode;
                     }
-                    else if (item.SwapInterval != _swapInterval || _device.TargetVSyncInterval != _targetVSyncInterval)
+                    else if (item.SwapInterval!= _swapInterval || _device.TargetVSyncInterval!= _targetVSyncInterval)
                     {
                         UpdateSwapInterval(item.SwapInterval);
                     }
-
                     PostFrameBuffer(layer, item);
                 }
                 else if (acquireStatus is not Status.NoBufferAvailaible and not Status.InvalidOperation)
@@ -403,68 +282,30 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         {
             int frameBufferWidth = item.GraphicBuffer.Object.Width;
             int frameBufferHeight = item.GraphicBuffer.Object.Height;
-
             int nvMapHandle = item.GraphicBuffer.Object.Buffer.Surfaces[0].NvMapHandle;
-
-            if (nvMapHandle == 0)
-            {
-                nvMapHandle = item.GraphicBuffer.Object.Buffer.NvMapId;
-            }
-
+            if (nvMapHandle == 0) nvMapHandle = item.GraphicBuffer.Object.Buffer.NvMapId;
             ulong bufferOffset = (ulong)item.GraphicBuffer.Object.Buffer.Surfaces[0].Offset;
-
             NvMapHandle map = NvMapDeviceFile.GetMapFromHandle(layer.Owner, nvMapHandle);
-
+            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [VI] PostFB w={frameBufferWidth}x{frameBufferHeight} h={nvMapHandle} off={bufferOffset} map={(map!=null?"OK":"NULL")} addr={(map!=null?map.Address:0):X} cf={item.GraphicBuffer.Object.Buffer.Surfaces[0].ColorFormat}\n"); } catch {}
+            if (map == null)
+            {
+                try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"[VI] PostFB map NULL -> Release\n"); } catch {}
+                AndroidFence f = AndroidFence.NoFence;
+                layer.Consumer.ReleaseBuffer(item, ref f);
+                return;
+            }
             ulong frameBufferAddress = map.Address + bufferOffset;
-
             Format format = ConvertColorFormat(item.GraphicBuffer.Object.Buffer.Surfaces[0].ColorFormat);
-
-            byte bytesPerPixel =
-                format is Format.B5G6R5Unorm or
-                Format.R4G4B4A4Unorm ? (byte)2 : (byte)4;
-
+            byte bytesPerPixel = format is Format.B5G6R5Unorm or Format.R4G4B4A4Unorm? (byte)2 : (byte)4;
             int gobBlocksInY = 1 << item.GraphicBuffer.Object.Buffer.Surfaces[0].BlockHeightLog2;
-
-            // Note: Rotation is being ignored.
             Rect cropRect = item.Crop;
-
             bool flipX = item.Transform.HasFlag(NativeWindowTransform.FlipX);
             bool flipY = item.Transform.HasFlag(NativeWindowTransform.FlipY);
-
             AspectRatio aspectRatio = _device.Configuration.AspectRatio;
             bool isStretched = aspectRatio == AspectRatio.Stretched;
-
-            ImageCrop crop = new(
-                cropRect.Left,
-                cropRect.Right,
-                cropRect.Top,
-                cropRect.Bottom,
-                flipX,
-                flipY,
-                isStretched,
-                aspectRatio.ToFloatX(),
-                aspectRatio.ToFloatY());
-
-            TextureCallbackInformation textureCallbackInformation = new()
-            {
-                Layer = layer,
-                Item = item,
-            };
-
-            if (_device.Gpu.Window.EnqueueFrameThreadSafe(
-                layer.Owner,
-                frameBufferAddress,
-                frameBufferWidth,
-                frameBufferHeight,
-                0,
-                false,
-                gobBlocksInY,
-                format,
-                bytesPerPixel,
-                crop,
-                AcquireBuffer,
-                ReleaseBuffer,
-                textureCallbackInformation))
+            ImageCrop crop = new(cropRect.Left, cropRect.Right, cropRect.Top, cropRect.Bottom, flipX, flipY, isStretched, aspectRatio.ToFloatX(), aspectRatio.ToFloatY());
+            TextureCallbackInformation textureCallbackInformation = new() { Layer = layer, Item = item, };
+            if (_device.Gpu.Window.EnqueueFrameThreadSafe(layer.Owner, frameBufferAddress, frameBufferWidth, frameBufferHeight, 0, false, gobBlocksInY, format, bytesPerPixel, crop, AcquireBuffer, ReleaseBuffer, textureCallbackInformation))
             {
                 if (item.Fence.FenceCount == 0)
                 {
@@ -486,27 +327,14 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             }
         }
 
-        private void ReleaseBuffer(object obj)
-        {
-            ReleaseBuffer((TextureCallbackInformation)obj);
-        }
-
+        private void ReleaseBuffer(object obj) { ReleaseBuffer((TextureCallbackInformation)obj); }
         private void ReleaseBuffer(TextureCallbackInformation information)
         {
             AndroidFence fence = AndroidFence.NoFence;
-
             information.Layer.Consumer.ReleaseBuffer(information.Item, ref fence);
         }
-
-        private void AcquireBuffer(GpuContext ignored, object obj)
-        {
-            AcquireBuffer((TextureCallbackInformation)obj);
-        }
-
-        private void AcquireBuffer(TextureCallbackInformation information)
-        {
-            information.Item.Fence.WaitForever(_device.Gpu);
-        }
+        private void AcquireBuffer(GpuContext ignored, object obj) { AcquireBuffer((TextureCallbackInformation)obj); }
+        private void AcquireBuffer(TextureCallbackInformation information) { information.Item.Fence.WaitForever(_device.Gpu); }
 
         public static Format ConvertColorFormat(ColorFormat colorFormat)
         {
@@ -524,20 +352,18 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         public void Dispose()
         {
             _isRunning = false;
-
-            foreach (Layer layer in _layers.Values)
-            {
-                layer.Core.PrepareForExit();
-            }
+            foreach (Layer layer in _layers.Values) layer.Core.PrepareForExit();
         }
 
         public void OnFrameAvailable(ref BufferItem item)
         {
+            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [VI] OnFrameAvailable slot={item.Slot} w={item.GraphicBuffer.Object.Width}x{item.GraphicBuffer.Object.Height}\n"); } catch {}
             _device.Statistics.RecordGameFrameTime();
         }
 
         public void OnFrameReplaced(ref BufferItem item)
         {
+            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [VI] OnFrameReplaced slot={item.Slot}\n"); } catch {}
             _device.Statistics.RecordGameFrameTime();
         }
 
