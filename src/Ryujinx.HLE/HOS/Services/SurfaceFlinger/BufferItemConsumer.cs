@@ -1,8 +1,8 @@
 using Ryujinx.Graphics.GAL;
-using Ryujinx.Graphics.Gpu;
 using Ryujinx.Graphics.Gpu.Image;
 using Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap;
 using System;
+using System.IO;
 
 namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 {
@@ -13,55 +13,46 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         public BufferItemConsumer(Switch device, BufferQueueConsumer consumer, uint consumerUsage, int bufferCount, bool controlledByApp, IConsumerListener listener = null) : base(consumer, controlledByApp, listener)
         {
             _gpuContext = device.Gpu;
-            Status s = Consumer.SetConsumerUsageBits(consumerUsage);
-            if (s!= Status.Success) throw new InvalidOperationException();
-            if (bufferCount!= -1)
-            {
-                s = Consumer.SetMaxAcquiredBufferCount(bufferCount);
-                if (s!= Status.Success) throw new InvalidOperationException();
-            }
+            Consumer.SetConsumerUsageBits(consumerUsage);
+            if (bufferCount!= -1) Consumer.SetMaxAcquiredBufferCount(bufferCount);
         }
 
-        public override void OnFrameAvailable(ref BufferItem item) { base.OnFrameAvailable(ref item); TryEnqueue(); }
-        public override void OnFrameReplaced(ref BufferItem item) { base.OnFrameReplaced(ref item); TryEnqueue(); }
+        public override void OnFrameAvailable(ref BufferItem item)
+        {
+            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [VI] OnFrameAvailable slot={item.Slot}\n"); } catch {}
+            base.OnFrameAvailable(ref item);
+            TryEnqueue();
+        }
+
+        public override void OnFrameReplaced(ref BufferItem item)
+        {
+            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [VI] OnFrameReplaced slot={item.Slot}\n"); } catch {}
+            base.OnFrameReplaced(ref item);
+            TryEnqueue();
+        }
 
         private void TryEnqueue()
         {
             try
             {
-                if (AcquireBuffer(out BufferItem bi, 0, true)!= Status.Success) return;
+                Status st = AcquireBuffer(out BufferItem bi, 0, true);
+                try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [VI] Acquire={st}\n"); } catch {}
+                if (st!= Status.Success) return;
+
+                // A partir daqui só logamos, sem mexer em formato ainda
                 var gb = bi.GraphicBuffer.Object;
-                var surf = gb.Buffer.Surfaces[0]; // Nessa fork SurfaceArray sempre tem pelo menos 1
-
-                int nvHandle = surf.NvMapHandle;
-                if (nvHandle == 0) nvHandle = gb.Buffer.NvMapId;
-                ulong offset = (ulong)surf.Offset;
-
-                var owner = Consumer.Core.Owner;
-                NvMapHandle map = NvMapDeviceFile.GetMapFromHandle(owner, nvHandle);
-                if (map == null) return;
-                ulong address = map.Address + offset; // ambos ulong, sem ambiguidade
-                if (address == 0) return;
-
-                int width = gb.Width;
-                int height = gb.Height;
-                int stride = width;
-                bool isLinear = true;
-                int gobBlocks = 1 << surf.BlockHeightLog2;
-                if (gobBlocks == 0) gobBlocks = 1;
-
-                Format fmt = Format.R8G8B8A8Unorm;
-                byte bpp = 4;
-
-                var crop = new ImageCrop(bi.Crop.Left, bi.Crop.Right, bi.Crop.Top, bi.Crop.Bottom, false, false, false, 1, 1);
-                BufferItem copy = bi;
-                Action<GpuContext, object> acq = (ctx, obj) => { try { ((BufferItem)obj).Fence.WaitForever(ctx); } catch {} };
-                Action<object> rel = (obj) => { try { var b = (BufferItem)obj; AndroidFence f = AndroidFence.NoFence; ReleaseBuffer(b, ref f); } catch {} };
-
-                if (_gpuContext.Window.EnqueueFrameThreadSafe(address, width, height, stride, isLinear, gobBlocks, fmt, bpp, crop, acq, rel, copy))
-                    _gpuContext.Window.SignalFrameReady();
+                var surf = gb.Buffer.Surfaces[0];
+                int nvHandle = surf.NvMapHandle !=0 ? surf.NvMapHandle : gb.Buffer.NvMapId;
+                try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"[VI] gb={gb.Width}x{gb.Height} h={nvHandle} off={surf.Offset} cf={surf.ColorFormat}\n"); } catch {}
+                
+                // teste temporário - não enfileira ainda, só valida que chegou até aqui
+                AndroidFence f = AndroidFence.NoFence;
+                ReleaseBuffer(bi, ref f);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"[VI] EX TryEnqueue {ex}\n"); } catch {}
+            }
         }
 
         public Status AcquireBuffer(out BufferItem bufferItem, ulong expectedPresent, bool waitForFence = false)
