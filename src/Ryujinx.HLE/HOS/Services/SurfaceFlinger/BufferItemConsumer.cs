@@ -31,9 +31,8 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             {
                 if (AcquireBuffer(out BufferItem bi, 0, true)!= Status.Success) return;
                 var gb = bi.GraphicBuffer.Object;
-                if (gb.Buffer.Surfaces == null || gb.Buffer.Surfaces.Length == 0) return;
+                var surf = gb.Buffer.Surfaces[0]; // Nessa fork SurfaceArray sempre tem pelo menos 1
 
-                var surf = gb.Buffer.Surfaces[0];
                 int nvHandle = surf.NvMapHandle;
                 if (nvHandle == 0) nvHandle = gb.Buffer.NvMapId;
                 ulong offset = (ulong)surf.Offset;
@@ -41,7 +40,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 var owner = Consumer.Core.Owner;
                 NvMapHandle map = NvMapDeviceFile.GetMapFromHandle(owner, nvHandle);
                 if (map == null) return;
-                ulong address = (ulong)(map.Address + (long)offset);
+                ulong address = map.Address + offset; // ambos ulong, sem ambiguidade
                 if (address == 0) return;
 
                 int width = gb.Width;
