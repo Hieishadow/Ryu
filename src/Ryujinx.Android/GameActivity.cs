@@ -79,22 +79,22 @@ public class GameActivity : Activity
         var extraPath=Intent.GetStringExtra("rom_path"); if(extraPath!=null) romPath=extraPath;
         surfaceView=new global::Android.Views.SurfaceView(this); logView=new TextView(this); logView.Text=Path.GetFileName(romPath); logView.SetTextColor(global::Android.Graphics.Color.White); logView.SetBackgroundColor(global::Android.Graphics.Color.Argb(180,0,0,0)); logView.TextSize=10;
         var root=new FrameLayout(this); root.AddView(surfaceView,new FrameLayout.LayoutParams(-1,-1)); root.AddView(logView,new FrameLayout.LayoutParams(-1,-2){ Gravity=GravityFlags.Top|GravityFlags.Left }); SetContentView(root);
-        surfaceView.Holder.AddCallback(new CB(this)); MyLog($"OnCreate {romPath} v17 OFICIAL BB FIX");
+        surfaceView.Holder.AddCallback(new CB(this)); MyLog($"OnCreate {romPath} v18 ConsumeFrame");
     }
     public override void OnBackPressed(){ Holder.running=false; try{ Holder.emuThread?.Join(2000); }catch{} if(Holder.nativeWindow!=IntPtr.Zero){ try{ ANativeWindow_release(Holder.nativeWindow); FileLog("release acquire-ref OK"); }catch{} try{ ANativeWindow_release(Holder.nativeWindow); FileLog("release fromSurface-ref OK"); }catch{} Holder.nativeWindow=IntPtr.Zero; } try{ VirtualFileSystem.ResetForAndroid(); }catch{} base.OnBackPressed(); }
     class CB : Java.Lang.Object, ISurfaceHolderCallback{
         readonly GameActivity a; public CB(GameActivity act){ a=act; }
-        public void SurfaceCreated(ISurfaceHolder h){ a.FileLog($"v17 Created {h.SurfaceFrame.Width()}x{h.SurfaceFrame.Height()}"); }
+        public void SurfaceCreated(ISurfaceHolder h){ a.FileLog($"v18 Created {h.SurfaceFrame.Width()}x{h.SurfaceFrame.Height()}"); }
         public void SurfaceChanged(ISurfaceHolder h,AFormat f,int w,int ht){
-            a.FileLog($"v17 Changed {w}x{ht} f={f}");
+            a.FileLog($"v18 Changed {w}x{ht} f={f}");
             if(w<=0||ht<=0) return;
             if(Holder.emuThread!=null && Holder.emuThread.IsAlive) return;
             try{
                 IntPtr env = JEnv.EnvironmentPointer;
                 if(env==IntPtr.Zero) env = ARuntime.JNIEnv.Handle;
-                a.FileLog($"v17 JNIEnv env={env.ToInt64():X} surfaceHandle={h.Surface.Handle.ToInt64():X} IsValid={h.Surface.IsValid}");
+                a.FileLog($"v18 JNIEnv env={env.ToInt64():X} surfaceHandle={h.Surface.Handle.ToInt64():X} IsValid={h.Surface.IsValid}");
                 IntPtr win = ANativeWindow_fromSurface(env, h.Surface.Handle);
-                a.FileLog($"v17 ANativeWindow_fromSurface win={win.ToInt64():X}");
+                a.FileLog($"v18 ANativeWindow_fromSurface win={win.ToInt64():X}");
                 if(win==IntPtr.Zero){ a.FileLog("[VK] ANativeWindow_fromSurface NULL"); return; }
                 a.FileLog($"[VK] ANativeWindow_fromSurface OK win={win.ToInt64():X}");
                 try
@@ -104,20 +104,20 @@ public class GameActivity : Activity
                     int r = ANativeWindow_setBuffersGeometry(win, 0, 0, 1);
                     a.FileLog($"[VK] setBuffersGeometry result={r}");
                     Holder.nativeWindow = win;
-                    a.FileLog($"v17 window final={Holder.nativeWindow.ToInt64():X}");
+                    a.FileLog($"v18 window final={Holder.nativeWindow.ToInt64():X}");
                 }
                 catch
                 {
                     try { ANativeWindow_release(win); } catch {}
                     throw;
                 }
-            }catch(Exception ex){ a.FileLog($"v17 ANW FAIL {ex}"); a.CrashLog("crash_anw",ex.ToString()); return; }
+            }catch(Exception ex){ a.FileLog($"v18 ANW FAIL {ex}"); a.CrashLog("crash_anw",ex.ToString()); return; }
             Holder.running=true;
             Holder.emuThread=new Thread(()=>{ try{ a.Emu(w,ht); }catch(Exception ex){ a.FileLog($"OUTER {ex}"); a.CrashLog("crash_outer",ex.ToString()); } }){ IsBackground=true };
             Holder.emuThread.Start();
         }
         public void SurfaceDestroyed(ISurfaceHolder h){
-            a.FileLog("v17 Destroyed");
+            a.FileLog("v18 Destroyed");
             Holder.running=false;
             try{ Holder.emuThread?.Join(3000); }catch{}
             try{ Holder.device?.Dispose(); }catch{} Holder.device=null;
@@ -133,7 +133,7 @@ public class GameActivity : Activity
     class DummyUIProxy : DispatchProxy { protected override object Invoke(MethodInfo m, object[] a){ var rt=m.ReturnType; if(rt==typeof(void)) return null; if(rt==typeof(bool)) return true; if(rt.IsValueType) return Activator.CreateInstance(rt); if(a!=null) for(int i=0;i<a.Length;i++) if(m.GetParameters()[i].IsOut) a[i]=null; return null; } }
     static IHostUIHandler CreateDummyUI() => DispatchProxy.Create<IHostUIHandler, DummyUIProxy>();
     void Emu(int sw,int sh){
-        FileLog($"Emu ENTER v17 win={Holder.nativeWindow.ToInt64():X} {sw}x{sh}");
+        FileLog($"Emu ENTER v18 win={Holder.nativeWindow.ToInt64():X} {sw}x{sh}");
         try{
             SysEnv.SetEnvironmentVariable("RYUJINX_DISABLE_PPTC", "1");
             string baseDir=Path.Combine(FilesDir.AbsolutePath,"Ryujinx");
@@ -171,9 +171,45 @@ public class GameActivity : Activity
             if(romPath.EndsWith(".xci",StringComparison.OrdinalIgnoreCase)) Holder.device.LoadXci(romPath); else Holder.device.LoadNsp(romPath);
             FileLog("DEPOIS Load");
             try{ var winProp=Holder.gpu.GetType().GetProperty("Window",All); var win=winProp?.GetValue(Holder.gpu); win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{sw,sh}); }catch{}
-            int frames=0; FileLog($"LOOP {sw}x{sh}");
-            while(Holder.running && Holder.nativeWindow!=IntPtr.Zero){
-                try{ Holder.device.ProcessFrame(); Holder.device.PresentFrame(()=>{}); frames++; if(frames==1){ FileLog("FIRST FRAME OK!!!"); RunOnUiThread(()=>{ try{ logView.Visibility=ViewStates.Gone; }catch{} }); } Thread.Sleep(16); }catch(Exception eLoop){ FileLog($"LOOP EX {eLoop}"); break; }
+
+            int frames = 0;
+            FileLog($"LOOP v18 {sw}x{sh}");
+            while (Holder.running && Holder.nativeWindow!= IntPtr.Zero)
+            {
+                try
+                {
+                    Holder.device.ProcessFrame();
+                    bool frameAvailable = Holder.device.ConsumeFrameAvailable();
+                    if (frameAvailable)
+                    {
+                        if (frames < 5 || frames % 60 == 0)
+                            FileLog($"[FRAME] Available=TRUE #{frames + 1}");
+                        Holder.device.PresentFrame(() => {});
+                        frames++;
+                        if (frames == 1)
+                        {
+                            FileLog("FIRST FRAME PRESENTED!!!");
+                            RunOnUiThread(() =>
+                            {
+                                try { logView.Visibility = ViewStates.Gone; } catch {}
+                            });
+                        }
+                        if (frames % 60 == 0)
+                            FileLog($"[FRAME] PRESENTED #{frames}");
+                    }
+                    else
+                    {
+                        if (frames < 5)
+                            FileLog($"[FRAME] Available=FALSE loop={frames}");
+                    }
+                    Thread.Sleep(16);
+                }
+                catch (Exception eLoop)
+                {
+                    FileLog($"LOOP EX {eLoop}");
+                    CrashLog("crash_loop", eLoop.ToString());
+                    break;
+                }
             }
         }catch(Exception eAll){ FileLog($"CRASH GERAL {eAll}"); CrashLog("crash_emu", eAll.ToString()); } finally{ FileLog("Emu END"); }
     }
