@@ -97,6 +97,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
         private void CreateLayerFromId(ulong pid, long layerId, LayerState initialState)
         {
+            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [VI] CreateLayerFromId pid={pid} layerId={layerId} state={initialState}\n"); } catch {}
             lock (_lock)
             {
                 Logger.Info?.Print(LogClass.SurfaceFlinger, $"Creating layer {layerId}");
@@ -115,6 +116,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                     Owner = pid,
                     State = initialState,
                 });
+                try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [VI] Layer ADDED id={layerId} count={_layers.Count}\n"); } catch {}
             }
         }
 
@@ -182,7 +184,11 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             if (layer.State == LayerState.ManagedOpened) layer.State = LayerState.ManagedClosed;
         }
 
-        public void SetRenderLayer(long layerId) { lock (_lock) { RenderLayerId = layerId; } }
+        public void SetRenderLayer(long layerId)
+        {
+            try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [VI] SetRenderLayer id={layerId}\n"); } catch {}
+            lock (_lock) { RenderLayerId = layerId; }
+        }
 
         private Layer GetLayerByIdLocked(long layerId)
         {
