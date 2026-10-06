@@ -1,5 +1,7 @@
 using Ryujinx.Graphics.GAL;
+using Ryujinx.Graphics.Gpu;
 using Ryujinx.Graphics.Gpu.Image;
+using Ryujinx.HLE.HOS;
 using Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap;
 using System;
 using System.IO;
@@ -14,7 +16,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         {
             _gpuContext = device.Gpu;
             Consumer.SetConsumerUsageBits(consumerUsage);
-            if (bufferCount!= -1) Consumer.SetMaxAcquiredBufferCount(bufferCount);
+            if (bufferCount != -1) Consumer.SetMaxAcquiredBufferCount(bufferCount);
         }
 
         public override void OnFrameAvailable(ref BufferItem item)
@@ -37,15 +39,13 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             {
                 Status st = AcquireBuffer(out BufferItem bi, 0, true);
                 try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"{DateTime.Now:HH:mm:ss.fff} [VI] Acquire={st}\n"); } catch {}
-                if (st!= Status.Success) return;
+                if (st != Status.Success) return;
 
-                // A partir daqui só logamos, sem mexer em formato ainda
                 var gb = bi.GraphicBuffer.Object;
                 var surf = gb.Buffer.Surfaces[0];
-                int nvHandle = surf.NvMapHandle !=0 ? surf.NvMapHandle : gb.Buffer.NvMapId;
+                int nvHandle = surf.NvMapHandle != 0 ? surf.NvMapHandle : gb.Buffer.NvMapId;
                 try { File.AppendAllText("/storage/emulated/0/Download/Ryubing/ryubing_log.txt", $"[VI] gb={gb.Width}x{gb.Height} h={nvHandle} off={surf.Offset} cf={surf.ColorFormat}\n"); } catch {}
-                
-                // teste temporário - não enfileira ainda, só valida que chegou até aqui
+
                 AndroidFence f = AndroidFence.NoFence;
                 ReleaseBuffer(bi, ref f);
             }
@@ -60,7 +60,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             lock (Lock)
             {
                 Status st = AcquireBufferLocked(out BufferItem tmp, expectedPresent);
-                if (st!= Status.Success) { bufferItem = null; return st; }
+                if (st != Status.Success) { bufferItem = null; return st; }
                 bufferItem = (BufferItem)tmp.Clone();
                 if (waitForFence) bufferItem.Fence.WaitForever(_gpuContext);
                 if (!Slots[bufferItem.Slot].GraphicBuffer.IsNull)
