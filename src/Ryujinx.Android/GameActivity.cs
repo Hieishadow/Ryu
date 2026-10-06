@@ -17,6 +17,7 @@ using Ryujinx.Audio.Integration;
 using Ryujinx.HLE.UI;
 using Ryujinx.Memory;
 using Silk.NET.Vulkan;
+using Silk.NET.Vulkan.Extensions.KHR;
 using System;
 using System.Collections.Concurrent;
 using System.IO;
@@ -78,7 +79,7 @@ public class GameActivity : Activity
         var extraPath=Intent.GetStringExtra("rom_path"); if(extraPath!=null) romPath=extraPath;
         surfaceView=new global::Android.Views.SurfaceView(this); logView=new TextView(this); logView.Text=Path.GetFileName(romPath); logView.SetTextColor(global::Android.Graphics.Color.White); logView.SetBackgroundColor(global::Android.Graphics.Color.Argb(180,0,0,0)); logView.TextSize=10;
         var root=new FrameLayout(this); root.AddView(surfaceView,new FrameLayout.LayoutParams(-1,-1)); root.AddView(logView,new FrameLayout.LayoutParams(-1,-2){ Gravity=GravityFlags.Top|GravityFlags.Left }); SetContentView(root);
-        surfaceView.Holder.AddCallback(new CB(this)); MyLog($"OnCreate {romPath} v17 OFICIAL");
+        surfaceView.Holder.AddCallback(new CB(this)); MyLog($"OnCreate {romPath} v17 OFICIAL BB");
     }
     public override void OnBackPressed(){ Holder.running=false; try{ Holder.emuThread?.Join(2000); }catch{} if(Holder.nativeWindow!=IntPtr.Zero){ try{ ANativeWindow_release(Holder.nativeWindow); FileLog("release acquire-ref OK"); }catch{} try{ ANativeWindow_release(Holder.nativeWindow); FileLog("release fromSurface-ref OK"); }catch{} Holder.nativeWindow=IntPtr.Zero; } try{ VirtualFileSystem.ResetForAndroid(); }catch{} base.OnBackPressed(); }
     class CB : Java.Lang.Object, ISurfaceHolderCallback{
@@ -148,10 +149,15 @@ public class GameActivity : Activity
             Holder.gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{
                 unsafe{
                     FileLog($"[FILE] GetSurface STEP 1 inst={inst.Handle.ToInt64():X} win={Holder.nativeWindow.ToInt64():X}");
+                    if (!vk.TryGetInstanceExtension(inst, out KhrAndroidSurface androidExt))
+                    {
+                        FileLog("[FILE] GetSurface FAIL KhrAndroidSurface not found");
+                        throw new Exception("KhrAndroidSurface extension not available");
+                    }
                     var ci = new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)Holder.nativeWindow };
                     FileLog("[FILE] GetSurface STEP 2 ci OK");
-                    FileLog("[FILE] GetSurface STEP 3 CALL vk.CreateAndroidSurfaceKHR");
-                    var res = vk.CreateAndroidSurface(inst, &ci, null, out var surf);
+                    FileLog("[FILE] GetSurface STEP 3 CALL androidExt.CreateAndroidSurface");
+                    var res = androidExt.CreateAndroidSurface(inst, &ci, null, out var surf);
                     FileLog($"[FILE] GetSurface STEP 4 RESULT={res} surf={surf.Handle.ToInt64():X}");
                     if(res!=VkResult.Success) throw new Exception($"vkCreate failed {res}");
                     FileLog("[FILE] GetSurface STEP 5 OK RETURN");
