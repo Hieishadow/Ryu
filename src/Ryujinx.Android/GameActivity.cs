@@ -26,6 +26,9 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using SysEnv = System.Environment;
 using Switch = Ryujinx.HLE.Switch;
+using ARuntime = global::Android.Runtime;
+using JEnv = global::Java.Interop.JniEnvironment;
+using VkResult = global::Silk.NET.Vulkan.Result;
 
 namespace Ryujinx.Android
 {
@@ -61,16 +64,13 @@ public class GameActivity : Activity
     const BindingFlags All = BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
     static class Holder { public static IntPtr nativeWindow=IntPtr.Zero; public static Thread emuThread; public static volatile bool running=false; public static Switch device; public static VulkanRenderer gpu; }
     string romPath=""; global::Android.Views.SurfaceView surfaceView; TextView logView;
-
     [DllImport("android")] static extern IntPtr ANativeWindow_fromSurface(IntPtr env, IntPtr surface);
     [DllImport("android")] static extern void ANativeWindow_acquire(IntPtr window);
     [DllImport("android")] static extern void ANativeWindow_release(IntPtr window);
     [DllImport("android")] static extern int ANativeWindow_setBuffersGeometry(IntPtr window, int w, int h, int format);
-
     void FileLog(string s){ try{ var p="/storage/emulated/0/Download/Ryubing/ryubing_log.txt"; Directory.CreateDirectory(Path.GetDirectoryName(p)); File.AppendAllText(p, DateTime.Now.ToString("HH:mm:ss.fff")+" [FILE] "+s+"\n"); }catch{} }
     void CrashLog(string name, string s){ try{ var p=$"/storage/emulated/0/Download/Ryubing/{name}.txt"; Directory.CreateDirectory(Path.GetDirectoryName(p)); File.WriteAllText(p, DateTime.Now.ToString()+"\n"+s+"\n"); }catch{} }
     void MyLog(string s){ try{ RunOnUiThread(()=>{ if(logView!=null){ logView.Text+="\n"+s; if(logView.Text.Length>4000) logView.Text=logView.Text.Substring(logView.Text.Length-4000);} }); FileLog(s); }catch{ FileLog(s); } }
-
     protected override void OnCreate(Bundle saved){
         base.OnCreate(saved);
         if(Holder.device!=null){ try{ Holder.running=false; Holder.emuThread?.Join(2000); }catch{} try{ Holder.device?.Dispose(); }catch{} if(Holder.nativeWindow!=IntPtr.Zero){ try{ ANativeWindow_release(Holder.nativeWindow); }catch{} try{ ANativeWindow_release(Holder.nativeWindow); }catch{} Holder.nativeWindow=IntPtr.Zero; } Holder.device=null; Holder.gpu=null; try{ VirtualFileSystem.ResetForAndroid(); }catch{} GC.Collect(); }
@@ -81,7 +81,6 @@ public class GameActivity : Activity
         surfaceView.Holder.AddCallback(new CB(this)); MyLog($"OnCreate {romPath} v17 OFICIAL");
     }
     public override void OnBackPressed(){ Holder.running=false; try{ Holder.emuThread?.Join(2000); }catch{} if(Holder.nativeWindow!=IntPtr.Zero){ try{ ANativeWindow_release(Holder.nativeWindow); FileLog("release acquire-ref OK"); }catch{} try{ ANativeWindow_release(Holder.nativeWindow); FileLog("release fromSurface-ref OK"); }catch{} Holder.nativeWindow=IntPtr.Zero; } try{ VirtualFileSystem.ResetForAndroid(); }catch{} base.OnBackPressed(); }
-
     class CB : Java.Lang.Object, ISurfaceHolderCallback{
         readonly GameActivity a; public CB(GameActivity act){ a=act; }
         public void SurfaceCreated(ISurfaceHolder h){ a.FileLog($"v17 Created {h.SurfaceFrame.Width()}x{h.SurfaceFrame.Height()}"); }
@@ -90,19 +89,27 @@ public class GameActivity : Activity
             if(w<=0||ht<=0) return;
             if(Holder.emuThread!=null && Holder.emuThread.IsAlive) return;
             try{
-                IntPtr env = Java.Interop.JniEnvironment.EnvironmentPointer;
-                if(env==IntPtr.Zero) env = Android.Runtime.JNIEnv.Handle;
+                IntPtr env = JEnv.EnvironmentPointer;
+                if(env==IntPtr.Zero) env = ARuntime.JNIEnv.Handle;
                 a.FileLog($"v17 JNIEnv env={env.ToInt64():X} surfaceHandle={h.Surface.Handle.ToInt64():X} IsValid={h.Surface.IsValid}");
                 IntPtr win = ANativeWindow_fromSurface(env, h.Surface.Handle);
                 a.FileLog($"v17 ANativeWindow_fromSurface win={win.ToInt64():X}");
                 if(win==IntPtr.Zero){ a.FileLog("[VK] ANativeWindow_fromSurface NULL"); return; }
                 a.FileLog($"[VK] ANativeWindow_fromSurface OK win={win.ToInt64():X}");
-                ANativeWindow_acquire(win);
-                a.FileLog("[VK] ANativeWindow_acquire OK");
-                int r = ANativeWindow_setBuffersGeometry(win, 0, 0, 1);
-                a.FileLog($"[VK] setBuffersGeometry result={r}");
-                Holder.nativeWindow = win;
-                a.FileLog($"v17 window final={Holder.nativeWindow.ToInt64():X}");
+                try
+                {
+                    ANativeWindow_acquire(win);
+                    a.FileLog("[VK] ANativeWindow_acquire OK");
+                    int r = ANativeWindow_setBuffersGeometry(win, 0, 0, 1);
+                    a.FileLog($"[VK] setBuffersGeometry result={r}");
+                    Holder.nativeWindow = win;
+                    a.FileLog($"v17 window final={Holder.nativeWindow.ToInt64():X}");
+                }
+                catch
+                {
+                    try { ANativeWindow_release(win); } catch {}
+                    throw;
+                }
             }catch(Exception ex){ a.FileLog($"v17 ANW FAIL {ex}"); a.CrashLog("crash_anw",ex.ToString()); return; }
             Holder.running=true;
             Holder.emuThread=new Thread(()=>{ try{ a.Emu(w,ht); }catch(Exception ex){ a.FileLog($"OUTER {ex}"); a.CrashLog("crash_outer",ex.ToString()); } }){ IsBackground=true };
@@ -124,7 +131,6 @@ public class GameActivity : Activity
     }
     class DummyUIProxy : DispatchProxy { protected override object Invoke(MethodInfo m, object[] a){ var rt=m.ReturnType; if(rt==typeof(void)) return null; if(rt==typeof(bool)) return true; if(rt.IsValueType) return Activator.CreateInstance(rt); if(a!=null) for(int i=0;i<a.Length;i++) if(m.GetParameters()[i].IsOut) a[i]=null; return null; } }
     static IHostUIHandler CreateDummyUI() => DispatchProxy.Create<IHostUIHandler, DummyUIProxy>();
-
     void Emu(int sw,int sh){
         FileLog($"Emu ENTER v17 win={Holder.nativeWindow.ToInt64():X} {sw}x{sh}");
         try{
@@ -144,10 +150,10 @@ public class GameActivity : Activity
                     FileLog($"[FILE] GetSurface STEP 1 inst={inst.Handle.ToInt64():X} win={Holder.nativeWindow.ToInt64():X}");
                     var ci = new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)Holder.nativeWindow };
                     FileLog("[FILE] GetSurface STEP 2 ci OK");
-                    FileLog("[FILE] GetSurface STEP 3 CALL vk.CreateAndroidSurface");
-                    var res = vk.CreateAndroidSurface(inst, &ci, null, out var surf);
+                    FileLog("[FILE] GetSurface STEP 3 CALL vk.CreateAndroidSurfaceKHR");
+                    var res = vk.CreateAndroidSurfaceKHR(inst, &ci, null, out var surf);
                     FileLog($"[FILE] GetSurface STEP 4 RESULT={res} surf={surf.Handle.ToInt64():X}");
-                    if(res!=Result.Success) throw new Exception($"vkCreate failed {res}");
+                    if(res!=VkResult.Success) throw new Exception($"vkCreate failed {res}");
                     FileLog("[FILE] GetSurface STEP 5 OK RETURN");
                     return surf;
                 }
