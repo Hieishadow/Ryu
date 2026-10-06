@@ -11,9 +11,6 @@ using Ryujinx.HLE.FileSystem;
 using Ryujinx.HLE.HOS;
 using Ryujinx.HLE.HOS.Services.Account.Acc;
 using Ryujinx.Graphics.Vulkan;
-using Ryujinx.Audio.Backends.Dummy;
-using Ryujinx.Audio.Backends.OpenAl;
-using Ryujinx.Audio.Backends.SDL2;
 using Ryujinx.Audio;
 using Ryujinx.Audio.Integration;
 using Ryujinx.HLE.UI;
@@ -67,7 +64,6 @@ public class GameActivity : Activity
     class CB : Java.Lang.Object, ISurfaceHolderCallback{
         readonly GameActivity a; public CB(GameActivity act){ a=act; }
         public void SurfaceCreated(ISurfaceHolder h){
-            // FIX TURNIP LOADER v10.6
             try {
                 string driverPref = a.Intent.GetStringExtra("vulkan_driver")?? "system";
                 a.FileLog($"Driver pref={driverPref}");
@@ -79,7 +75,6 @@ public class GameActivity : Activity
                 }
             } catch(Exception ex){ a.FileLog($"TURNIP FAIL {ex}"); }
             try { ANativeWindow_setBuffersGeometry(h.Surface.Handle, 0, 0, 1); a.FileLog("ANativeWindow_setBuffersGeometry OK"); } catch(Exception ex){ a.FileLog($"setBuffersGeometry FAIL {ex}"); }
-
             var r=h.SurfaceFrame; if(r.Width()<=0) return;
             if(Holder.emuThread!=null && Holder.emuThread.IsAlive) return;
             a.MyLog($"Surface {r.Width()}x{r.Height()}");
@@ -107,6 +102,19 @@ public class GameActivity : Activity
     }
     class DummyUIProxy : DispatchProxy { protected override object Invoke(MethodInfo m, object[] a){ var rt=m.ReturnType; if(rt==typeof(void)) return null; if(rt==typeof(bool)) return true; if(rt.IsValueType) return Activator.CreateInstance(rt); if(a!=null) for(int i=0;i<a.Length;i++) if(m.GetParameters()[i].IsOut) a[i]=null; return null; } }
     static IHostUIHandler CreateDummyUI() => DispatchProxy.Create<IHostUIHandler, DummyUIProxy>();
+
+    // FIX AUDIO v10.7 - Proxy interno, sem depender de Dummy/OpenAl/SDL2
+    class DummyAudioProxy : DispatchProxy {
+        protected override object Invoke(MethodInfo m, object[] a){
+            var rt=m.ReturnType;
+            if(rt==typeof(void)) return null;
+            if(rt==typeof(bool)) return false;
+            if(rt.IsValueType) return Activator.CreateInstance(rt);
+            if(a!=null) for(int i=0;i<a.Length;i++) if(m.GetParameters()[i].IsOut) a[i]=null;
+            return null;
+        }
+    }
+
     void Emu(){
         int tid=SysEnv.CurrentManagedThreadId; MyLog($"Emu START id={tid}");
         try{
@@ -130,14 +138,9 @@ public class GameActivity : Activity
             var vfs=VirtualFileSystem.CreateInstance();
             vfs.ReloadKeySet();
             FileLog("ReloadKeySet OK #542");
-            // AUDIO FIX v10.6 - OpenAL em vez de Dummy
-            IHardwareDeviceDriver audio;
-            try { audio = new OpenAlHardwareDeviceDriver(); FileLog("Audio OpenALHardwareDeviceDriver OK - SOM ATIVADO v10.6"); }
-            catch(Exception ex1) {
-                FileLog($"Audio OpenAL FAIL {ex1.Message} tentando SDL2");
-                try { audio = new SDL2HardwareDeviceDriver(); FileLog("Audio SDL2HardwareDeviceDriver OK - SOM ATIVADO"); }
-                catch(Exception ex2) { FileLog($"Audio SDL2 FAIL {ex2.Message} - usando Dummy"); audio = new DummyHardwareDeviceDriver(); }
-            }
+            // AUDIO FIX v10.7 - sem dependencia de backend externo
+            IHardwareDeviceDriver audio = (IHardwareDeviceDriver)DispatchProxy.Create<IHardwareDeviceDriver, DummyAudioProxy>();
+            FileLog("Audio Proxy Dummy interno OK v10.7");
             FileLog("ANTES VulkanRenderer.Create");
             Holder.gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)Holder.nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
             try {
@@ -172,13 +175,6 @@ public class GameActivity : Activity
                         RunOnUiThread(()=>{ try{ logView.Visibility=ViewStates.Gone; }catch{} });
                     }
                     if(frames % 60 == 0) FileLog($"LOOP f={frames} OK");
-                    if(TEST_MAGENTA){
-                        try{
-                            var winProp = Holder.gpu?.GetType().GetProperty("Window", All);
-                            var win = winProp?.GetValue(Holder.gpu);
-                            win?.GetType().GetMethod("ForcedPresentMagenta", All)?.Invoke(win, null);
-                        }catch{}
-                    }
                     Thread.Sleep(16);
                 }catch(Exception eLoop){ FileLog($"LOOP EX f={frames} {eLoop}"); break; }
             }
