@@ -153,22 +153,22 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 case NativeWindowScalingMode.ScaleCrop:
                 case NativeWindowScalingMode.Unknown:
                 case NativeWindowScalingMode.NoScaleCrop: break;
-                default: Logger.Warning?.Print(LogClass.SurfaceFlinger, $"[VI] Present REQUEST BAD scalingMode={input.ScalingMode}"); return Status.BadValue;
+                default: Console.WriteLine($"[FILE] [VI] Present REQUEST BAD scalingMode={input.ScalingMode}"); return Status.BadValue;
             }
 
             BufferItem item = new();
             IConsumerListener frameAvailableListener = null;
             IConsumerListener frameReplaceListener = null;
 
-            Logger.Info?.Print(LogClass.SurfaceFlinger, $"[VI] Present REQUEST slot={slot} ts={input.Timestamp} auto={input.IsAutoTimestamp} async={input.Async} queueBefore={Core.Queue.Count}");
+            Console.WriteLine($"[FILE] [VI] Present REQUEST slot={slot} ts={input.Timestamp} auto={input.IsAutoTimestamp} async={input.Async} queueBefore={Core.Queue.Count}");
 
             lock (Core.Lock)
             {
-                if (Core.IsAbandoned) { Logger.Warning?.Print(LogClass.SurfaceFlinger, $"[VI] Present FAILED Abandoned slot={slot}"); return Status.NoInit; }
+                if (Core.IsAbandoned) { Console.WriteLine($"[FILE] [VI] Present FAILED Abandoned slot={slot}"); return Status.NoInit; }
                 int maxBufferCount = Core.GetMaxBufferCountLocked(input.Async!= 0);
                 if (input.Async!= 0 && Core.OverrideMaxBufferCount!= 0 && Core.OverrideMaxBufferCount < maxBufferCount) return Status.BadValue;
-                if (slot < 0 || slot >= Core.Slots.Length ||!Core.IsOwnedByProducerLocked(slot)) { Logger.Warning?.Print(LogClass.SurfaceFlinger, $"[VI] Present FAILED not owned slot={slot}"); return Status.BadValue; }
-                if (!Core.Slots[slot].RequestBufferCalled) { Logger.Error?.Print(LogClass.SurfaceFlinger, $"[VI] Present FAILED no RequestBuffer slot={slot}"); return Status.BadValue; }
+                if (slot < 0 || slot >= Core.Slots.Length ||!Core.IsOwnedByProducerLocked(slot)) { Console.WriteLine($"[FILE] [VI] Present FAILED not owned slot={slot}"); return Status.BadValue; }
+                if (!Core.Slots[slot].RequestBufferCalled) { Console.WriteLine($"[FILE] [VI] Present FAILED no RequestBuffer slot={slot}"); return Status.BadValue; }
 
                 input.Crop.Intersect(Core.Slots[slot].GraphicBuffer.Object.ToRect(), out Rect croppedRect);
                 if (croppedRect!= input.Crop) return Status.BadValue;
@@ -191,9 +191,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 item.FrameNumber = Core.FrameCounter;
                 item.Slot = slot;
                 item.Fence = input.Fence;
-
-                // FIX CELESTE: nunca dropar, força fila crescer ao invés de substituir
-                item.IsDroppable = false; // Core.DequeueBufferCannotBlock || input.Async!= 0;
+                item.IsDroppable = false;
 
                 item.GraphicBuffer.Set(Core.Slots[slot].GraphicBuffer);
                 item.GraphicBuffer.Object.IncrementNvMapHandleRefCount(Core.Owner);
@@ -207,14 +205,13 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 {
                     Core.Queue.Add(item);
                     frameAvailableListener = Core.ConsumerListener;
-                    Logger.Info?.Print(LogClass.SurfaceFlinger, $"[VI] Present ENQUEUED OK slot={slot} frame={item.FrameNumber} queueAfter={Core.Queue.Count}");
+                    Console.WriteLine($"[FILE] [VI] Present ENQUEUED OK slot={slot} frame={item.FrameNumber} queueAfter={Core.Queue.Count}");
                 }
                 else
                 {
                     BufferItem frontItem = Core.Queue[0];
                     if (frontItem.IsDroppable)
                     {
-                        // BUG ORIGINAL AQUI: liberava slot errado. Corrigido para frontItem.Slot
                         if (Core.StillTracking(ref frontItem))
                         {
                             Core.Slots[frontItem.Slot].BufferState = BufferState.Free;
@@ -223,13 +220,13 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                         Core.Queue.RemoveAt(0);
                         Core.Queue.Insert(0, item);
                         frameReplaceListener = Core.ConsumerListener;
-                        Logger.Info?.Print(LogClass.SurfaceFlinger, $"[VI] Present REPLACED slot={slot} frame={item.FrameNumber} oldFrame={frontItem.FrameNumber} queue={Core.Queue.Count}");
+                        Console.WriteLine($"[FILE] [VI] Present REPLACED slot={slot} frame={item.FrameNumber} oldFrame={frontItem.FrameNumber} queue={Core.Queue.Count}");
                     }
                     else
                     {
                         Core.Queue.Add(item);
                         frameAvailableListener = Core.ConsumerListener;
-                        Logger.Info?.Print(LogClass.SurfaceFlinger, $"[VI] Present ENQUEUED OK slot={slot} frame={item.FrameNumber} queueAfter={Core.Queue.Count} (no drop)");
+                        Console.WriteLine($"[FILE] [VI] Present ENQUEUED OK slot={slot} frame={item.FrameNumber} queueAfter={Core.Queue.Count} (no drop)");
                     }
                 }
 
@@ -245,8 +242,8 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             lock (_callbackLock)
             {
                 while (_callbackTicket!= _currentCallbackTicket) Monitor.Wait(_callbackLock);
-                if (frameAvailableListener!= null) Logger.Info?.Print(LogClass.SurfaceFlinger, $"[VI] -> OnFrameAvailable slot={item.Slot} frame={item.FrameNumber}");
-                if (frameReplaceListener!= null) Logger.Info?.Print(LogClass.SurfaceFlinger, $"[VI] -> OnFrameReplaced slot={item.Slot} frame={item.FrameNumber}");
+                if (frameAvailableListener!= null) Console.WriteLine($"[FILE] [VI] -> OnFrameAvailable slot={item.Slot} frame={item.FrameNumber}");
+                if (frameReplaceListener!= null) Console.WriteLine($"[FILE] [VI] -> OnFrameReplaced slot={item.Slot} frame={item.FrameNumber}");
                 frameAvailableListener?.OnFrameAvailable(ref item);
                 frameReplaceListener?.OnFrameReplaced(ref item);
                 _currentCallbackTicket++;
