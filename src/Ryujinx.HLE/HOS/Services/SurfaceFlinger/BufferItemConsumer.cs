@@ -21,7 +21,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
             if (status != Status.Success)
             {
-                Logger.Error?.Print(LogClass.Gpu, $"[VI] SetConsumerUsageBits FAILED status={status}");
+                Console.WriteLine($"[FILE] [VI] SetConsumerUsageBits FAILED status={status}");
                 throw new InvalidOperationException();
             }
 
@@ -31,12 +31,12 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
                 if (status != Status.Success)
                 {
-                    Logger.Error?.Print(LogClass.Gpu, $"[VI] SetMaxAcquiredBufferCount FAILED status={status}");
+                    Console.WriteLine($"[FILE] [VI] SetMaxAcquiredBufferCount FAILED status={status}");
                     throw new InvalidOperationException();
                 }
             }
             
-            Logger.Info?.Print(LogClass.Gpu, $"[VI] BufferItemConsumer created bufferCount={bufferCount} usage={consumerUsage}");
+            Console.WriteLine($"[FILE] [VI] BufferItemConsumer created bufferCount={bufferCount} usage={consumerUsage}");
         }
 
         public Status AcquireBuffer(out BufferItem bufferItem, ulong expectedPresent, bool waitForFence = false)
@@ -47,16 +47,14 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
                 if (status != Status.Success)
                 {
-                    // ESSE LOG VAI MOSTRAR POR QUE CELESTE CONGELA
-                    Logger.Info?.Print(LogClass.Gpu, $"[VI] AcquireBuffer FAILED status={status} expectedPresent={expectedPresent} - QUEUE EMPTY!");
+                    Console.WriteLine($"[FILE] [VI] AcquireBuffer FAILED status={status} expectedPresent={expectedPresent} - QUEUE EMPTY!");
                     bufferItem = null;
                     return status;
                 }
 
-                // Make sure to clone the object to not temper the real instance.
                 bufferItem = (BufferItem)tmp.Clone();
 
-                Logger.Info?.Print(LogClass.Gpu, $"[VI] AcquireBuffer OK slot={bufferItem.Slot} frame={bufferItem.FrameNumber} expectedPresent={expectedPresent} isAuto={bufferItem.IsAutoTimestamp}");
+                Console.WriteLine($"[FILE] [VI] AcquireBuffer OK slot={bufferItem.Slot} frame={bufferItem.FrameNumber} expectedPresent={expectedPresent} isAuto={bufferItem.IsAutoTimestamp}");
 
                 if (waitForFence)
                 {
@@ -73,7 +71,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         {
             lock (Lock)
             {
-                Logger.Info?.Print(LogClass.Gpu, $"[VI] ReleaseBuffer slot={bufferItem.Slot} frame={bufferItem.FrameNumber}");
+                Console.WriteLine($"[FILE] [VI] ReleaseBuffer slot={bufferItem.Slot} frame={bufferItem.FrameNumber}");
                 
                 Status result = AddReleaseFenceLocked(bufferItem.Slot, ref bufferItem.GraphicBuffer, ref fence);
 
@@ -84,7 +82,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
                 if (result != Status.Success)
                 {
-                    Logger.Warning?.Print(LogClass.Gpu, $"[VI] ReleaseBuffer FAILED status={result} slot={bufferItem.Slot}");
+                    Console.WriteLine($"[FILE] [VI] ReleaseBuffer FAILED status={result} slot={bufferItem.Slot}");
                 }
 
                 return result;
@@ -95,7 +93,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         {
             lock (Lock)
             {
-                Logger.Info?.Print(LogClass.Gpu, $"[VI] SetDefaultBufferSize {width}x{height}");
+                Console.WriteLine($"[FILE] [VI] SetDefaultBufferSize {width}x{height}");
                 return Consumer.SetDefaultBufferSize(width, height);
             }
         }
@@ -104,7 +102,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         {
             lock (Lock)
             {
-                Logger.Info?.Print(LogClass.Gpu, $"[VI] SetDefaultBufferFormat {defaultFormat}");
+                Console.WriteLine($"[FILE] [VI] SetDefaultBufferFormat {defaultFormat}");
                 return Consumer.SetDefaultBufferFormat(defaultFormat);
             }
         }
