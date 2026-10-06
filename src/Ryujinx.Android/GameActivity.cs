@@ -90,24 +90,7 @@ public class GameActivity : Activity
     class CB : Java.Lang.Object, ISurfaceHolderCallback{
         readonly GameActivity a; public CB(GameActivity act){ a=act; }
         public void SurfaceCreated(ISurfaceHolder h){
-            try {
-                string driverPref = a.Intent.GetStringExtra("vulkan_driver")?? "system";
-                a.FileLog($"Driver pref={driverPref}");
-                if(driverPref == "turnip") {
-                    string tp = "/storage/emulated/0/Download/Ryubing/drivers/libvulkan_freedreno.so";
-                    if(!File.Exists(tp)) tp = "/storage/emulated/0/Download/Ryubing/drivers/libvulkan.so";
-                    if(File.Exists(tp)) {
-                        try {
-                            string internalDir = Path.Combine(a.FilesDir.AbsolutePath, "drivers");
-                            Directory.CreateDirectory(internalDir);
-                            string internalPath = Path.Combine(internalDir, "libvulkan_freedreno.so");
-                            File.Copy(tp, internalPath, true);
-                            Java.Lang.JavaSystem.Load(internalPath);
-                            a.FileLog($"TURNIP LOADED {internalPath}");
-                        } catch(Exception ex2) { a.FileLog($"TURNIP COPY FAIL {ex2}"); }
-                    } else { a.FileLog($"TURNIP.so NOT FOUND {tp}"); }
-                }
-            } catch(Exception ex){ a.FileLog($"TURNIP FAIL {ex}"); }
+            a.FileLog($"Driver SYSTEM ONLY - Turnip desabilitado temporariamente");
             try { ANativeWindow_setBuffersGeometry(h.Surface.Handle, 0, 0, 1); } catch{}
             var r=h.SurfaceFrame; if(r.Width()<=0) return;
             if(Holder.emuThread!=null && Holder.emuThread.IsAlive) return;
@@ -119,7 +102,7 @@ public class GameActivity : Activity
         }
         public void SurfaceChanged(ISurfaceHolder h,AFormat f,int w,int ht){
             try{ ANativeWindow_setBuffersGeometry(h.Surface.Handle, w, ht, 1); }catch{}
-            try{ var winProp=Holder.gpu?.GetType().GetProperty("Window",All); var win=winProp?.GetValue(Holder.gpu); win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{w,ht}); }catch(Exception ex){ a.FileLog($"SetSize Changed FAIL {ex.Message}"); }
+            try{ var winProp=Holder.gpu?.GetType().GetProperty("Window",All); var win=winProp?.GetValue(Holder.gpu); win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{w,ht}); }catch{}
         }
         public void SurfaceDestroyed(ISurfaceHolder h){
             Holder.running=false;
@@ -149,9 +132,9 @@ public class GameActivity : Activity
             try{ typeof(VirtualFileSystem).GetField("_instance",All)?.SetValue(null,null); }catch{}
             var vfs=VirtualFileSystem.CreateInstance();
             vfs.ReloadKeySet();
-            FileLog("ReloadKeySet OK");
+            FileLog("ReloadKeySet OK SYSTEM");
             IHardwareDeviceDriver audio = new NullAudioDriver();
-            FileLog("ANTES VulkanRenderer.Create");
+            FileLog("ANTES VulkanRenderer.Create SYSTEM");
             Holder.gpu=VulkanRenderer.Create("Ryubing",(inst,vk)=>{ unsafe{ var ci=new AndroidSurfaceCreateInfoKHR{ SType=StructureType.AndroidSurfaceCreateInfoKhr, Window=(nint*)Holder.nativeWindow }; var fp=vk.GetInstanceProcAddr(inst,"vkCreateAndroidSurfaceKHR"); var del=Marshal.GetDelegateForFunctionPointer<CDel>(fp); SurfaceKHR surf; del(inst,&ci,null,&surf); return surf; } },()=>new[]{"VK_KHR_surface","VK_KHR_android_surface"});
             try {
                 var initMethod = Holder.gpu.GetType().GetMethod("Initialize", All);
@@ -159,7 +142,7 @@ public class GameActivity : Activity
                     var paramType = initMethod.GetParameters()[0].ParameterType;
                     var enumVal = Enum.ToObject(paramType, 0);
                     initMethod.Invoke(Holder.gpu, new object[]{ enumVal });
-                    FileLog("[VK] Initialize OK");
+                    FileLog("[VK] Initialize OK SYSTEM");
                 }
             } catch(Exception exInit) { FileLog($"[VK] Initialize FAIL {exInit}"); }
             FileLog("DEPOIS Vulkan OK");
@@ -172,15 +155,15 @@ public class GameActivity : Activity
             try{ if(surfaceView!=null && surfaceView.Holder!=null){ var sf = surfaceView.Holder.SurfaceFrame; if(sf!=null && sf.Width()>0){ w=sf.Width(); h=sf.Height(); } } }catch{}
             try{ var winProp=Holder.gpu.GetType().GetProperty("Window",All); var win=winProp?.GetValue(Holder.gpu); win?.GetType().GetMethod("SetSize",All)?.Invoke(win,new object[]{w,h}); }catch{}
             int frames=0;
-            FileLog("LOOP ON");
+            FileLog("LOOP ON SYSTEM");
             while(Holder.running && Holder.nativeWindow!=IntPtr.Zero){
                 try{
                     Holder.device.ProcessFrame();
                     Holder.device.PresentFrame(()=>{});
                     frames++;
-                    if(frames==1){ FileLog("FIRST FRAME OK"); RunOnUiThread(()=>{ try{ logView.Visibility=ViewStates.Gone; }catch{} }); }
+                    if(frames==1){ FileLog("FIRST FRAME OK SYSTEM"); RunOnUiThread(()=>{ try{ logView.Visibility=ViewStates.Gone; }catch{} }); }
                     Thread.Sleep(16);
-                }catch(Exception eLoop){ FileLog($"LOOP EX f={frames} {eLoop}"); break; }
+                }catch(Exception eLoop){ FileLog($"LOOP EX f={frames} {eLoop}"); CrashLog("crash_loop", eLoop.ToString()); break; }
             }
         }catch(Exception eAll){ FileLog($"CRASH {eAll}"); CrashLog("crash_emu", eAll.ToString()); } finally{ FileLog("Emu END"); }
     }
