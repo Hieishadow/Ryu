@@ -60,7 +60,7 @@ public class GameActivity : Activity
     }
     const BindingFlags All = BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
     static class Holder { public static IntPtr nativeWindow=IntPtr.Zero; public static Thread emuThread; public static volatile bool running=false; public static Switch device; public static VulkanRenderer gpu; }
-    string romPath=""; SurfaceView surfaceView; TextView logView;
+    string romPath=""; global::Android.Views.SurfaceView surfaceView; TextView logView;
     [DllImport("android")] static extern IntPtr ANativeWindow_fromSurface(IntPtr env, IntPtr surface);
     [DllImport("android")] static extern void ANativeWindow_release(IntPtr window);
     void FileLog(string s){ try{ var p="/storage/emulated/0/Download/Ryubing/ryubing_log.txt"; Directory.CreateDirectory(Path.GetDirectoryName(p)); File.AppendAllText(p, DateTime.Now.ToString("HH:mm:ss.fff")+" [FILE] "+s+"\n"); }catch{} }
@@ -100,15 +100,15 @@ public class GameActivity : Activity
         }
         if(Window!=null) Window.AddFlags(WindowManagerFlags.Fullscreen|WindowManagerFlags.KeepScreenOn);
         var extraPath=Intent.GetStringExtra("rom_path"); if(extraPath!=null) romPath=extraPath;
-        surfaceView=new SurfaceView(this); logView=new TextView(this); logView.Text=Path.GetFileName(romPath); logView.SetTextColor(global::Android.Graphics.Color.White); logView.SetBackgroundColor(global::Android.Graphics.Color.Argb(180,0,0,0)); logView.TextSize=10;
+        surfaceView=new global::Android.Views.SurfaceView(this); logView=new TextView(this); logView.Text=Path.GetFileName(romPath); logView.SetTextColor(global::Android.Graphics.Color.White); logView.SetBackgroundColor(global::Android.Graphics.Color.Argb(180,0,0,0)); logView.TextSize=10;
         var root=new FrameLayout(this); root.AddView(surfaceView,new FrameLayout.LayoutParams(-1,-1)); root.AddView(logView,new FrameLayout.LayoutParams(-1,-2){ Gravity=GravityFlags.Top|GravityFlags.Left }); SetContentView(root);
-        surfaceView.Holder.AddCallback(new CB(this)); MyLog($"OnCreate {romPath} v14 BYPASS");
+        surfaceView.Holder.AddCallback(new CB(this)); MyLog($"OnCreate {romPath} v15 BYPASS FIXED");
     }
     public override void OnBackPressed(){ Holder.running=false; try{ Holder.emuThread?.Join(2000); }catch{} try{ VirtualFileSystem.ResetForAndroid(); }catch{} base.OnBackPressed(); }
     class CB : Java.Lang.Object, ISurfaceHolderCallback{
         readonly GameActivity a; public CB(GameActivity act){ a=act; }
         public void SurfaceCreated(ISurfaceHolder h){
-            a.FileLog($"v14 BYPASS ANW {h.SurfaceFrame.Width()}x{h.SurfaceFrame.Height()}");
+            a.FileLog($"v15 BYPASS ANW {h.SurfaceFrame.Width()}x{h.SurfaceFrame.Height()}");
             var r=h.SurfaceFrame; if(r.Width()<=0) return;
             if(Holder.emuThread!=null && Holder.emuThread.IsAlive) return;
             try{
@@ -120,7 +120,7 @@ public class GameActivity : Activity
                 }catch(Exception ex){ a.FileLog($"field fail {ex.Message}"); }
                 try{
                     if(ptr==0){
-                        var fld2 = Java.Lang.Class.FromType(typeof(Android.Views.Surface)).GetDeclaredField("mNativeObject");
+                        var fld2 = Java.Lang.Class.FromType(typeof(global::Android.Views.Surface)).GetDeclaredField("mNativeObject");
                         fld2.Accessible = true;
                         ptr = fld2.GetLong(h.Surface);
                         a.FileLog($"mNativeObject declared = {ptr:X}");
@@ -158,7 +158,7 @@ public class GameActivity : Activity
     class DummyUIProxy : DispatchProxy { protected override object Invoke(MethodInfo m, object[] a){ var rt=m.ReturnType; if(rt==typeof(void)) return null; if(rt==typeof(bool)) return true; if(rt.IsValueType) return Activator.CreateInstance(rt); if(a!=null) for(int i=0;i<a.Length;i++) if(m.GetParameters()[i].IsOut) a[i]=null; return null; } }
     static IHostUIHandler CreateDummyUI() => DispatchProxy.Create<IHostUIHandler, DummyUIProxy>();
     void Emu(){
-        FileLog("Emu ENTER v14");
+        FileLog("Emu ENTER v15");
         try{
             SysEnv.SetEnvironmentVariable("RYUJINX_DISABLE_PPTC", "1");
             string baseDir=Path.Combine(FilesDir.AbsolutePath,"Ryujinx");
