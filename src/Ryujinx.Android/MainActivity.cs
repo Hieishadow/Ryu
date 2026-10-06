@@ -36,8 +36,10 @@ public class MainActivity : Activity
 
     LinearLayout layout;
     string selectedRom = "";
-    string selectedDriver = "system"; // NOVO v10.6
+    string selectedDriver = "system";
     Button btnJogar;
+    Button btnSystem;
+    Button btnTurnip;
     bool permissionRequested = false;
 
     protected override void OnCreate(Bundle savedInstanceState)
@@ -55,32 +57,51 @@ public class MainActivity : Activity
         layout.SetGravity(GravityFlags.Center);
         layout.SetBackgroundColor(global::Android.Graphics.Color.Black);
         layout.SetPadding(40, 20, 40, 20);
-        var title = new TextView(this) { Text = "Ryubing - S20 FE Edition v10.6 TURNIP+SOM" };
+        var title = new TextView(this) { Text = "Ryubing - S20 FE v10.7 FIX" };
         title.SetTextColor(global::Android.Graphics.Color.White);
         title.TextSize = 20; title.Gravity = GravityFlags.Center;
         layout.AddView(title);
         var info = new TextView(this){ Gravity = GravityFlags.Center, TextSize = 11f };
         layout.AddView(info);
 
-        // NOVO: Linha driver
         var driverRow = new LinearLayout(this){ Orientation = Orientation.Horizontal };
         driverRow.SetGravity(GravityFlags.Center);
         var lblDriver = new TextView(this){ Text = " Driver: " };
         lblDriver.SetTextColor(global::Android.Graphics.Color.White);
-        var btnSystem = new Button(this){ Text = "SYSTEM [ATUAL]" };
-        var btnTurnip = new Button(this){ Text = "TURNIP" };
+        btnSystem = new Button(this){ Text = "SYSTEM [ATUAL]" };
+        btnTurnip = new Button(this){ Text = "TURNIP" };
         btnSystem.Click+= (s,e)=>{
             selectedDriver="system";
             btnSystem.Text="SYSTEM [ATUAL]";
             btnTurnip.Text="TURNIP";
-            Toast.MakeText(this,"Driver SYSTEM",ToastLength.Short).Show();
+            Toast.MakeText(this,"Driver SYSTEM (recomendado)",ToastLength.Short).Show();
+            UpdateInfo();
         };
         btnTurnip.Click+= (s,e)=>{
-            selectedDriver="turnip";
-            btnSystem.Text="SYSTEM";
-            btnTurnip.Text="TURNIP [ATUAL]";
-            var check = File.Exists(DriversPath+"/libvulkan_freedreno.so") || File.Exists(DriversPath+"/libvulkan.so");
-            Toast.MakeText(this, check ? "Turnip encontrado!" : "Coloque .so em /Download/Ryubing/drivers/", ToastLength.Long).Show();
+            var so1 = Path.Combine(DriversPath,"libvulkan_freedreno.so");
+            var so2 = Path.Combine(DriversPath,"libvulkan.so");
+            var so3 = Path.Combine(DriversPath,"vulkan.adreno.so");
+            bool exists = File.Exists(so1) || File.Exists(so2) || File.Exists(so3);
+            if(!exists){
+                Toast.MakeText(this,"Coloque driver em /Download/Ryubing/drivers/",ToastLength.Long).Show();
+                return;
+            }
+            // Aviso sobre build antigo com libhardware
+            long size = 0;
+            try{ if(File.Exists(so1)) size = new FileInfo(so1).Length; else if(File.Exists(so2)) size = new FileInfo(so2).Length; }catch{}
+            // Se o driver for > 15MB geralmente é build antigo com deps
+            if(size > 15000000){
+                Toast.MakeText(this,"AVISO: esse Turnip precisa libhardware.so e não funciona no Android 13+. Use system.",ToastLength.Long).Show();
+                selectedDriver="system";
+                btnSystem.Text="SYSTEM [ATUAL]";
+                btnTurnip.Text="TURNIP [INCOMPATIVEL]";
+            } else {
+                selectedDriver="turnip";
+                btnSystem.Text="SYSTEM";
+                btnTurnip.Text="TURNIP [ATUAL]";
+                Toast.MakeText(this,"Turnip selecionado",ToastLength.Short).Show();
+            }
+            UpdateInfo();
         };
         driverRow.AddView(lblDriver);
         driverRow.AddView(btnSystem);
@@ -106,7 +127,16 @@ public class MainActivity : Activity
         };
         topRow.AddView(btnImport);
         var btnClear = new Button(this) { Text = "Limpar Log" };
-        btnClear.Click += (s,e)=>{ try{ if(File.Exists(BasePath+"/ryubing_log.txt")) File.Delete(BasePath+"/ryubing_log.txt"); Toast.MakeText(this,"Logs limpos",ToastLength.Short).Show(); UpdateInfo(); }catch{} };
+        btnClear.Click += (s,e)=>{ 
+            try{ 
+                if(File.Exists(BasePath+"/ryubing_log.txt")) File.Delete(BasePath+"/ryubing_log.txt");
+                if(File.Exists(BasePath+"/crash_emu.txt")) File.Delete(BasePath+"/crash_emu.txt");
+                var drvCache = Path.Combine(FilesDir.AbsolutePath,"drivers");
+                if(Directory.Exists(drvCache)) Directory.Delete(drvCache,true);
+                Toast.MakeText(this,"Logs e cache driver limpos",ToastLength.Short).Show(); 
+                UpdateInfo(); 
+            }catch{} 
+        };
         topRow.AddView(btnClear);
         btnJogar = new Button(this) { Text = "JOGAR" };
         btnJogar.SetBackgroundColor(global::Android.Graphics.Color.Green);
@@ -196,20 +226,15 @@ public class MainActivity : Activity
             var keysDir = Path.Combine(baseDir, "keys");
             var bisRegistered = Path.Combine(baseDir, "bis", "system", "Contents", "registered");
             var sysRegistered = Path.Combine(baseDir, "system", "Contents", "registered");
-            
             Directory.CreateDirectory(keysDir);
             Directory.CreateDirectory(Path.Combine(baseDir, "system"));
             Directory.CreateDirectory(sysRegistered);
             Directory.CreateDirectory(bisRegistered);
-
             foreach (var k in new[] { "prod.keys", "title.keys" }){
                 var src = Path.Combine(KeysPath, k);
                 if (!File.Exists(src)) continue;
-                try{
-                    File.Copy(src, Path.Combine(keysDir, k), true);
-                }catch{}
+                try{ File.Copy(src, Path.Combine(keysDir, k), true); }catch{}
             }
-
             try {
                 if (Directory.Exists(FirmwarePath)) {
                     var ncas = Directory.GetFiles(FirmwarePath, "*.nca", SearchOption.AllDirectories);
@@ -224,7 +249,6 @@ public class MainActivity : Activity
                     }
                 }
             } catch {}
-
             try {
                 var dupFolder = Path.Combine(baseDir, "system", "keys");
                 if(Directory.Exists(dupFolder)) Directory.Delete(dupFolder, true);
@@ -253,7 +277,7 @@ public class MainActivity : Activity
             info.Text = "keys NAO encontradas - usa Importar Keys";
             info.SetTextColor(global::Android.Graphics.Color.Red);
         }else{
-            info.Text = $"keys OK {prodInt.Length/1024}KB | Firm {firmIntCount} NCAs | Driver: {selectedDriver} | Pronto";
+            info.Text = $"keys OK {prodInt.Length/1024}KB | Firm {firmIntCount} NCAs | Driver: {selectedDriver} | S20 FE v10.7";
             info.SetTextColor(global::Android.Graphics.Color.Green);
         }
     }
