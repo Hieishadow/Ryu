@@ -60,7 +60,7 @@ public class MainActivity : Activity
         layout.SetGravity(GravityFlags.Center);
         layout.SetBackgroundColor(global::Android.Graphics.Color.Black);
         layout.SetPadding(40, 20, 40, 20);
-        var title = new TextView(this) { Text = "Ryubing - S20 FE v10.8 FIX" };
+        var title = new TextView(this) { Text = "Ryubing - S20 FE v10.8.1 FIX" };
         title.SetTextColor(global::Android.Graphics.Color.White);
         title.TextSize = 20; title.Gravity = GravityFlags.Center;
         layout.AddView(title);
@@ -109,24 +109,23 @@ public class MainActivity : Activity
         driverRow.AddView(btnTurnip);
         layout.AddView(driverRow);
 
-        // NOVO - BACKEND ROW
         var backendRow = new LinearLayout(this){ Orientation = Orientation.Horizontal };
         backendRow.SetGravity(GravityFlags.Center);
         var lblBackend = new TextView(this){ Text = " Backend: " };
         lblBackend.SetTextColor(global::Android.Graphics.Color.White);
         btnVulkan = new Button(this){ Text = "VULKAN [ATUAL]" };
-        btnOpenGl = new Button(this){ Text = "OPENGL" };
+        btnOpenGl = new Button(this){ Text = "OPENGL [NAO TEM]" };
         btnVulkan.Click+= (s,e)=>{
             selectedBackend="vulkan";
             btnVulkan.Text="VULKAN [ATUAL]";
-            btnOpenGl.Text="OPENGL";
+            btnOpenGl.Text="OPENGL [NAO TEM]";
             UpdateInfo();
         };
         btnOpenGl.Click+= (s,e)=>{
-            selectedBackend="opengl";
-            btnVulkan.Text="VULKAN";
-            btnOpenGl.Text="OPENGL [ATUAL]";
-            Toast.MakeText(this,"OpenGL selecionado",ToastLength.Short).Show();
+            Toast.MakeText(this,"Esse fork é Vulkan-only. OpenGL não existe aqui",ToastLength.Long).Show();
+            selectedBackend="vulkan";
+            btnVulkan.Text="VULKAN [ATUAL]";
+            btnOpenGl.Text="OPENGL [NAO TEM]";
             UpdateInfo();
         };
         backendRow.AddView(lblBackend);
@@ -304,7 +303,7 @@ public class MainActivity : Activity
             info.Text = "keys NAO encontradas - usa Importar Keys";
             info.SetTextColor(global::Android.Graphics.Color.Red);
         }else{
-            info.Text = $"keys OK {prodInt.Length/1024}KB | Firm {firmIntCount} NCAs | {selectedBackend.ToUpper()} | Driver: {selectedDriver} | S20 FE v10.8";
+            info.Text = $"keys OK {prodInt.Length/1024}KB | Firm {firmIntCount} NCAs | {selectedBackend.ToUpper()} | Driver: {selectedDriver} | S20 FE v10.8.1";
             info.SetTextColor(global::Android.Graphics.Color.Green);
         }
     }
