@@ -37,9 +37,12 @@ public class MainActivity : Activity
     LinearLayout layout;
     string selectedRom = "";
     string selectedDriver = "system";
+    string selectedBackend = "vulkan";
     Button btnJogar;
     Button btnSystem;
     Button btnTurnip;
+    Button btnVulkan;
+    Button btnOpenGl;
     bool permissionRequested = false;
 
     protected override void OnCreate(Bundle savedInstanceState)
@@ -57,7 +60,7 @@ public class MainActivity : Activity
         layout.SetGravity(GravityFlags.Center);
         layout.SetBackgroundColor(global::Android.Graphics.Color.Black);
         layout.SetPadding(40, 20, 40, 20);
-        var title = new TextView(this) { Text = "Ryubing - S20 FE v10.7 FIX" };
+        var title = new TextView(this) { Text = "Ryubing - S20 FE v10.8 FIX" };
         title.SetTextColor(global::Android.Graphics.Color.White);
         title.TextSize = 20; title.Gravity = GravityFlags.Center;
         layout.AddView(title);
@@ -86,10 +89,8 @@ public class MainActivity : Activity
                 Toast.MakeText(this,"Coloque driver em /Download/Ryubing/drivers/",ToastLength.Long).Show();
                 return;
             }
-            // Aviso sobre build antigo com libhardware
             long size = 0;
             try{ if(File.Exists(so1)) size = new FileInfo(so1).Length; else if(File.Exists(so2)) size = new FileInfo(so2).Length; }catch{}
-            // Se o driver for > 15MB geralmente é build antigo com deps
             if(size > 15000000){
                 Toast.MakeText(this,"AVISO: esse Turnip precisa libhardware.so e não funciona no Android 13+. Use system.",ToastLength.Long).Show();
                 selectedDriver="system";
@@ -107,6 +108,31 @@ public class MainActivity : Activity
         driverRow.AddView(btnSystem);
         driverRow.AddView(btnTurnip);
         layout.AddView(driverRow);
+
+        // NOVO - BACKEND ROW
+        var backendRow = new LinearLayout(this){ Orientation = Orientation.Horizontal };
+        backendRow.SetGravity(GravityFlags.Center);
+        var lblBackend = new TextView(this){ Text = " Backend: " };
+        lblBackend.SetTextColor(global::Android.Graphics.Color.White);
+        btnVulkan = new Button(this){ Text = "VULKAN [ATUAL]" };
+        btnOpenGl = new Button(this){ Text = "OPENGL" };
+        btnVulkan.Click+= (s,e)=>{
+            selectedBackend="vulkan";
+            btnVulkan.Text="VULKAN [ATUAL]";
+            btnOpenGl.Text="OPENGL";
+            UpdateInfo();
+        };
+        btnOpenGl.Click+= (s,e)=>{
+            selectedBackend="opengl";
+            btnVulkan.Text="VULKAN";
+            btnOpenGl.Text="OPENGL [ATUAL]";
+            Toast.MakeText(this,"OpenGL selecionado",ToastLength.Short).Show();
+            UpdateInfo();
+        };
+        backendRow.AddView(lblBackend);
+        backendRow.AddView(btnVulkan);
+        backendRow.AddView(btnOpenGl);
+        layout.AddView(backendRow);
 
         var topRow = new LinearLayout(this){ Orientation = Orientation.Horizontal };
         topRow.SetGravity(GravityFlags.Center);
@@ -149,6 +175,7 @@ public class MainActivity : Activity
             var intentGame = new Intent(this, typeof(global::Ryujinx.Android.GameActivity));
             intentGame.PutExtra("rom_path", selectedRom);
             intentGame.PutExtra("vulkan_driver", selectedDriver);
+            intentGame.PutExtra("graphics_backend", selectedBackend);
             StartActivity(intentGame);
         };
         topRow.AddView(btnJogar);
@@ -277,7 +304,7 @@ public class MainActivity : Activity
             info.Text = "keys NAO encontradas - usa Importar Keys";
             info.SetTextColor(global::Android.Graphics.Color.Red);
         }else{
-            info.Text = $"keys OK {prodInt.Length/1024}KB | Firm {firmIntCount} NCAs | Driver: {selectedDriver} | S20 FE v10.7";
+            info.Text = $"keys OK {prodInt.Length/1024}KB | Firm {firmIntCount} NCAs | {selectedBackend.ToUpper()} | Driver: {selectedDriver} | S20 FE v10.8";
             info.SetTextColor(global::Android.Graphics.Color.Green);
         }
     }
@@ -296,7 +323,7 @@ public class MainActivity : Activity
         if (!HasAllFilesPermission()){
             Toast.MakeText(this, "Concede a permissao primeiro", ToastLength.Long).Show(); return;
         }
-        while (layout.ChildCount > 4) layout.RemoveViewAt(layout.ChildCount - 1);
+        while (layout.ChildCount > 5) layout.RemoveViewAt(layout.ChildCount - 1);
         selectedRom = "";
         btnJogar.Enabled = false; btnJogar.Text = "JOGAR";
         var container = new LinearLayout(this){ Orientation = Orientation.Vertical };
@@ -316,7 +343,7 @@ public class MainActivity : Activity
                 row.AddView(name);
                 var localPath = romPath;
                 var btn = new Button(this) { Text = "Selecionar" };
-                btn.Click += (s, e) =>{ selectedRom = localPath; btnJogar.Enabled = true; btnJogar.Text = "JOGAR " + Path.GetFileName(localPath) + $" [{selectedDriver}]"; };
+                btn.Click += (s, e) =>{ selectedRom = localPath; btnJogar.Enabled = true; btnJogar.Text = "JOGAR " + Path.GetFileName(localPath) + $" [{selectedBackend}/{selectedDriver}]"; };
                 row.AddView(btn);
                 container.AddView(row);
             }
