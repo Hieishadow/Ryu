@@ -95,7 +95,7 @@ namespace Ryujinx.Graphics.Gpu
 
             try
             {
-                Log($"[GPU.WINDOW] Present DEQUEUE addr=0x{pt.Range.Address:X} {pt.Info.Width}x{pt.Info.Height} queueLeft={_frameQueue.Count}");
+                Log($"[GPU.WINDOW] Present DEQUEUE {pt.Info.Width}x{pt.Info.Height} queueLeft={_frameQueue.Count} range={pt.Range}");
                 pt.AcquireCallback(_context, pt.UserObj);
                 var tex = pt.Cache.FindOrCreateTexture(null, TextureSearchFlags.WithUpscale, pt.Info, 0, range: pt.Range);
                 
